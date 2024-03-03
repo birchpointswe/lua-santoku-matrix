@@ -1,6 +1,6 @@
 local mtx = require("santoku.matrix.capi")
 local mt_matrix = mtx.mt_matrix
-local bmatrix = mtx.matrix
+local bcreate = mtx.create
 local bset = mtx.set
 local bsums = mtx.sums
 local bcopy = mtx.copy
@@ -12,7 +12,7 @@ local bmagnitude = mtx.magnitude
 local bradd = mtx.radd
 local bexp = mtx.exp
 local bsum = mtx.sum
-local bto_raw = mtx.to_raw
+local braw = mtx.raw
 local bmmult = mtx.mmult
 local brmult = mtx.rmult
 local bget = mtx.get
@@ -33,15 +33,15 @@ local acat = arr.concat
 
 local sformat = string.format
 
-local function matrix (t, n, m)
+local function create (t, n, m)
 
   if hasmeta(t, mt_matrix) then
     if n ~= nil then
-      local t0 = matrix(m - n + 1, bcolumns(t))
+      local t0 = bcreate(m - n + 1, bcolumns(t))
       bcopy(t0, t, n, m, 1)
       return t0
     else
-      local t0 = matrix(brows(t), bcolumns(t))
+      local t0 = bcreate(brows(t), bcolumns(t))
       bcopy(t0, t, 1, brows(t), 1)
       return t0
     end
@@ -52,7 +52,7 @@ local function matrix (t, n, m)
   end
 
   if type(t) == "number" and type(n) == "number" then
-    return bmatrix(t, n)
+    return bcreate(t, n)
   end
 
   if type(t) ~= "table" then
@@ -71,7 +71,7 @@ local function matrix (t, n, m)
     error("Can't create a matrix with fewer than 0 columns")
   end
 
-  local m = matrix(#t, t[1] and #t[1] or 0)
+  local m = bcreate(#t, t[1] and #t[1] or 0)
 
   local rows, columns = bshape(m)
 
@@ -151,14 +151,14 @@ local function set (m, r, c, v)
   end
 end
 
-local function to_raw (m, rowstart, rowend)
+local function raw (m, rowstart, rowend, cast)
   if rowstart == nil and rowend == nil then
     rowstart = 1
     rowend = brows(m)
   elseif rowstart ~= nil and rowend == nil then
     rowend = rowstart
   end
-  return bto_raw(m, rowstart, rowend)
+  return braw(m, rowstart, rowend, cast)
 end
 
 local function sum (m, rowstart, rowend)
@@ -265,12 +265,12 @@ mt_matrix.__tostring = function (m)
 end
 
 return assign({
-  matrix = matrix,
+  create = create,
   average = average,
   normalize = normalize,
   multiply = multiply,
   extend = extend,
-  to_raw = to_raw,
+  raw = raw,
   set = set,
   sum = sum,
   add = add,

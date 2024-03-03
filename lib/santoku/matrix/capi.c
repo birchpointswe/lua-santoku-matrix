@@ -17,7 +17,7 @@ typedef struct {
   double data[];
 } tk_matrix_t;
 
-tk_matrix_t *tk_matrix_create (lua_State *L, size_t rows, size_t columns)
+static inline tk_matrix_t *_tk_matrix_create (lua_State *L, size_t rows, size_t columns)
 {
   size_t doubles = rows * columns;
   tk_matrix_t *m0 = malloc(sizeof(tk_matrix_t) + sizeof(double) * doubles);
@@ -33,18 +33,18 @@ tk_matrix_t *tk_matrix_create (lua_State *L, size_t rows, size_t columns)
   return m0;
 }
 
-tk_matrix_t **tk_matrix_peekp (lua_State *L, int i)
+static inline tk_matrix_t **tk_matrix_peekp (lua_State *L, int i)
 {
   return (tk_matrix_t **) luaL_checkudata(L, i, TK_MATRIX_MT);
 }
 
-tk_matrix_t *tk_matrix_peek (lua_State *L, int i)
+static inline tk_matrix_t *tk_matrix_peek (lua_State *L, int i)
 {
   tk_matrix_t **m0p = tk_matrix_peekp(L, i);
   return *m0p;
 }
 
-size_t tk_matrix_index (lua_State *L, tk_matrix_t *m0, size_t row, size_t column)
+static inline size_t tk_matrix_index (lua_State *L, tk_matrix_t *m0, size_t row, size_t column)
 {
   if (row > m0->rows || row < 1)
     luaL_error(L, "Matrix row index out of bounds");
@@ -53,7 +53,7 @@ size_t tk_matrix_index (lua_State *L, tk_matrix_t *m0, size_t row, size_t column
   return (row - 1) * m0->columns + column - 1;
 }
 
-int tk_matrix_copy (lua_State *L)
+static inline int tk_matrix_copy (lua_State *L)
 {
   lua_settop(L, 5);
   tk_matrix_t *m0 = tk_matrix_peek(L, 1);
@@ -77,7 +77,7 @@ int tk_matrix_copy (lua_State *L)
   return 0;
 }
 
-int tk_matrix_shrink (lua_State *L)
+static inline int tk_matrix_shrink (lua_State *L)
 {
   lua_settop(L, 1);
   tk_matrix_t **m0p = tk_matrix_peekp(L, 1);
@@ -90,7 +90,7 @@ int tk_matrix_shrink (lua_State *L)
   return 0;
 }
 
-int tk_matrix_reshape (lua_State *L)
+static inline int tk_matrix_reshape (lua_State *L)
 {
   lua_settop(L, 3);
   tk_matrix_t **m0p = tk_matrix_peekp(L, 1);
@@ -113,18 +113,18 @@ int tk_matrix_reshape (lua_State *L)
   return 0;
 }
 
-int tk_matrix (lua_State *L)
+static inline int tk_matrix_create (lua_State *L)
 {
   lua_settop(L, 2);
   luaL_checktype(L, 1, LUA_TNUMBER);
   luaL_checktype(L, 2, LUA_TNUMBER);
   size_t rows = lua_tointeger(L, 1);
   size_t columns = lua_tointeger(L, 2);
-  tk_matrix_create(L, rows, columns);
+  _tk_matrix_create(L, rows, columns);
   return 1;
 }
 
-int tk_matrix_gc (lua_State *L)
+static inline int tk_matrix_gc (lua_State *L)
 {
   lua_settop(L, 1);
   tk_matrix_t *m0 = tk_matrix_peek(L, 1);
@@ -132,7 +132,7 @@ int tk_matrix_gc (lua_State *L)
   return 0;
 }
 
-int tk_matrix_get (lua_State *L)
+static inline int tk_matrix_get (lua_State *L)
 {
   lua_settop(L, 3);
   tk_matrix_t *m0 = tk_matrix_peek(L, 1);
@@ -145,7 +145,7 @@ int tk_matrix_get (lua_State *L)
   return 1;
 }
 
-int tk_matrix_set (lua_State *L)
+static inline int tk_matrix_set (lua_State *L)
 {
   lua_settop(L, 4);
   tk_matrix_t *m0 = tk_matrix_peek(L, 1);
@@ -160,7 +160,7 @@ int tk_matrix_set (lua_State *L)
   return 0;
 }
 
-int tk_matrix_radd (lua_State *L)
+static inline int tk_matrix_radd (lua_State *L)
 {
   lua_settop(L, 5);
   tk_matrix_t *m0 = tk_matrix_peek(L, 1);
@@ -179,7 +179,7 @@ int tk_matrix_radd (lua_State *L)
   return 0;
 }
 
-int tk_matrix_rmult (lua_State *L)
+static inline int tk_matrix_rmult (lua_State *L)
 {
   lua_settop(L, 4);
   tk_matrix_t *m0 = tk_matrix_peek(L, 1);
@@ -197,7 +197,7 @@ int tk_matrix_rmult (lua_State *L)
   return 0;
 }
 
-int tk_matrix_exp (lua_State *L)
+static inline int tk_matrix_exp (lua_State *L)
 {
   lua_settop(L, 4);
   tk_matrix_t *m0 = tk_matrix_peek(L, 1);
@@ -216,7 +216,7 @@ int tk_matrix_exp (lua_State *L)
   return 0;
 }
 
-int tk_matrix_rmin (lua_State *L)
+static inline int tk_matrix_rmin (lua_State *L)
 {
   lua_settop(L, 2);
   tk_matrix_t *m0 = tk_matrix_peek(L, 1);
@@ -236,7 +236,7 @@ int tk_matrix_rmin (lua_State *L)
   return 2;
 }
 
-int tk_matrix_rmax (lua_State *L)
+static inline int tk_matrix_rmax (lua_State *L)
 {
   lua_settop(L, 2);
   tk_matrix_t *m0 = tk_matrix_peek(L, 1);
@@ -256,7 +256,7 @@ int tk_matrix_rmax (lua_State *L)
   return 2;
 }
 
-int tk_matrix_ramax (lua_State *L)
+static inline int tk_matrix_ramax (lua_State *L)
 {
   lua_settop(L, 2);
   tk_matrix_t *m0 = tk_matrix_peek(L, 1);
@@ -269,7 +269,7 @@ int tk_matrix_ramax (lua_State *L)
   return 2;
 }
 
-int tk_matrix_sum (lua_State *L)
+static inline int tk_matrix_sum (lua_State *L)
 {
   lua_settop(L, 3);
   tk_matrix_t *m0 = tk_matrix_peek(L, 1);
@@ -288,7 +288,7 @@ int tk_matrix_sum (lua_State *L)
   return 1;
 }
 
-int tk_matrix_sums (lua_State *L)
+static inline int tk_matrix_sums (lua_State *L)
 {
   lua_settop(L, 3);
   tk_matrix_t *m0 = tk_matrix_peek(L, 1);
@@ -307,7 +307,7 @@ int tk_matrix_sums (lua_State *L)
   return 0;
 }
 
-int tk_matrix_mmult (lua_State *L)
+static inline int tk_matrix_mmult (lua_State *L)
 {
   lua_settop(L, 5);
   tk_matrix_t *a = tk_matrix_peek(L, 1);
@@ -362,7 +362,7 @@ int tk_matrix_mmult (lua_State *L)
   return 0;
 }
 
-int tk_matrix_magnitude (lua_State *L)
+static inline int tk_matrix_magnitude (lua_State *L)
 {
   lua_settop(L, 2);
   tk_matrix_t *m0 = tk_matrix_peek(L, 1);
@@ -373,7 +373,7 @@ int tk_matrix_magnitude (lua_State *L)
   return 1;
 }
 
-int tk_matrix_rows (lua_State *L)
+static inline int tk_matrix_rows (lua_State *L)
 {
   lua_settop(L, 1);
   tk_matrix_t *m0 = tk_matrix_peek(L, 1);
@@ -381,7 +381,7 @@ int tk_matrix_rows (lua_State *L)
   return 1;
 }
 
-int tk_matrix_columns (lua_State *L)
+static inline int tk_matrix_columns (lua_State *L)
 {
   lua_settop(L, 1);
   tk_matrix_t *m0 = tk_matrix_peek(L, 1);
@@ -389,7 +389,7 @@ int tk_matrix_columns (lua_State *L)
   return 1;
 }
 
-int tk_matrix_shape (lua_State *L)
+static inline int tk_matrix_shape (lua_State *L)
 {
   lua_settop(L, 1);
   tk_matrix_t *m0 = tk_matrix_peek(L, 1);
@@ -398,7 +398,7 @@ int tk_matrix_shape (lua_State *L)
   return 2;
 }
 
-int tk_matrix_extend_raw (lua_State *L)
+static inline int tk_matrix_extend_raw (lua_State *L)
 {
   lua_settop(L, 2);
   tk_matrix_t *m0 = tk_matrix_peek(L, 1);
@@ -423,9 +423,9 @@ int tk_matrix_extend_raw (lua_State *L)
   return 0;
 }
 
-int tk_matrix_to_raw (lua_State *L)
+static inline int tk_matrix_raw (lua_State *L)
 {
-  lua_settop(L, 3);
+  lua_settop(L, 4);
   tk_matrix_t *m0 = tk_matrix_peek(L, 1);
   luaL_checktype(L, 2, LUA_TNUMBER);
   luaL_checktype(L, 3, LUA_TNUMBER);
@@ -435,11 +435,45 @@ int tk_matrix_to_raw (lua_State *L)
     luaL_error(L, "Error in copy: start row is greater than end row");
   size_t idxstart = tk_matrix_index(L, m0, rowstart, 1);
   size_t idxend = tk_matrix_index(L, m0, rowend, m0->columns);
-  lua_pushlstring(L, (char *) &m0->data[idxstart], sizeof(double) * (idxend - idxstart + 1));
-  return 1;
+  if (lua_type(L, 4) == LUA_TNIL) {
+    lua_pushlstring(L, (char *) &m0->data[idxstart], sizeof(double) * (idxend - idxstart + 1));
+    return 1;
+  }
+  const char *fmt = luaL_checkstring(L, 4);
+  if (!strcmp(fmt, "u32")) {
+    size_t n = idxend - idxstart + 1;
+    unsigned int *out = malloc(sizeof(unsigned int) * n);
+    if (!out)
+      goto err_mem;
+    for (size_t i = 0; i < n; i ++) {
+      double r = m0->data[i];
+      if (r < 0) {
+        free(out);
+        goto err_negative;
+      }
+      if (r > (double) UINT_MAX) {
+        free(out);
+        goto err_toobig;
+      }
+      out[i] = r;
+    }
+    lua_pushlstring(L, (char *) out, sizeof(unsigned int) * n);
+    free(out);
+    return 1;
+  } else {
+    goto err_format;
+  }
+err_format:
+  return luaL_error(L, "unexpected format provided to matrix.raw");
+err_mem:
+  return luaL_error(L, "malloc error in matrix.raw");
+err_negative:
+  return luaL_error(L, "unexpected negative in matrix.raw");
+err_toobig:
+  return luaL_error(L, "unexpected negative in matrix.raw");
 }
 
-int tk_matrix_from_raw (lua_State *L)
+static inline int tk_matrix_from_raw (lua_State *L)
 {
   lua_settop(L, 2);
   luaL_checktype(L, 1, LUA_TSTRING);
@@ -450,16 +484,16 @@ int tk_matrix_from_raw (lua_State *L)
   if (size % columns != 0)
     luaL_error(L, "Length of raw string is not a multiple of provided column length");
   size_t rows = size / columns;
-  tk_matrix_t *m0 = tk_matrix_create(L, rows, columns);
+  tk_matrix_t *m0 = _tk_matrix_create(L, rows, columns);
   memcpy(m0->data, data, size);
   return 1;
 }
 
-luaL_Reg tk_matrix_fns[] =
+static luaL_Reg tk_matrix_fns[] =
 {
-  { "matrix", tk_matrix },
+  { "create", tk_matrix_create },
   { "from_raw", tk_matrix_from_raw },
-  { "to_raw", tk_matrix_to_raw },
+  { "raw", tk_matrix_raw },
   { "extend_raw", tk_matrix_extend_raw },
   { "get", tk_matrix_get },
   { "set", tk_matrix_set },

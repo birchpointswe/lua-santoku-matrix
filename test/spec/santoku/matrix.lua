@@ -1,6 +1,6 @@
 local mtx = require("santoku.matrix")
 
-local m0 = mtx.matrix(1, 10)
+local m0 = mtx.create(1, 10)
 
 for i = 1, 5 do
   mtx.set(m0, 1, i, i)
