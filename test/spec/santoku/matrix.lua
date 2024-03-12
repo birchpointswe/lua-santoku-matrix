@@ -7,11 +7,11 @@ for i = 1, 5 do
 end
 
 for i = 1, 5 do
-  assert(mtx.get(m0, 1, i), i)
+  assert(mtx.get(m0, 1, i) == i)
 end
 
 mtx.add(m0, -1)
 
 for i = 1, 5 do
-  assert(mtx.get(m0, 1, i), i - 1)
+  assert(mtx.get(m0, 1, i) == i - 1)
 end
