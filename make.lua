@@ -1,13 +1,13 @@
 local env = {
 
   name = "santoku-matrix",
-  version = "0.0.4-1",
+  version = "0.0.5-1",
   variable_prefix = "TK_MATRIX",
   public = true,
 
   dependencies = {
     "lua == 5.1",
-    "santoku >= 0.0.196-1",
+    "santoku >= 0.0.202-1",
   },
 
   test = {

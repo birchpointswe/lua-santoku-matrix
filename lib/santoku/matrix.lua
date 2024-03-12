@@ -22,11 +22,11 @@ local bfrom_raw = mtx.from_raw
 local validate = require("santoku.validate")
 local isnumber = validate.isnumber
 local hasmeta = validate.hasmetatable
-local hasindex = validate.hasindex
-local ge = validate.ge
+
+
 
 local tbl = require("santoku.table")
-local assign = tbl.assign
+local merge = tbl.merge
 
 local arr = require("santoku.array")
 local acat = arr.concat
@@ -137,13 +137,13 @@ local function extend (m, t, rowstart, rowend)
 end
 
 local function set (m, r, c, v)
-  assert(isnumber(r))
-  assert(ge(r, 1))
+
+
   if isnumber(c) then
     bset(m, r, c, v)
     return m
   else
-    assert(hasindex(c))
+
     for i = 1, #c do
       bset(m, r, i, c[i])
     end
@@ -264,7 +264,7 @@ mt_matrix.__tostring = function (m)
   return acat(out)
 end
 
-return assign({
+return merge({
   create = create,
   average = average,
   normalize = normalize,
@@ -275,4 +275,4 @@ return assign({
   sum = sum,
   add = add,
   exp = exp,
-}, mtx, false)
+}, mtx)
