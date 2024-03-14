@@ -63,6 +63,22 @@ local function create (t, n, m)
     error("Can't create a matrix with fewer than 0 rows")
   end
 
+  if type(t[1]) == "number" then
+
+    n = n or 1
+    m = m or #t
+
+    local m0 = mtx.create(1, m - n + 1)
+    local i = 0
+    for j = n, m do
+      i = i + 1
+      mtx.set(m0, 1, i, t[j])
+    end
+
+    return m0
+
+  end
+
   if type(t[1]) ~= nil and type(t[1]) ~= "table" then
     error("Unexpected non-table argument to matrix: " .. type(t[1]))
   end
