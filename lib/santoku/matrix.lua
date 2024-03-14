@@ -267,6 +267,12 @@ local function normalize (m, rowstart, rowend)
   end
 end
 
+local function dot (a, b)
+  local r = mtx.create(1, 1)
+  multiply(a, b, r, false, true)
+  return mtx.get(r, 1, 1)
+end
+
 mt_matrix.__tostring = function (m)
   local out = { "matrix(", brows(m), ", ", bcolumns(m), ") " }
   for i = 1, brows(m) do
@@ -291,4 +297,5 @@ return merge({
   sum = sum,
   add = add,
   exp = exp,
+  dot = dot,
 }, mtx)
