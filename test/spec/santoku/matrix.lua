@@ -1,6 +1,6 @@
 local mtx = require("santoku.matrix")
 
-local m0, m1
+local m0, m1, m2
 
 m0 = mtx.create(1, 10)
 
@@ -29,3 +29,16 @@ m0 = mtx.create({ 1, 2, 3, 4, 5, 6 }, 1, 3)
 m1 = mtx.create({ 1, 2, 3, 4, 5, 6 }, 4, 6)
 
 assert(mtx.dot(m0, m1) == 32)
+
+m0 = mtx.create({ 1, 2, 3 })
+m1 = mtx.create({ 4, 5, 6 })
+
+assert(mtx.rows(m0) == 1)
+assert(mtx.columns(m0) == 3)
+assert(mtx.rows(m1) == 1)
+assert(mtx.columns(m1) == 3)
+
+m2 = mtx.from_raw(mtx.raw(m0), 3)
+
+assert(mtx.rows(m2) == 1)
+assert(mtx.columns(m2) == 3)

@@ -483,7 +483,7 @@ static inline int tk_matrix_from_raw (lua_State *L)
   const char *data = lua_tolstring(L, 1, &size);
   if (size % columns != 0)
     luaL_error(L, "Length of raw string is not a multiple of provided column length");
-  size_t rows = size / columns;
+  size_t rows = size / sizeof(double) / columns;
   tk_matrix_t *m0 = _tk_matrix_create(L, rows, columns);
   memcpy(m0->data, data, size);
   return 1;
