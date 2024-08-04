@@ -1,4 +1,5 @@
 local mtx = require("santoku.matrix")
+local tbl = require("santoku.table")
 
 local m0, m1, m2
 
@@ -42,3 +43,13 @@ m2 = mtx.from_raw(mtx.raw(m0), 3)
 
 assert(mtx.rows(m2) == 1)
 assert(mtx.columns(m2) == 3)
+
+m0 = mtx.create({
+  { 1, 2, 3 },
+  { 4, 5, 6 }
+})
+
+assert(tbl.equals(mtx.tabulate(m0), {
+  { 1, 2, 3 },
+  { 4, 5, 6 }
+}))

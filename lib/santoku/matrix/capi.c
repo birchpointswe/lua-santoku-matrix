@@ -90,6 +90,25 @@ static inline int tk_matrix_shrink (lua_State *L)
   return 0;
 }
 
+static inline int tk_matrix_tabulate (lua_State *L)
+{
+  lua_settop(L, 1);
+  tk_matrix_t *m0 = tk_matrix_peek(L, 1);
+  lua_newtable(L);
+  for (size_t row = 1; row <= m0->rows; row ++) {
+    lua_pushinteger(L, row);
+    lua_newtable(L);
+    for (size_t column = 1; column <= m0->columns; column ++) {
+      size_t idx = tk_matrix_index(L, m0, row, column);
+      lua_pushinteger(L, column);
+      lua_pushnumber(L, m0->data[idx]);
+      lua_settable(L, -3);
+    }
+    lua_settable(L, -3);
+  }
+  return 1;
+}
+
 static inline int tk_matrix_reshape (lua_State *L)
 {
   lua_settop(L, 3);
@@ -511,6 +530,7 @@ static luaL_Reg tk_matrix_fns[] =
   { "rmax", tk_matrix_rmax },
   { "rmin", tk_matrix_rmin },
   { "ramax", tk_matrix_ramax },
+  { "tabulate", tk_matrix_tabulate },
   { "reshape", tk_matrix_reshape },
   { "shrink", tk_matrix_shrink },
   { NULL, NULL }
