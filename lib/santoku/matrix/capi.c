@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <math.h>
+#include <float.h>
 
 #define TK_MATRIX_MT "santoku_matrix"
 
@@ -16,6 +17,23 @@ typedef struct {
   size_t doubles;
   double data[];
 } tk_matrix_t;
+
+static inline unsigned int tk_lua_checkunsigned (lua_State *L, int i)
+{
+  lua_Integer l = luaL_checkinteger(L, i);
+  if (l < 0)
+    luaL_error(L, "value can't be negative");
+  if (l > UINT_MAX)
+    luaL_error(L, "value is too large");
+  return (unsigned int) l;
+}
+
+static inline unsigned int tk_lua_optunsigned (lua_State *L, int i, unsigned int def)
+{
+  if (lua_type(L, i) < 1)
+    return def;
+  return tk_lua_checkunsigned(L, i);
+}
 
 static inline tk_matrix_t *_tk_matrix_create (lua_State *L, size_t rows, size_t columns)
 {
@@ -88,6 +106,78 @@ static inline int tk_matrix_shrink (lua_State *L)
       luaL_error(L, "Error in realloc during matrix shrink");
   }
   return 0;
+}
+
+struct tk_matrix_rorder_item {
+  bool asc;
+  size_t column;
+  double value;
+};
+
+static int tk_matrix_rorder_cmp (const void *ap, const void *bp)
+{
+  struct tk_matrix_rorder_item *a = (struct tk_matrix_rorder_item *) ap;
+  struct tk_matrix_rorder_item *b = (struct tk_matrix_rorder_item *) bp;
+  return a->asc
+    ? a->value - b->value
+    : b->value - a->value;
+}
+
+static inline void tk_matrix_rorder_push_row (
+  lua_State *L,
+  tk_matrix_t *m0,
+  size_t row,
+  unsigned int min,
+  unsigned int max,
+  double cutoff,
+  bool lt,
+  bool asc
+) {
+  struct tk_matrix_rorder_item items[m0->columns];
+  for (size_t column = 1; column <= m0->columns; column ++) {
+    items[column - 1].asc = asc;
+    items[column - 1].column = column;
+    items[column - 1].value = m0->data[tk_matrix_index(L, m0, row, column)];
+  }
+  qsort(items,
+        m0->columns,
+        sizeof(struct tk_matrix_rorder_item),
+        tk_matrix_rorder_cmp);
+  lua_newtable(L);
+  for (size_t i = 0; i < m0->columns; i ++) {
+    unsigned int n = i + 1;
+    if (n > max || (n > min && (lt
+        ? items[i].value < cutoff
+        : items[i].value > cutoff)))
+      break;
+    lua_pushinteger(L, n);
+    lua_newtable(L);
+    lua_pushinteger(L, items[i].column);
+    lua_setfield(L, -2, "column");
+    lua_pushnumber(L, items[i].value);
+    lua_setfield(L, -2, "value");
+    lua_settable(L, -3);
+  }
+}
+
+static inline int tk_matrix_rorder (lua_State *L)
+{
+  lua_settop(L, 5);
+  tk_matrix_t *m0 = tk_matrix_peek(L, 1);
+  lua_Integer min = tk_lua_optunsigned(L, 2, 0);
+  lua_Integer max = tk_lua_optunsigned(L, 3, m0->columns);
+  lua_Number cutoff = luaL_optnumber(L, 4, -DBL_MAX);
+  bool lt = !lua_toboolean(L, 5);
+  bool asc = lua_toboolean(L, 6);
+  if (max < min)
+    luaL_error(L, "Max can't be less than min");
+  lua_newtable(L);
+  for (size_t row = 1; row <= m0->rows; row ++) {
+    lua_pushinteger(L, row);
+    tk_matrix_rorder_push_row(L, m0, row, min, max, cutoff, lt, asc);
+    lua_settable(L, -3);
+  }
+  return 1;
 }
 
 static inline int tk_matrix_tabulate (lua_State *L)
@@ -531,6 +621,7 @@ static luaL_Reg tk_matrix_fns[] =
   { "rmin", tk_matrix_rmin },
   { "ramax", tk_matrix_ramax },
   { "tabulate", tk_matrix_tabulate },
+  { "rorder", tk_matrix_rorder },
   { "reshape", tk_matrix_reshape },
   { "shrink", tk_matrix_shrink },
   { NULL, NULL }

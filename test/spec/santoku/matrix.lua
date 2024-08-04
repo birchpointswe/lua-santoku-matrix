@@ -53,3 +53,10 @@ assert(tbl.equals(mtx.tabulate(m0), {
   { 1, 2, 3 },
   { 4, 5, 6 }
 }))
+
+m0 = mtx.create({
+  { 10, 2, 3 },
+  { 4, 5, 6 }
+})
+
+print(require("santoku.serialize")(mtx.rorder(m0)))
