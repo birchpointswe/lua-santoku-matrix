@@ -118,9 +118,10 @@ static int tk_matrix_rorder_cmp (const void *ap, const void *bp)
 {
   struct tk_matrix_rorder_item *a = (struct tk_matrix_rorder_item *) ap;
   struct tk_matrix_rorder_item *b = (struct tk_matrix_rorder_item *) bp;
-  return a->asc
+  double r = a->asc
     ? a->value - b->value
     : b->value - a->value;
+  return r == 0 ? 0 : r < 0 ? -1 : 1;
 }
 
 static inline void tk_matrix_rorder_push_row (

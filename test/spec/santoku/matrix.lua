@@ -59,7 +59,12 @@ m0 = mtx.create({
   { 4, 5, 6 }
 })
 
-assert(tbl.equals(mtx.rorder(m0), {
+assert(tbl.equals(mtx.rorder(m0, 1, 3, 0), {
   { 1, 3, 2 },
   { 3, 2, 1 }
+}))
+
+assert(tbl.equals(mtx.rorder(m0, 1, 2, 4), {
+  { 1 },
+  { 3, 2 }
 }))
