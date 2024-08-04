@@ -59,4 +59,7 @@ m0 = mtx.create({
   { 4, 5, 6 }
 })
 
-print(require("santoku.serialize")(mtx.rorder(m0)))
+assert(tbl.equals(mtx.rorder(m0), {
+  { 1, 3, 2 },
+  { 3, 2, 1 }
+}))
