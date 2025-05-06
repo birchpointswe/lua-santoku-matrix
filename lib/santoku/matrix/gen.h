@@ -1,22 +1,30 @@
 #include "lua.h"
 #include "lauxlib.h"
 
-#include "cblas.h"
-
 #include <string.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <math.h>
 #include <float.h>
 
-#define TK_MATRIX_MT "santoku_matrix"
-
 typedef struct {
   size_t rows;
   size_t columns;
-  size_t doubles;
-  double data[];
+  size_t values;
+  tk_base_t data[];
 } tk_matrix_t;
+
+static inline void tk_lua_callmod (lua_State *L, int nargs, int nret, const char *smod, const char *sfn)
+{
+  lua_getglobal(L, "require");
+  lua_pushstring(L, smod);
+  lua_call(L, 1, 1);
+  lua_pushstring(L, sfn);
+  lua_gettable(L, -2);
+  lua_remove(L, -2);
+  lua_insert(L, - nargs - 1);
+  lua_call(L, nargs, nret);
+}
 
 static inline unsigned int tk_lua_checkunsigned (lua_State *L, int i)
 {
@@ -37,15 +45,15 @@ static inline unsigned int tk_lua_optunsigned (lua_State *L, int i, unsigned int
 
 static inline tk_matrix_t *_tk_matrix_create (lua_State *L, size_t rows, size_t columns)
 {
-  size_t doubles = rows * columns;
-  tk_matrix_t *m0 = malloc(sizeof(tk_matrix_t) + sizeof(double) * doubles);
+  size_t values = rows * columns;
+  tk_matrix_t *m0 = malloc(sizeof(tk_matrix_t) + sizeof(tk_base_t) * values);
   if (m0 == NULL)
     luaL_error(L, "Error in malloc during matrix create");
   m0->rows = rows;
   m0->columns = columns;
-  m0->doubles = doubles;
+  m0->values = values;
   tk_matrix_t **m0p = (tk_matrix_t **) lua_newuserdata(L, sizeof(tk_matrix_t *));
-  luaL_getmetatable(L, TK_MATRIX_MT);
+  luaL_getmetatable(L, TK_MT);
   lua_setmetatable(L, -2);
   *m0p = m0;
   return m0;
@@ -53,7 +61,7 @@ static inline tk_matrix_t *_tk_matrix_create (lua_State *L, size_t rows, size_t 
 
 static inline tk_matrix_t **tk_matrix_peekp (lua_State *L, int i)
 {
-  return (tk_matrix_t **) luaL_checkudata(L, i, TK_MATRIX_MT);
+  return (tk_matrix_t **) luaL_checkudata(L, i, TK_MT);
 }
 
 static inline tk_matrix_t *tk_matrix_peek (lua_State *L, int i)
@@ -91,7 +99,7 @@ static inline int tk_matrix_copy (lua_State *L)
   size_t idxstart = tk_matrix_index(L, m1, rowstart, 1);
   size_t idxend = tk_matrix_index(L, m1, rowend, m1->columns);
   size_t idxdest = tk_matrix_index(L, m0, rowdest, 1);
-  memcpy(&m0->data[idxdest], &m1->data[idxstart], sizeof(double) * (idxend - idxstart + 1));
+  memcpy(&m0->data[idxdest], &m1->data[idxstart], sizeof(tk_base_t) * (idxend - idxstart + 1));
   return 0;
 }
 
@@ -99,9 +107,9 @@ static inline int tk_matrix_shrink (lua_State *L)
 {
   lua_settop(L, 1);
   tk_matrix_t **m0p = tk_matrix_peekp(L, 1);
-  if ((*m0p)->doubles >= (*m0p)->rows * (*m0p)->columns) {
-    (*m0p)->doubles = (*m0p)->rows * (*m0p)->columns;
-    *m0p = realloc(*m0p, sizeof(tk_matrix_t) + sizeof(double) * (*m0p)->doubles);
+  if ((*m0p)->values >= (*m0p)->rows * (*m0p)->columns) {
+    (*m0p)->values = (*m0p)->rows * (*m0p)->columns;
+    *m0p = realloc(*m0p, sizeof(tk_matrix_t) + sizeof(tk_base_t) * (*m0p)->values);
     if (*m0p == NULL)
       luaL_error(L, "Error in realloc during matrix shrink");
   }
@@ -111,14 +119,14 @@ static inline int tk_matrix_shrink (lua_State *L)
 struct tk_matrix_rorder_item {
   bool asc;
   size_t column;
-  double value;
+  tk_base_t value;
 };
 
 static int tk_matrix_rorder_cmp (const void *ap, const void *bp)
 {
   struct tk_matrix_rorder_item *a = (struct tk_matrix_rorder_item *) ap;
   struct tk_matrix_rorder_item *b = (struct tk_matrix_rorder_item *) bp;
-  double r = a->asc
+  tk_base_t r = a->asc
     ? a->value - b->value
     : b->value - a->value;
   return r == 0 ? 0 : r < 0 ? -1 : 1;
@@ -130,7 +138,7 @@ static inline void tk_matrix_rorder_push_row (
   size_t row,
   unsigned int min,
   unsigned int max,
-  double cutoff,
+  tk_base_t cutoff,
   bool lt,
   bool asc
 ) {
@@ -210,9 +218,9 @@ static inline int tk_matrix_reshape (lua_State *L)
     luaL_error(L, "Error in reshape: columns less than 0");
   (*m0p)->rows = rows;
   (*m0p)->columns = columns;
-  if (rows * columns > (*m0p)->doubles) {
-    (*m0p)->doubles = rows * columns;
-    *m0p = realloc(*m0p, sizeof(tk_matrix_t) + sizeof(double) * (*m0p)->doubles);
+  if (rows * columns > (*m0p)->values) {
+    (*m0p)->values = rows * columns;
+    *m0p = realloc(*m0p, sizeof(tk_matrix_t) + sizeof(tk_base_t) * (*m0p)->values);
     if (*m0p == NULL)
       luaL_error(L, "Error in realloc during matrix reshape");
   }
@@ -266,43 +274,6 @@ static inline int tk_matrix_set (lua_State *L)
   return 0;
 }
 
-static inline int tk_matrix_radd (lua_State *L)
-{
-  lua_settop(L, 5);
-  tk_matrix_t *m0 = tk_matrix_peek(L, 1);
-  luaL_checktype(L, 2, LUA_TNUMBER);
-  luaL_checktype(L, 3, LUA_TNUMBER);
-  luaL_checktype(L, 4, LUA_TNUMBER);
-  lua_Integer rowstart = lua_tointeger(L, 2);
-  lua_Integer rowend = lua_tointeger(L, 3);
-  lua_Number add = lua_tonumber(L, 4);
-  if (rowstart > rowend)
-    luaL_error(L, "Error in radd: start row is greater than end row");
-  size_t idxstart = tk_matrix_index(L, m0, rowstart, 1);
-  size_t idxend = tk_matrix_index(L, m0, rowend, m0->columns);
-  double x[1] = { add };
-  cblas_daxpy(idxend - idxstart + 1, 1, x, 0, &m0->data[idxstart], 1);
-  return 0;
-}
-
-static inline int tk_matrix_rmult (lua_State *L)
-{
-  lua_settop(L, 4);
-  tk_matrix_t *m0 = tk_matrix_peek(L, 1);
-  luaL_checktype(L, 2, LUA_TNUMBER);
-  luaL_checktype(L, 3, LUA_TNUMBER);
-  luaL_checktype(L, 4, LUA_TNUMBER);
-  lua_Integer rowstart = lua_tointeger(L, 2);
-  lua_Integer rowend = lua_tointeger(L, 3);
-  lua_Number scal = lua_tonumber(L, 4);
-  if (rowstart > rowend)
-    luaL_error(L, "Error in rmult: start row is greater than end row");
-  size_t idxstart = tk_matrix_index(L, m0, rowstart, 1);
-  size_t idxend = tk_matrix_index(L, m0, rowend, m0->columns);
-  cblas_dscal(idxend - idxstart + 1, scal, &m0->data[idxstart], 1);
-  return 0;
-}
-
 static inline int tk_matrix_exp (lua_State *L)
 {
   lua_settop(L, 4);
@@ -330,7 +301,7 @@ static inline int tk_matrix_rmin (lua_State *L)
   lua_Integer row = lua_tointeger(L, 2);
   size_t idx = tk_matrix_index(L, m0, row, 1);
   size_t mincol = 1;
-  double minval = m0->data[idx];
+  tk_base_t minval = m0->data[idx];
   for (size_t i = 2; i <= m0->columns; i ++) {
     if (m0->data[idx + i - 1] < minval) {
       mincol = i;
@@ -350,7 +321,7 @@ static inline int tk_matrix_rmax (lua_State *L)
   lua_Integer row = lua_tointeger(L, 2);
   size_t idx = tk_matrix_index(L, m0, row, 1);
   size_t maxcol = 1;
-  double maxval = m0->data[idx];
+  tk_base_t maxval = m0->data[idx];
   for (size_t i = 2; i <= m0->columns; i ++) {
     if (m0->data[idx + i - 1] > maxval) {
       maxcol = i;
@@ -359,19 +330,6 @@ static inline int tk_matrix_rmax (lua_State *L)
   }
   lua_pushnumber(L, maxval);
   lua_pushinteger(L, maxcol);
-  return 2;
-}
-
-static inline int tk_matrix_ramax (lua_State *L)
-{
-  lua_settop(L, 2);
-  tk_matrix_t *m0 = tk_matrix_peek(L, 1);
-  luaL_checktype(L, 2, LUA_TNUMBER);
-  lua_Integer row = lua_tointeger(L, 2);
-  size_t idx = tk_matrix_index(L, m0, row, 1);
-  size_t idxval = cblas_idamax(m0->columns, &m0->data[idx], 1);
-  lua_pushnumber(L, m0->data[idx + idxval]);
-  lua_pushinteger(L, idxval);
   return 2;
 }
 
@@ -387,95 +345,10 @@ static inline int tk_matrix_sum (lua_State *L)
     luaL_error(L, "Error in sum: start row is greater than end row");
   size_t idxstart = tk_matrix_index(L, m0, rowstart, 1);
   size_t idxend = tk_matrix_index(L, m0, rowend, m0->columns);
-  double sum = 0;
+  tk_base_t sum = 0;
   for (size_t i = idxstart; i <= idxend; i ++)
     sum += m0->data[i];
   lua_pushnumber(L, sum);
-  return 1;
-}
-
-static inline int tk_matrix_sums (lua_State *L)
-{
-  lua_settop(L, 3);
-  tk_matrix_t *m0 = tk_matrix_peek(L, 1);
-  tk_matrix_t *m1 = tk_matrix_peek(L, 2);
-  luaL_checktype(L, 3, LUA_TNUMBER);
-  if (m0->columns != m1->columns)
-    luaL_error(L, "Error in sums: destination matrix columns don't match source matrix columns");
-  lua_Integer rowdest = lua_tointeger(L, 3);
-  size_t idxdest = tk_matrix_index(L, m1, rowdest, 1);
-  size_t idxsrc = tk_matrix_index(L, m0, 1, 1);
-  memcpy(&m1->data[idxdest], &m0->data[idxsrc], sizeof(double) * m1->columns);
-  for (size_t i = 2; i <= m0->rows; i ++) {
-    idxsrc = tk_matrix_index(L, m0, i, 1);
-    cblas_daxpy(m0->columns, 1, &m0->data[idxsrc], 1, &m1->data[idxdest], 1);
-  }
-  return 0;
-}
-
-static inline int tk_matrix_mmult (lua_State *L)
-{
-  lua_settop(L, 5);
-  tk_matrix_t *a = tk_matrix_peek(L, 1);
-  tk_matrix_t *b = tk_matrix_peek(L, 2);
-  tk_matrix_t *c = tk_matrix_peek(L, 3);
-  bool transpose_a = lua_toboolean(L, 4);
-  bool transpose_b = lua_toboolean(L, 5);
-  if (!transpose_a && !transpose_b) {
-    if (a->columns != b->rows)
-      luaL_error(L, "Error in mmult: columns of A don't match rows of B");
-    if (a->rows != c->rows)
-      luaL_error(L, "Error in mmult: rows of C don't match rows of A");
-    if (b->columns != c->columns)
-      luaL_error(L, "Error in mmult: columns of C don't match columns of B");
-  } else if (transpose_a && !transpose_b) {
-    if (a->rows != b->rows)
-      luaL_error(L, "Error in mmult: rows of A don't match rows of B");
-    if (a->columns != c->rows)
-      luaL_error(L, "Error in mmult: rows of C don't match columns of A");
-    if (b->columns != c->columns)
-      luaL_error(L, "Error in mmult: columns of C don't match columns of B");
-  } else if (!transpose_a && transpose_b) {
-    if (a->columns != b->columns)
-      luaL_error(L, "Error in mmult: columns of A don't match columns of B");
-    if (a->rows != c->rows)
-      luaL_error(L, "Error in mmult: rows of C don't match rows of A");
-    if (b->rows != c->columns)
-      luaL_error(L, "Error in mmult: columns of C don't match rows of B");
-  } else if (transpose_a && transpose_b) {
-    if (a->rows != b->columns)
-      luaL_error(L, "Error in mmult: rows of A don't match columns of B");
-    if (a->columns != c->columns)
-      luaL_error(L, "Error in mmult: columns of C don't match columns of A");
-    if (b->rows != c->rows)
-      luaL_error(L, "Error in mmult: rows of C don't match rows of B");
-  }
-  cblas_dgemm(
-    CblasRowMajor,
-    transpose_a ? CblasTrans : CblasNoTrans,
-    transpose_b ? CblasTrans : CblasNoTrans,
-    c->rows,
-    c->columns,
-    a->columns,
-    1.0,
-    a->data,
-    a->columns,
-    b->data,
-    b->columns,
-    0.0,
-    c->data,
-    c->columns);
-  return 0;
-}
-
-static inline int tk_matrix_magnitude (lua_State *L)
-{
-  lua_settop(L, 2);
-  tk_matrix_t *m0 = tk_matrix_peek(L, 1);
-  luaL_checktype(L, 2, LUA_TNUMBER);
-  lua_Integer row = lua_tointeger(L, 2);
-  size_t idx = tk_matrix_index(L, m0, row, 1);
-  lua_pushnumber(L, cblas_dnrm2(m0->columns, &m0->data[idx], 1));
   return 1;
 }
 
@@ -511,12 +384,12 @@ static inline int tk_matrix_extend_raw (lua_State *L)
   luaL_checktype(L, 2, LUA_TSTRING);
   size_t size;
   const char *data = lua_tolstring(L, 2, &size);
-  if (size % sizeof(double) != 0)
-    luaL_error(L, "Length of raw string is not a multiple of sizeof(double)");
-  size_t doubles = size / sizeof(double);
-  if (doubles % m0->columns != 0)
+  if (size % sizeof(tk_base_t) != 0)
+    luaL_error(L, "Length of raw string is not a multiple of sizeof(tk_base_t)");
+  size_t values = size / sizeof(tk_base_t);
+  if (values % m0->columns != 0)
     luaL_error(L, "Length of raw string is not a multiple of matrix columns");
-  size_t extend_rows = doubles / m0->columns;
+  size_t extend_rows = values / m0->columns;
   size_t extend_rowstart = m0->rows + 1;
   size_t newrows = m0->rows + extend_rows;
   lua_pop(L, 1);
@@ -542,7 +415,7 @@ static inline int tk_matrix_raw (lua_State *L)
   size_t idxstart = tk_matrix_index(L, m0, rowstart, 1);
   size_t idxend = tk_matrix_index(L, m0, rowend, m0->columns);
   if (lua_type(L, 4) == LUA_TNIL) {
-    lua_pushlstring(L, (char *) &m0->data[idxstart], sizeof(double) * (idxend - idxstart + 1));
+    lua_pushlstring(L, (char *) &m0->data[idxstart], sizeof(tk_base_t) * (idxend - idxstart + 1));
     return 1;
   }
   const char *fmt = luaL_checkstring(L, 4);
@@ -552,12 +425,12 @@ static inline int tk_matrix_raw (lua_State *L)
     if (!out)
       goto err_mem;
     for (size_t i = 0; i < n; i ++) {
-      double r = m0->data[i];
+      tk_base_t r = m0->data[i];
       if (r < 0) {
         free(out);
         goto err_negative;
       }
-      if (r > (double) UINT_MAX) {
+      if (r > (tk_base_t) UINT_MAX) {
         free(out);
         goto err_toobig;
       }
@@ -589,11 +462,18 @@ static inline int tk_matrix_from_raw (lua_State *L)
   const char *data = lua_tolstring(L, 1, &size);
   if (size % columns != 0)
     luaL_error(L, "Length of raw string is not a multiple of provided column length");
-  size_t rows = size / sizeof(double) / columns;
+  size_t rows = size / sizeof(tk_base_t) / columns;
   tk_matrix_t *m0 = _tk_matrix_create(L, rows, columns);
   memcpy(m0->data, data, size);
   return 1;
 }
+
+static inline int tk_matrix_radd (lua_State *);
+static inline int tk_matrix_rmult (lua_State *);
+static inline int tk_matrix_ramax (lua_State *);
+static inline int tk_matrix_sums (lua_State *);
+static inline int tk_matrix_mmult (lua_State *);
+static inline int tk_matrix_magnitude (lua_State *);
 
 static luaL_Reg tk_matrix_fns[] =
 {
@@ -624,15 +504,16 @@ static luaL_Reg tk_matrix_fns[] =
   { NULL, NULL }
 };
 
-int luaopen_santoku_matrix_capi (lua_State *L)
+int TK_OPEN (lua_State *L)
 {
   lua_newtable(L);
   luaL_register(L, NULL, tk_matrix_fns);
-  luaL_newmetatable(L, TK_MATRIX_MT);
+  luaL_newmetatable(L, TK_MT);
   lua_pushcfunction(L, tk_matrix_gc);
   lua_setfield(L, -2, "__gc");
   lua_pushvalue(L, -1);
   lua_setfield(L, -3, "mt_matrix");
   lua_pop(L, 1);
+  tk_lua_callmod(L, 1, 1, "santoku.matrix.wrap", "wrap");
   return 1;
 }
