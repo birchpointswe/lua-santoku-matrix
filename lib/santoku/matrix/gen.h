@@ -512,6 +512,7 @@ static luaL_Reg tk_matrix_fns[] =
   { "create", tk_matrix_create },
   { "from_raw", tk_matrix_from_raw },
   { "raw", tk_matrix_raw },
+  { "from_view", tk_matrix_from_view },
   { "view", tk_matrix_view },
   { "extend_raw", tk_matrix_extend_raw },
   { "get", tk_matrix_get },
