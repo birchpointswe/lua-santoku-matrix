@@ -471,7 +471,9 @@ static inline int tk_matrix_view (lua_State *L)
   lua_settop(L, 4);
   tk_matrix_t *m0 = tk_matrix_peek(L, 1);
   lua_pushlightuserdata(L, m0->data);
-  return 1;
+  lua_pushinteger(L, m0->rows);
+  lua_pushinteger(L, m0->columns);
+  return 3;
 }
 
 static inline int tk_matrix_from_raw (lua_State *L)
