@@ -452,6 +452,14 @@ err_toobig:
   return luaL_error(L, "unexpected negative in matrix.raw");
 }
 
+static inline int tk_matrix_view (lua_State *L)
+{
+  lua_settop(L, 4);
+  tk_matrix_t *m0 = tk_matrix_peek(L, 1);
+  lua_pushlightuserdata(L, m0->data);
+  return 1;
+}
+
 static inline int tk_matrix_from_raw (lua_State *L)
 {
   lua_settop(L, 2);
@@ -480,6 +488,7 @@ static luaL_Reg tk_matrix_fns[] =
   { "create", tk_matrix_create },
   { "from_raw", tk_matrix_from_raw },
   { "raw", tk_matrix_raw },
+  { "view", tk_matrix_view },
   { "extend_raw", tk_matrix_extend_raw },
   { "get", tk_matrix_get },
   { "set", tk_matrix_set },
