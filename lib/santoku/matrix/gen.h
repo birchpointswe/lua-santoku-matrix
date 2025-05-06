@@ -53,22 +53,27 @@ static inline unsigned int tk_lua_optunsigned (lua_State *L, int i, unsigned int
   return tk_lua_checkunsigned(L, i);
 }
 
-static inline tk_matrix_t *_tk_matrix_create (lua_State *L, size_t rows, size_t columns, tk_base_t *data)
+static inline tk_matrix_t *_tk_matrix_create (lua_State *L, size_t rows, size_t columns, tk_base_t *data, tk_matrix_t *m0)
 {
   size_t values = rows * columns;
-  tk_matrix_t *m0 = malloc(sizeof(tk_matrix_t));
-  if (m0 == NULL)
-    luaL_error(L, "Error in malloc during matrix create");
-  m0->data = data != NULL ? data : malloc(sizeof(tk_base_t) * values);
-  if (m0->data == NULL)
-    luaL_error(L, "Error in malloc during matrix create");
+  if (m0 == NULL) {
+    m0 = malloc(sizeof(tk_matrix_t));
+    if (m0 == NULL)
+      luaL_error(L, "Error in malloc during matrix create");
+    memset(m0, 0, sizeof(tk_matrix_t));
+    tk_matrix_t **m0p = (tk_matrix_t **) lua_newuserdata(L, sizeof(tk_matrix_t *));
+    luaL_getmetatable(L, TK_MT);
+    lua_setmetatable(L, -2);
+    *m0p = m0;
+  } else if (m0->data) {
+    free(m0->data);
+  }
   m0->rows = rows;
   m0->columns = columns;
   m0->values = values;
-  tk_matrix_t **m0p = (tk_matrix_t **) lua_newuserdata(L, sizeof(tk_matrix_t *));
-  luaL_getmetatable(L, TK_MT);
-  lua_setmetatable(L, -2);
-  *m0p = m0;
+  m0->data = data != NULL ? data : malloc(sizeof(tk_base_t) * values);
+  if (m0->data == NULL)
+    luaL_error(L, "Error in malloc during matrix create");
   return m0;
 }
 
@@ -247,7 +252,7 @@ static inline int tk_matrix_create (lua_State *L)
   luaL_checktype(L, 2, LUA_TNUMBER);
   size_t rows = lua_tointeger(L, 1);
   size_t columns = lua_tointeger(L, 2);
-  _tk_matrix_create(L, rows, columns, NULL);
+  _tk_matrix_create(L, rows, columns, NULL, NULL);
   return 1;
 }
 
@@ -487,18 +492,19 @@ static inline int tk_matrix_from_raw (lua_State *L)
   if (size % columns != 0)
     luaL_error(L, "Length of raw string is not a multiple of provided column length");
   size_t rows = size / sizeof(tk_base_t) / columns;
-  tk_matrix_t *m0 = _tk_matrix_create(L, rows, columns, NULL);
+  tk_matrix_t *m0 = _tk_matrix_create(L, rows, columns, NULL, NULL);
   memcpy(m0->data, data, size);
   return 1;
 }
 
 static inline int tk_matrix_from_view (lua_State *L)
 {
-  lua_settop(L, 3);
+  lua_settop(L, 4);
   tk_base_t *data = tk_lua_checkuserdata(L, 1, NULL);
   size_t rows = tk_lua_checkunsigned(L, 2);
   size_t columns = tk_lua_checkunsigned(L, 3);
-  _tk_matrix_create(L, rows, columns, data);
+  tk_matrix_t *m0 = lua_type(L, 4) == LUA_TNIL ? NULL : tk_matrix_peek(L, 4);
+  _tk_matrix_create(L, rows, columns, data, m0);
   return 1;
 }
 
