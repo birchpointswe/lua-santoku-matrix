@@ -1,4 +1,5 @@
 #define tk_base_t double
+#define tk_sort(...) ks_introsort(double, __VA_ARGS__)
 #define TK_MT "santoku_matrix_number"
 #define TK_OPEN luaopen_santoku_matrix_number
 #include "gen.h"
@@ -139,3 +140,8 @@ static inline int tk_matrix_magnitude (lua_State *L)
   lua_pushnumber(L, cblas_dnrm2(m0->columns, &m0->data[idx], 1));
   return 1;
 }
+
+static luaL_Reg tk_matrix_extra_fns[] =
+{
+  { NULL, NULL }
+};

@@ -1,4 +1,5 @@
 #define tk_base_t int64_t
+#define tk_sort(...) ks_introsort(int64_t, __VA_ARGS__)
 #define TK_MT "santoku_matrix_integer"
 #define TK_OPEN luaopen_santoku_matrix_integer
 #include "gen.h"
@@ -149,3 +150,55 @@ static inline int tk_matrix_magnitude (lua_State *L)
   lua_pushnumber(L, sqrt(sum));
   return 1;
 }
+
+static inline int tk_matrix_flip_interleave (lua_State *L)
+{
+  lua_settop(L, 3);
+  tk_matrix_t *m0 = tk_matrix_peek(L, 1);
+  uint64_t n_samples = tk_lua_checkunsigned(L, 2);
+  uint64_t n_features = tk_lua_checkunsigned(L, 3);
+  lua_settop(L, 1);
+  bool sorted = lua_toboolean(L, 4);
+  if (!sorted) {
+    lua_pushboolean(L, true);
+    tk_matrix_sort(L);
+    lua_settop(L, 1);
+  }
+  size_t values = m0->values;
+  tk_base_t *data = m0->data;
+  size_t total = n_samples * n_features;
+  data = realloc(data, sizeof(tk_base_t) * total);
+  if (data == NULL)
+    luaL_error(L, "Error in realloc during flip_interleave");
+  size_t write = values;
+  size_t last = 0;
+  tk_base_t s, k;
+  for (size_t i_present = 0; i_present < values; i_present ++) {
+    tk_base_t x = data[i_present];
+    s = x / n_features;
+    k = x % n_features;
+    data[i_present] = (s * 2 * n_features) + k;
+    for (size_t y = last; y < x; y ++) {
+      tk_base_t s = y / n_features;
+      tk_base_t k = y % n_features;
+      data[write ++] = (s * 2 * n_features) + n_features + k;
+    }
+    last = x + 1;
+  }
+  for (size_t y = last; y < total; y ++) {
+    tk_base_t s = y / n_features;
+    tk_base_t k = y % n_features;
+    data[write ++] = (s * 2 * n_features) + n_features + k;
+  }
+  m0->rows = 1;
+  m0->columns = write;
+  m0->values = write;
+  m0->data = data;
+  return 0;
+}
+
+static luaL_Reg tk_matrix_extra_fns[] =
+{
+  { "flip_interleave", tk_matrix_flip_interleave },
+  { NULL, NULL }
+};

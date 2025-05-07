@@ -2,10 +2,15 @@
 #include "lauxlib.h"
 
 #include <string.h>
+#include <stdint.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <math.h>
 #include <float.h>
+
+#include "ksort.h"
+
+KSORT_INIT_GENERIC(tk_base_t)
 
 typedef struct {
   size_t rows;
@@ -36,14 +41,12 @@ static inline void *tk_lua_checkuserdata (lua_State *L, int i, char *mt)
   return p;
 }
 
-static inline unsigned int tk_lua_checkunsigned (lua_State *L, int i)
+static inline uint64_t tk_lua_checkunsigned (lua_State *L, int i)
 {
   lua_Integer l = luaL_checkinteger(L, i);
   if (l < 0)
     luaL_error(L, "value can't be negative");
-  if (l > UINT_MAX)
-    luaL_error(L, "value is too large");
-  return (unsigned int) l;
+  return (uint64_t) l;
 }
 
 static inline unsigned int tk_lua_optunsigned (lua_State *L, int i, unsigned int def)
@@ -352,6 +355,28 @@ static inline int tk_matrix_rmax (lua_State *L)
   return 2;
 }
 
+static inline int tk_matrix_sort (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_matrix_t *m0 = tk_matrix_peek(L, 1);
+  bool unique = lua_toboolean(L, 2);
+  if (m0->values < 1)
+    return 0;
+  size_t values = m0->values;
+  tk_base_t *data = m0->data;
+  tk_sort(values, data);
+  if (!unique)
+    return 0;
+  size_t write = 1;
+  for (size_t read = 1; read < values; read ++)
+    if (data[read] != data[write - 1])
+      data[write ++] = data[read];
+  m0->rows = 1;
+  m0->columns = write;
+  m0->values = write;
+  return 0;
+}
+
 static inline int tk_matrix_sum (lua_State *L)
 {
   lua_settop(L, 3);
@@ -514,6 +539,7 @@ static inline int tk_matrix_ramax (lua_State *);
 static inline int tk_matrix_sums (lua_State *);
 static inline int tk_matrix_mmult (lua_State *);
 static inline int tk_matrix_magnitude (lua_State *);
+static luaL_Reg tk_matrix_extra_fns[];
 
 static luaL_Reg tk_matrix_fns[] =
 {
@@ -543,6 +569,7 @@ static luaL_Reg tk_matrix_fns[] =
   { "rorder", tk_matrix_rorder },
   { "reshape", tk_matrix_reshape },
   { "shrink", tk_matrix_shrink },
+  { "sort", tk_matrix_sort },
   { NULL, NULL }
 };
 
@@ -550,6 +577,7 @@ int TK_OPEN (lua_State *L)
 {
   lua_newtable(L);
   luaL_register(L, NULL, tk_matrix_fns);
+  luaL_register(L, NULL, tk_matrix_extra_fns);
   luaL_newmetatable(L, TK_MT);
   lua_pushcfunction(L, tk_matrix_gc);
   lua_setfield(L, -2, "__gc");

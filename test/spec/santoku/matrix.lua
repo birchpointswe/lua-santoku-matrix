@@ -1,3 +1,4 @@
+local serialize  = require("santoku.serialize") -- luacheck: ignore
 local imtx = require("santoku.matrix.number")
 local nmtx = require("santoku.matrix.integer")
 local tbl = require("santoku.table")
@@ -71,5 +72,23 @@ for _, mtx in ipairs({ nmtx, imtx }) do
     { 1 },
     { 3, 2 }
   }))
+
+  m0 = mtx.create({ 1, 6, 3, 2, 5, 2, 3, 6, 1, 4 })
+  mtx.sort(m0)
+  assert(tbl.equals(mtx.tabulate(m0), { { 1, 1, 2, 2, 3, 3, 4, 5, 6, 6 } }))
+
+  m0 = mtx.create({ 1, 6, 3, 2, 5, 2, 3, 6, 1, 4 })
+  mtx.sort(m0, false)
+  assert(tbl.equals(mtx.tabulate(m0), { { 1, 1, 2, 2, 3, 3, 4, 5, 6, 6 } }))
+
+  m0 = mtx.create({ 1, 6, 3, 2, 5, 2, 3, 6, 1, 4 })
+  mtx.sort(m0, true)
+  assert(tbl.equals(mtx.tabulate(m0), { { 1, 2, 3, 4, 5, 6 } }))
+
+  if mtx.flip_interleave then
+    m0 = mtx.create({ 0, 3 })
+    mtx.flip_interleave(m0, 2, 2)
+    print(serialize(mtx.tabulate(m0), true))
+  end
 
 end
