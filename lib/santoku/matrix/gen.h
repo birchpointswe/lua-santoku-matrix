@@ -498,11 +498,17 @@ err_toobig:
 
 static inline int tk_matrix_view (lua_State *L)
 {
-  lua_settop(L, 4);
+  lua_settop(L, 2);
   tk_matrix_t *m0 = tk_matrix_peek(L, 1);
+  bool vacate = lua_toboolean(L, 2);
   lua_pushlightuserdata(L, m0->data);
   lua_pushinteger(L, m0->rows);
   lua_pushinteger(L, m0->columns);
+  if (vacate) {
+    m0->data = NULL;
+    m0->rows = 0;
+    m0->columns = 0;
+  }
   return 3;
 }
 
