@@ -504,12 +504,13 @@ static inline int tk_matrix_view (lua_State *L)
   lua_pushlightuserdata(L, m0->data);
   lua_pushinteger(L, m0->rows);
   lua_pushinteger(L, m0->columns);
+  lua_pushinteger(L, m0->values);
   if (vacate) {
     m0->data = NULL;
     m0->rows = 0;
     m0->columns = 0;
   }
-  return 3;
+  return 4;
 }
 
 static inline int tk_matrix_from_raw (lua_State *L)
