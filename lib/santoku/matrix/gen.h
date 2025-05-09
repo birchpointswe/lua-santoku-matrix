@@ -68,7 +68,7 @@ static inline tk_matrix_t *_tk_matrix_create (lua_State *L, size_t rows, size_t 
     luaL_getmetatable(L, TK_MT);
     lua_setmetatable(L, -2);
     *m0p = m0;
-  } else if (m0->data) {
+  } else if (m0->data && m0->data != data) {
     free(m0->data);
   }
   m0->rows = rows;
