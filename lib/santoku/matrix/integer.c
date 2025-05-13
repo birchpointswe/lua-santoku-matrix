@@ -1,8 +1,43 @@
 #define tk_base_t int64_t
 #define tk_sort(...) ks_introsort(int64_t, __VA_ARGS__)
+#define tk_matrix_pushbase(...) lua_pushinteger(__VA_ARGS__)
+#define tk_matrix_peekbase(...) luaL_checkinteger(__VA_ARGS__)
 #define TK_MT "santoku_matrix_integer"
 #define TK_OPEN luaopen_santoku_matrix_integer
 #include "gen.h"
+
+typedef struct { double chi2; uint64_t v; } tk_matrix_chi2_pair;
+#define tk_matrix_chi2_pair_gt(a, b) ((a).chi2 > (b).chi2)
+KSORT_INIT(chi2_desc, tk_matrix_chi2_pair, tk_matrix_chi2_pair_gt)
+
+#include <errno.h>
+
+static inline int tk_error (
+  lua_State *L,
+  const char *label,
+  int err
+) {
+  lua_pushstring(L, label);
+  lua_pushstring(L, strerror(err));
+  tk_lua_callmod(L, 2, 0, "santoku.error", "error");
+  return 1;
+}
+
+static inline void *tk_malloc (
+  lua_State *L,
+  size_t s
+) {
+  void *p = malloc(s);
+  if (!p) {
+    tk_error(L, "malloc failed", ENOMEM);
+    return NULL;
+  } else {
+    return p;
+  }
+}
+
+static inline tk_matrix_t *_tk_matrix_create (lua_State *, size_t, size_t, tk_base_t *, tk_matrix_t *);
+
 
 static inline int tk_matrix_radd (lua_State *L)
 {
@@ -197,8 +232,130 @@ static inline int tk_matrix_flip_interleave (lua_State *L)
   return 0;
 }
 
+static int tk_matrix_top_chi2 (lua_State *L)
+{
+  lua_settop(L, 6);
+  tk_matrix_t *m0 = tk_matrix_peek(L, 1);
+  int64_t *set_bits = m0->data;
+  size_t n_set_bits = m0->values;
+  const char *codes = luaL_checkstring(L, 2);
+  uint64_t n_samples = tk_lua_checkunsigned(L, 3);
+  uint64_t n_visible = tk_lua_checkunsigned(L, 4);
+  uint64_t n_labels = tk_lua_checkunsigned(L, 5);
+  uint64_t top_k = tk_lua_checkunsigned(L, 6);
+  tk_matrix_chi2_pair *chis = malloc(n_visible * sizeof(tk_matrix_chi2_pair));
+  for (unsigned int v = 0; v < n_visible; v ++)
+    chis[v] = (tk_matrix_chi2_pair){ .chi2 = 0, .v = v };
+  unsigned int *global_counts = tk_malloc(L, n_labels * sizeof(unsigned int));
+  for (unsigned int y = 0; y < n_labels; y ++)
+    global_counts[y] = 0;
+  for (unsigned int s = 0; s < n_samples; s ++)
+    for (unsigned int l = 0; l < n_labels; l ++)
+      if (codes[s * (n_labels / CHAR_BIT) + (l / CHAR_BIT)] & (1 << (l % CHAR_BIT)))
+        global_counts[l] ++;
+  uint64_t *active_counts = tk_malloc(L, n_visible * n_labels * sizeof(uint64_t));
+  for (uint64_t i = 0; i  < n_set_bits; i ++) {
+    int64_t val = set_bits[i];
+    unsigned int sample = val / n_visible;
+    unsigned int feature = val % n_visible;
+    for (uint64_t j = 0; j < n_labels; j ++)
+      if (codes[sample * (n_labels / CHAR_BIT) + (j / CHAR_BIT)] & (1 << (j % CHAR_BIT)))
+        active_counts[feature * n_labels + j] ++;
+  }
+  for (unsigned int v = 0; v < n_visible; v ++) {
+    unsigned int active_total = 0;
+    for (unsigned int y = 0; y < n_labels; y ++)
+      active_total += active_counts[v * n_labels + y];
+    unsigned int inactive_total = n_samples - active_total;
+    if (active_total == 0)
+      continue;
+    double sum_chi2 = 0.0;
+    for (unsigned int y = 0; y < n_labels; y ++) {
+      unsigned int observed_active = active_counts[v * n_labels + y];
+      unsigned int observed_inactive = global_counts[y] - observed_active;
+      double expected_active = ((double)global_counts[y] * active_total) / n_samples;
+      double expected_inactive = ((double)global_counts[y] * inactive_total) / n_samples;
+      double chi2_y = 0.0;
+      if (expected_active > 0.0)
+        chi2_y += ((observed_active - expected_active) * (observed_active - expected_active)) / expected_active;
+      if (expected_inactive > 0.0)
+        chi2_y += ((observed_inactive - expected_inactive) * (observed_inactive - expected_inactive)) / expected_inactive;
+      sum_chi2 += chi2_y;
+    }
+    chis[v].chi2 = sum_chi2 / n_labels;
+  }
+  free(global_counts);
+  free(active_counts);
+  ks_introsort(chi2_desc, n_visible, chis);
+  unsigned int m = (unsigned int) top_k;
+  if (m > n_visible)
+    m = n_visible;
+  tk_matrix_t *m1 = _tk_matrix_create(L, 1, m, NULL, NULL);
+  for (unsigned int i = 0; i < m; i ++)
+    m1->data[i] = (int64_t) chis[i].v;
+  free(chis);
+  return 1;
+}
+
+static int tk_matrix_filter (lua_State *L)
+{
+  lua_settop(L, 3);
+  tk_matrix_t *m0 = tk_matrix_peek(L, 1);
+  int64_t *set_bits = m0->data;
+  size_t n_set_bits = m0->values;
+  tk_matrix_t *m1 = tk_matrix_peek(L, 2);
+  int64_t *top_v = m1->data;
+  size_t n_top_v = m1->values;
+  uint64_t n_visible = tk_lua_checkunsigned(L, 3);
+  int64_t *vmap = tk_malloc(L, n_visible * sizeof(int64_t));
+  for (unsigned int i = 0; i < n_visible; i ++)
+    vmap[i] = -1;
+  for (unsigned int i = 0; i < n_top_v; i ++)
+    vmap[top_v[i]] = i;
+  size_t write = 0;
+  for (size_t i = 0; i < n_set_bits; i ++) {
+    int64_t val = set_bits[i];
+    uint64_t sample = val / n_visible;
+    uint64_t feature = val % n_visible;
+    int64_t new_feature = vmap[feature];
+    if (new_feature == -1)
+      continue;
+    set_bits[write ++] = sample * n_top_v + new_feature;
+  }
+  m0->rows = 1;
+  m0->columns = write;
+  m0->values = write;
+  free(vmap);
+  return 0;
+}
+
+static int tk_matrix_raw_bitmap (lua_State *L)
+{
+  lua_settop(L, 3);
+  tk_matrix_t *m0 = tk_matrix_peek(L, 1);
+  int64_t *set_bits = m0->data;
+  size_t n_set_bits = m0->values;
+  uint64_t n_samples = tk_lua_checkunsigned(L, 2);
+  uint64_t n_features = tk_lua_checkunsigned(L, 3);
+  size_t len = (n_samples * n_features + CHAR_BIT - 1) / CHAR_BIT;
+  char *out = tk_malloc(L, len);
+  memset(out, 0, len);
+  for (uint64_t i = 0; i < n_set_bits; i ++) {
+    int64_t v = set_bits[i];
+    if ((uint64_t) v >= n_samples * n_features)
+      continue;
+    out[v / CHAR_BIT] |= (1 << (v % CHAR_BIT));
+  }
+  lua_pushstring(L, out);
+  free(out);
+  return 1;
+}
+
 static luaL_Reg tk_matrix_extra_fns[] =
 {
   { "flip_interleave", tk_matrix_flip_interleave },
+  { "top_chi2", tk_matrix_top_chi2 },
+  { "filter", tk_matrix_filter },
+  { "raw_bitmap", tk_matrix_raw_bitmap },
   { NULL, NULL }
 };

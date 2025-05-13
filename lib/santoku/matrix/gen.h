@@ -446,6 +446,28 @@ static inline int tk_matrix_extend_raw (lua_State *L)
   return 0;
 }
 
+static inline int tk_matrix_each_iter (lua_State *L)
+{
+  lua_settop(L, 0);
+  tk_matrix_t *m0 = tk_matrix_peek(L, lua_upvalueindex(1));
+  lua_Integer n = luaL_checkinteger(L, lua_upvalueindex(2));
+  if (n >= m0->values)
+    return 0;
+  tk_base_t v = m0->data[n];
+  lua_pushinteger(L, n + 1);
+  lua_replace(L, lua_upvalueindex(2));
+  tk_matrix_pushbase(L, v);
+  return 1;
+}
+
+static inline int tk_matrix_each (lua_State *L)
+{
+  lua_settop(L, 1);
+  lua_pushinteger(L, 0);
+  lua_pushcclosure(L, tk_matrix_each_iter, 2);
+  return 1;
+}
+
 static inline int tk_matrix_raw (lua_State *L)
 {
   lua_settop(L, 4);
@@ -540,6 +562,25 @@ static inline int tk_matrix_from_view (lua_State *L)
   return 1;
 }
 
+static inline int tk_matrix_fill (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_matrix_t *m0 = tk_matrix_peek(L, 1);
+  tk_base_t v = tk_matrix_peekbase(L, 2);
+  for (uint64_t i = 0; i < m0->values; i ++)
+    m0->data[i] = v;
+  return 1;
+}
+
+static inline int tk_matrix_fill_indices (lua_State *L)
+{
+  lua_settop(L, 1);
+  tk_matrix_t *m0 = tk_matrix_peek(L, 1);
+  for (uint64_t i = 0; i < m0->values; i ++)
+    m0->data[i] = i;
+  return 1;
+}
+
 static inline int tk_matrix_radd (lua_State *);
 static inline int tk_matrix_rmult (lua_State *);
 static inline int tk_matrix_ramax (lua_State *);
@@ -577,6 +618,9 @@ static luaL_Reg tk_matrix_fns[] =
   { "reshape", tk_matrix_reshape },
   { "shrink", tk_matrix_shrink },
   { "sort", tk_matrix_sort },
+  { "each", tk_matrix_each },
+  { "fill", tk_matrix_fill },
+  { "fill_indices", tk_matrix_fill_indices },
   { NULL, NULL }
 };
 
