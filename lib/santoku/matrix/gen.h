@@ -404,6 +404,14 @@ static inline int tk_matrix_rows (lua_State *L)
   return 1;
 }
 
+static inline int tk_matrix_values (lua_State *L)
+{
+  lua_settop(L, 1);
+  tk_matrix_t *m0 = tk_matrix_peek(L, 1);
+  lua_pushinteger(L, m0->values);
+  return 1;
+}
+
 static inline int tk_matrix_columns (lua_State *L)
 {
   lua_settop(L, 1);
@@ -602,6 +610,7 @@ static luaL_Reg tk_matrix_fns[] =
   { "shape", tk_matrix_shape },
   { "rows", tk_matrix_rows },
   { "columns", tk_matrix_columns },
+  { "values", tk_matrix_values },
   { "magnitude", tk_matrix_magnitude },
   { "mmult", tk_matrix_mmult },
   { "rmult", tk_matrix_rmult },
