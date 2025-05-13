@@ -104,4 +104,12 @@ for _, mtx in ipairs({ nmtx, imtx }) do
   assert(g() == 2)
   assert(g() == nil)
 
+  if mtx.flip_interleave then
+    m0 = mtx.create({ 0 })
+    m1 = mtx.create({ 1 })
+    mtx.add(m1, 2)
+    mtx.extend(m0, m1)
+    mtx.flip_interleave(m0, 2, 2)
+  end
+
 end

@@ -229,6 +229,7 @@ static inline int tk_matrix_flip_interleave (lua_State *L)
   m0->columns = write;
   m0->values = write;
   m0->data = data;
+  tk_matrix_sort(L);
   return 0;
 }
 
@@ -346,7 +347,7 @@ static int tk_matrix_raw_bitmap (lua_State *L)
       continue;
     out[v / CHAR_BIT] |= (1 << (v % CHAR_BIT));
   }
-  lua_pushstring(L, out);
+  lua_pushlstring(L, out, len);
   free(out);
   return 1;
 }
