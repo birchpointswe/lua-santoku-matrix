@@ -1,4 +1,5 @@
 results.mk:
 	wget https://github.com/attractivechaos/klib/raw/refs/heads/master/ksort.h
+	wget https://github.com/attractivechaos/klib/raw/refs/heads/master/khash.h
 	echo "LIB_CFLAGS += -I$(CURDIR)" >> results.mk
 	touch $@

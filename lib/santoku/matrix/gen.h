@@ -11,6 +11,7 @@
 #include "ksort.h"
 
 KSORT_INIT_GENERIC(tk_base_t)
+KSORT_INIT(i64, int64_t, ks_lt_generic)
 
 typedef struct {
   size_t rows;
