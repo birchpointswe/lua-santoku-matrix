@@ -266,7 +266,83 @@ static inline void tk_matrix_push_selected_matrix (
   kh_destroy(i64, selected);
 }
 
-static inline double *tk_matrix_mi_scores (
+static inline double *_tk_matrix_chi2_scores (
+  lua_State *L,
+  int64_t *set_bits,
+  size_t n_set_bits,
+  const char *codes,
+  uint64_t n_samples,
+  uint64_t n_visible,
+  uint64_t n_hidden,
+  int64_t **activep,
+  int64_t **globalp
+) {
+
+  int64_t *active_counts = tk_malloc(L, n_visible * n_hidden * sizeof(int64_t));
+  int64_t *global_counts = tk_malloc(L, n_hidden * sizeof(int64_t));
+  memset(active_counts, 0, n_visible * n_hidden * sizeof(int64_t));
+  memset(global_counts, 0, n_hidden * sizeof(int64_t));
+  for (uint64_t i = 0; i < n_set_bits; i++) {
+    uint64_t s = set_bits[i] / n_visible;
+    uint64_t f = set_bits[i] % n_visible;
+    for (uint64_t b = 0; b < n_hidden; b++) {
+      uint64_t chunk = b / CHAR_BIT, bit = b % CHAR_BIT;
+      if (codes[s * (n_hidden / CHAR_BIT) + chunk] & (1 << bit)) {
+        active_counts[f * n_hidden + b] ++;
+        global_counts[b]++;
+      }
+    }
+  }
+
+
+  double *scores = tk_malloc(L, n_hidden * n_visible * sizeof(double));
+  for (uint64_t b = 0; b < n_hidden; b ++) {
+    double *scores_b = scores + b * n_visible;
+    for (uint64_t f = 0; f < n_visible; f ++) {
+      uint64_t A = active_counts[f * n_hidden + b];
+      uint64_t G = global_counts[b];
+      uint64_t C = 0;
+      for (uint64_t j = 0; j < n_hidden; j ++)
+        C += active_counts[f * n_hidden + j];
+      if (C == 0 || G == 0 || C == n_samples || G == n_samples) {
+        scores_b[f] = 0.0;
+        continue;
+      }
+      uint64_t B = G - A;
+      uint64_t C_ = C - A;
+      uint64_t D = n_samples - C - B;
+      double n = (double) n_samples;
+      double E_A = (C * G) / n;
+      double E_B = ((n - C) * G) / n;
+      double E_C = (C * (n - G)) / n;
+      double E_D = ((n - C) * (n - G)) / n;
+      double chi2 = 0.0;
+      if (E_A > 0)
+        chi2 += ((A - E_A)*(A - E_A)) / E_A;
+      if (E_B > 0)
+        chi2 += ((B - E_B)*(B - E_B)) / E_B;
+      if (E_C > 0)
+        chi2 += ((C_ - E_C)*(C_ - E_C)) / E_C;
+      if (E_D > 0)
+        chi2 += ((D - E_D)*(D - E_D)) / E_D;
+      scores_b[f] = chi2;
+    }
+  }
+
+  if (activep != NULL)
+    *activep = active_counts;
+  else
+    free(active_counts);
+
+  if (globalp != NULL)
+    *globalp = global_counts;
+  else
+    free(global_counts);
+
+  return scores;
+}
+
+static inline double *_tk_matrix_mi_scores (
   lua_State *L,
   int64_t *set_bits,
   size_t n_set_bits,
@@ -363,6 +439,57 @@ static inline double *tk_matrix_mi_scores (
   return scores;
 }
 
+static inline int tk_matrix_score_chi2 (
+  lua_State *L
+) {
+  lua_settop(L, 6);
+  tk_matrix_t *m0 = tk_matrix_peek(L, 1);
+  int64_t *set_bits = m0->data;
+  size_t n_set_bits = m0->values;
+  const char *codes = lua_type(L, 2) == LUA_TLIGHTUSERDATA ? lua_touserdata(L, 2) : luaL_checkstring(L, 2);
+  uint64_t n_samples = tk_lua_checkunsigned(L, 3);
+  uint64_t n_visible = tk_lua_checkunsigned(L, 4);
+  uint64_t n_hidden = tk_lua_checkunsigned(L, 5);
+  bool ret_counts = lua_toboolean(L, 6);
+  int64_t *actives;
+  int64_t *globals;
+  double *scores = _tk_matrix_chi2_scores(L, set_bits, n_set_bits, codes, n_samples, n_visible, n_hidden, &actives, &globals);
+  lua_pushlightuserdata(L, scores);
+  lua_pushinteger(L, n_hidden);
+  lua_pushinteger(L, n_visible);
+  tk_lua_callmod(L, 3, 1, "santoku.matrix.number", "from_view");
+  if (!ret_counts)
+    return 1;
+  lua_pushlightuserdata(L, actives);
+  lua_pushinteger(L, n_hidden);
+  lua_pushinteger(L, n_visible);
+  tk_lua_callmod(L, 3, 1, "santoku.matrix.integer", "from_view");
+  lua_pushlightuserdata(L, globals);
+  lua_pushinteger(L, n_hidden);
+  lua_pushinteger(L, n_visible);
+  tk_lua_callmod(L, 3, 1, "santoku.matrix.integer", "from_view");
+  return 3;
+}
+
+static inline int tk_matrix_score_mi (
+  lua_State *L
+) {
+  lua_settop(L, 5);
+  tk_matrix_t *m0 = tk_matrix_peek(L, 1);
+  int64_t *set_bits = m0->data;
+  size_t n_set_bits = m0->values;
+  const char *codes = luaL_checkstring(L, 2);
+  uint64_t n_samples = tk_lua_checkunsigned(L, 3);
+  uint64_t n_visible = tk_lua_checkunsigned(L, 4);
+  uint64_t n_hidden = tk_lua_checkunsigned(L, 5);
+  double *scores = _tk_matrix_mi_scores(L, set_bits, n_set_bits, codes, n_samples, n_visible, n_hidden);
+  lua_pushlightuserdata(L, scores);
+  lua_pushinteger(L, n_hidden);
+  lua_pushinteger(L, n_visible);
+  tk_lua_callmod(L, 3, 1, "santoku.matrix.number", "from_view");
+  return 1;
+}
+
 static inline tk_matrix_ranked_pair_t *tk_matrix_mi_rankings (
   lua_State *L,
   int64_t *set_bits,
@@ -374,7 +501,7 @@ static inline tk_matrix_ranked_pair_t *tk_matrix_mi_rankings (
   double **scoresp
 ) {
 
-  double *scores = tk_matrix_mi_scores(L, set_bits, n_set_bits, codes, n_samples, n_visible, n_hidden);
+  double *scores = _tk_matrix_mi_scores(L, set_bits, n_set_bits, codes, n_samples, n_visible, n_hidden);
 
 
   tk_matrix_ranked_pair_t *rankings = tk_malloc(L, n_hidden * n_visible * sizeof(tk_matrix_ranked_pair_t));
@@ -405,60 +532,13 @@ static inline tk_matrix_ranked_pair_t *tk_matrix_chi2_rankings (
   uint64_t n_hidden
 ) {
 
-  uint64_t *active_counts = tk_malloc(L, n_visible * n_hidden * sizeof(uint64_t));
-  uint64_t *global_counts = tk_malloc(L, n_hidden * sizeof(uint64_t));
-  memset(active_counts, 0, n_visible * n_hidden * sizeof(uint64_t));
-  memset(global_counts, 0, n_hidden * sizeof(uint64_t));
-  for (uint64_t i = 0; i < n_set_bits; i++) {
-    uint64_t s = set_bits[i] / n_visible;
-    uint64_t f = set_bits[i] % n_visible;
-    for (uint64_t b = 0; b < n_hidden; b++) {
-      uint64_t chunk = b / CHAR_BIT, bit = b % CHAR_BIT;
-      if (codes[s * (n_hidden / CHAR_BIT) + chunk] & (1 << bit)) {
-        active_counts[f * n_hidden + b] ++;
-        global_counts[b]++;
-      }
-    }
-  }
+  double *scores = _tk_matrix_chi2_scores(L, set_bits, n_set_bits, codes, n_samples, n_visible, n_hidden, NULL, NULL);
 
 
-  tk_matrix_ranked_pair_t *rankings = tk_malloc(L, n_visible * n_hidden * sizeof(tk_matrix_ranked_pair_t));
-  for (uint64_t b = 0; b < n_hidden; b ++) {
-    tk_matrix_ranked_pair_t *rankings_b = rankings + b * n_visible;
-    for (uint64_t f = 0; f < n_visible; f ++) {
-      uint64_t A = active_counts[f * n_hidden + b];
-      uint64_t G = global_counts[b];
-      uint64_t C = 0;
-      for (uint64_t j = 0; j < n_hidden; j ++)
-        C += active_counts[f * n_hidden + j];
-      if (C == 0 || G == 0 || C == n_samples || G == n_samples) {
-        rankings_b[f] = (tk_matrix_ranked_pair_t) { .score = 0.0, .v = f };
-        continue;
-      }
-      uint64_t B = G - A;
-      uint64_t C_ = C - A;
-      uint64_t D = n_samples - C - B;
-      double n = (double) n_samples;
-      double E_A = (C * G) / n;
-      double E_B = ((n - C) * G) / n;
-      double E_C = (C * (n - G)) / n;
-      double E_D = ((n - C) * (n - G)) / n;
-      double chi2 = 0.0;
-      if (E_A > 0)
-        chi2 += ((A - E_A)*(A - E_A)) / E_A;
-      if (E_B > 0)
-        chi2 += ((B - E_B)*(B - E_B)) / E_B;
-      if (E_C > 0)
-        chi2 += ((C_ - E_C)*(C_ - E_C)) / E_C;
-      if (E_D > 0)
-        chi2 += ((D - E_D)*(D - E_D)) / E_D;
-      rankings_b[f] = (tk_matrix_ranked_pair_t) { .score = chi2, .v = f };
-    }
-  }
-
-
-  free(active_counts);
-  free(global_counts);
+  tk_matrix_ranked_pair_t *rankings = tk_malloc(L, n_hidden * n_visible * sizeof(tk_matrix_ranked_pair_t));
+  for (uint64_t h = 0; h < n_hidden; h ++)
+    for (uint64_t v = 0; v < n_visible; v ++)
+      rankings[h * n_visible + v] = (tk_matrix_ranked_pair_t) { scores[h * n_visible + v], v };
 
 
   for (uint64_t b = 0; b < n_hidden; b ++)
@@ -639,22 +719,20 @@ static int tk_matrix_top_chi2 (lua_State *L)
   ks_introsort(i64, n_set_bits, set_bits);
 
 
-  tk_matrix_ranked_pair_t *chi2_rankings = tk_matrix_chi2_rankings(L, set_bits, n_set_bits, codes, n_samples, n_visible, n_hidden);
-
-
   i64_hash_t *selected = kh_init(i64);
   if (!strcmp(strategy, "round-robin")) {
+    tk_matrix_ranked_pair_t *chi2_rankings = tk_matrix_chi2_rankings(L, set_bits, n_set_bits, codes, n_samples, n_visible, n_hidden);
     tk_matrix_select_round_robin(L, selected, chi2_rankings, n_visible, n_hidden, top_k);
+    free(chi2_rankings);
   } else if (!strcmp(strategy, "mi-proportional")) {
-    double *mi_scores = tk_matrix_mi_scores(L, set_bits, n_set_bits, codes, n_samples, n_visible, n_hidden);
+    double *mi_scores = _tk_matrix_mi_scores(L, set_bits, n_set_bits, codes, n_samples, n_visible, n_hidden);
+    tk_matrix_ranked_pair_t *chi2_rankings = tk_matrix_chi2_rankings(L, set_bits, n_set_bits, codes, n_samples, n_visible, n_hidden);
     tk_matrix_select_mi_proportional(L, selected, chi2_rankings, mi_scores, n_samples, n_visible, n_hidden, top_k);
     free(mi_scores);
+    free(chi2_rankings);
   } else {
     tk_lua_verror(L, 2, "invalid selection strategy", strategy);
   }
-
-
-  free(chi2_rankings);
 
 
   tk_matrix_push_selected_matrix(L, selected);
@@ -722,6 +800,8 @@ static luaL_Reg tk_matrix_extra_fns[] =
   { "flip_interleave", tk_matrix_flip_interleave },
   { "top_chi2", tk_matrix_top_chi2 },
   { "top_mi", tk_matrix_top_mi },
+  { "score_chi2", tk_matrix_score_chi2 },
+  { "score_mi", tk_matrix_score_mi },
   { "filter", tk_matrix_filter },
   { "raw_bitmap", tk_matrix_raw_bitmap },
   { NULL, NULL }
