@@ -11,13 +11,9 @@
 KHASH_SET_INIT_INT64(i64)
 typedef khash_t(i64) i64_hash_t;
 
-typedef struct { double chi2; uint64_t v; } tk_matrix_chi2_pair_t;
-#define tk_matrix_chi2_pair_gt(a, b) ((a).chi2 > (b).chi2)
-KSORT_INIT(chi2_desc, tk_matrix_chi2_pair_t, tk_matrix_chi2_pair_gt)
-
-typedef struct { double mi; uint64_t v; } tk_matrix_mi_pair_t;
-#define tk_matrix_mi_pair_gt(a, b) ((a).mi > (b).mi)
-KSORT_INIT(mi_desc, tk_matrix_mi_pair_t, tk_matrix_mi_pair_gt)
+typedef struct { double score; uint64_t v; } tk_matrix_ranked_pair_t;
+#define tk_matrix_ranked_pair_gt(a, b) ((a).score > (b).score)
+KSORT_INIT(ranked_desc, tk_matrix_ranked_pair_t, tk_matrix_ranked_pair_gt)
 
 KSORT_INIT(u64, uint64_t, ks_lt_generic)
 
@@ -30,6 +26,18 @@ static inline int tk_error (
   lua_pushstring(L, strerror(err));
   tk_lua_callmod(L, 2, 0, "santoku.error", "error");
   return 1;
+}
+
+static inline int tk_lua_verror (lua_State *L, int n, ...) {
+  va_list args;
+  va_start(args, n);
+  for (int i = 0; i < n; i ++) {
+    const char *str = va_arg(args, const char *);
+    lua_pushstring(L, str);
+  }
+  va_end(args);
+  tk_lua_callmod(L, n, 0, "santoku.error", "error");
+  return 0;
 }
 
 static inline void *tk_malloc (
@@ -242,21 +250,31 @@ static inline int tk_matrix_flip_interleave (lua_State *L)
   return 0;
 }
 
-static int tk_matrix_top_mi (lua_State *L)
-{
-  lua_settop(L, 6);
-  tk_matrix_t *m0 = tk_matrix_peek(L, 1);
-  int64_t *set_bits = m0->data;
-  size_t n_set_bits = m0->values;
-  const char *codes = luaL_checkstring(L, 2);
-  uint64_t n_samples = tk_lua_checkunsigned(L, 3);
-  uint64_t n_visible = tk_lua_checkunsigned(L, 4);
-  uint64_t n_hidden = tk_lua_checkunsigned(L, 5);
-  uint64_t top_k = tk_lua_checkunsigned(L, 6);
+static inline void tk_matrix_push_selected_matrix (
+  lua_State *L,
+  i64_hash_t *selected
+) {
 
+  int64_t *top_v = tk_malloc(L, kh_size(selected) * sizeof(int64_t));
+  uint64_t write = 0;
+  for (khint_t khi = kh_begin(selected); khi < kh_end(selected); khi ++) {
+    if (!kh_exist(selected, khi))
+      continue;
+    top_v[write ++] = kh_key(selected, khi);
+  }
+  _tk_matrix_create(L, 1, write, top_v, NULL);
+  kh_destroy(i64, selected);
+}
 
-  ks_introsort(i64, n_set_bits, set_bits);
-
+static inline double *tk_matrix_mi_scores (
+  lua_State *L,
+  int64_t *set_bits,
+  size_t n_set_bits,
+  const char *codes,
+  uint64_t n_samples,
+  uint64_t n_visible,
+  uint64_t n_hidden
+) {
 
   uint64_t *counts = tk_malloc(L, n_visible * n_hidden * 4 * sizeof(uint64_t));
   memset(counts, 0, n_visible * n_hidden * 4 * sizeof(uint64_t));
@@ -278,7 +296,7 @@ static int tk_matrix_top_mi (lua_State *L)
         uint64_t chunk = j / CHAR_BIT;
         uint64_t bit = j % CHAR_BIT;
         bool hidden = (codes[sample * (n_hidden / CHAR_BIT) + chunk] & (1 << bit)) > 0;
-        counts[visible * n_hidden * 4 + bit * 4 + (hidden ? 1 : 0)] ++;
+        counts[visible * n_hidden * 4 + j * 4 + (hidden ? 1 : 0)] ++;
       }
     }
 
@@ -289,7 +307,7 @@ static int tk_matrix_top_mi (lua_State *L)
       uint64_t chunk = j / CHAR_BIT;
       uint64_t bit = j % CHAR_BIT;
       bool hidden = (codes[sample * (n_hidden / CHAR_BIT) + chunk] & (1 << bit)) > 0;
-      counts[visible * n_hidden * 4 + bit * 4 + 2 + (hidden ? 1 : 0)] ++;
+      counts[visible * n_hidden * 4 + j * 4 + 2 + (hidden ? 1 : 0)] ++;
     }
 
 
@@ -304,22 +322,26 @@ static int tk_matrix_top_mi (lua_State *L)
       uint64_t chunk = j / CHAR_BIT;
       uint64_t bit = j % CHAR_BIT;
       bool hidden = (codes[sample * (n_hidden / CHAR_BIT) + chunk] & (1 << bit)) > 0;
-      counts[visible * n_hidden * 4 + bit * 4 + (hidden ? 1 : 0)] ++;
+      counts[visible * n_hidden * 4 + j * 4 + (hidden ? 1 : 0)] ++;
     }
   }
 
 
-  tk_matrix_mi_pair_t *rankings = tk_malloc(L, n_hidden * n_visible * sizeof(tk_matrix_mi_pair_t));
-  memset(rankings, 0, n_hidden * n_visible * sizeof(tk_matrix_mi_pair_t));
+  double *scores = tk_malloc(L, n_hidden * n_visible * sizeof(double));
+  memset(scores, 0, n_hidden * n_visible * sizeof(double));
   for (int64_t j = 0; j < n_hidden; j ++) {
-    tk_matrix_mi_pair_t *rankings_h = rankings + j * n_visible;
+    double *scores_h = scores + j * n_visible;
     for (int64_t i = 0; i < n_visible; i ++) {
       uint64_t *c = counts + i * n_hidden * 4 + j * 4;
+      for (int k = 0; k < 4; k ++)
+        c[k] += 1;
       double total = c[0] + c[1] + c[2] + c[3];
       double mi = 0.0;
       if (total == 0.0)
         continue;
       for (unsigned int o = 0; o < 4; o ++) {
+        if (c[o] == 0)
+          continue;
         double p_fb = c[o] / total;
         unsigned int f = o >> 1;
         unsigned int b = o & 1;
@@ -330,7 +352,7 @@ static int tk_matrix_top_mi (lua_State *L)
         double d = pf * pb;
         if (d > 0) mi += p_fb * log2(p_fb / d);
       }
-      rankings_h[i] = (tk_matrix_mi_pair_t) { mi, i };
+      scores_h[i] = mi;
     }
   }
 
@@ -338,73 +360,50 @@ static int tk_matrix_top_mi (lua_State *L)
   free(counts);
 
 
-  for (uint64_t j = 0; j < n_hidden; j ++)
-    ks_introsort(mi_desc, n_visible, rankings + j * n_visible);
-
-
-  uint64_t *shuf = malloc(n_hidden * sizeof(uint64_t));
-  for (uint64_t j = 0; j < n_hidden; j ++)
-    shuf[j] = j;
-  ks_shuffle(u64, n_hidden, shuf);
-
-
-  int kha;
-  i64_hash_t *selected = kh_init(i64);
-  uint64_t *offsets = tk_malloc(L, n_hidden * sizeof(uint64_t));
-  memset(offsets, 0, n_hidden * sizeof(uint64_t));
-  while (true) {
-    bool added = false;
-    for (uint64_t s = 0; s < n_hidden && kh_size(selected) < top_k; s ++) {
-      uint64_t j = shuf[s];
-      tk_matrix_mi_pair_t *rankings_h = rankings + j * n_visible;
-      for (; offsets[j] < n_visible; offsets[j] ++) {
-        tk_matrix_mi_pair_t candidate = rankings_h[offsets[j]];
-        kh_put(i64, selected, candidate.v, &kha);
-        if (!kha)
-          continue;
-        added = true;
-        break;
-      }
-    }
-    if (!added)
-      break;
-  }
-
-
-  free(offsets);
-  free(rankings);
-  free(shuf);
-
-
-  int64_t *top_v = tk_malloc(L, kh_size(selected) * sizeof(int64_t));
-  uint64_t write = 0;
-  for (khint_t khi = kh_begin(selected); khi < kh_end(selected); khi ++) {
-    if (!kh_exist(selected, khi))
-      continue;
-    top_v[write ++] = kh_key(selected, khi);
-  }
-  _tk_matrix_create(L, 1, write, top_v, NULL);
-  kh_destroy(i64, selected);
-
-
-  return 1;
+  return scores;
 }
 
-static int tk_matrix_top_chi2 (lua_State *L)
-{
-  lua_settop(L, 6);
-  tk_matrix_t *m0 = tk_matrix_peek(L, 1);
-  int64_t *set_bits = m0->data;
-  size_t n_set_bits = m0->values;
-  const char *codes = luaL_checkstring(L, 2);
-  uint64_t n_samples = tk_lua_checkunsigned(L, 3);
-  uint64_t n_visible = tk_lua_checkunsigned(L, 4);
-  uint64_t n_hidden = tk_lua_checkunsigned(L, 5);
-  uint64_t top_k = tk_lua_checkunsigned(L, 6);
+static inline tk_matrix_ranked_pair_t *tk_matrix_mi_rankings (
+  lua_State *L,
+  int64_t *set_bits,
+  size_t n_set_bits,
+  const char *codes,
+  uint64_t n_samples,
+  uint64_t n_visible,
+  uint64_t n_hidden,
+  double **scoresp
+) {
+
+  double *scores = tk_matrix_mi_scores(L, set_bits, n_set_bits, codes, n_samples, n_visible, n_hidden);
 
 
-  ks_introsort(i64, n_set_bits, set_bits);
+  tk_matrix_ranked_pair_t *rankings = tk_malloc(L, n_hidden * n_visible * sizeof(tk_matrix_ranked_pair_t));
+  for (uint64_t h = 0; h < n_hidden; h ++)
+    for (uint64_t v = 0; v < n_visible; v ++)
+      rankings[h * n_visible + v] = (tk_matrix_ranked_pair_t) { scores[h * n_visible + v], v };
 
+
+  for (uint64_t j = 0; j < n_hidden; j ++)
+    ks_introsort(ranked_desc, n_visible, rankings + j * n_visible);
+
+  if (scoresp != NULL)
+    *scoresp = scores;
+  else
+    free(scores);
+
+
+  return rankings;
+}
+
+static inline tk_matrix_ranked_pair_t *tk_matrix_chi2_rankings (
+  lua_State *L,
+  int64_t *set_bits,
+  size_t n_set_bits,
+  const char *codes,
+  uint64_t n_samples,
+  uint64_t n_visible,
+  uint64_t n_hidden
+) {
 
   uint64_t *active_counts = tk_malloc(L, n_visible * n_hidden * sizeof(uint64_t));
   uint64_t *global_counts = tk_malloc(L, n_hidden * sizeof(uint64_t));
@@ -423,9 +422,9 @@ static int tk_matrix_top_chi2 (lua_State *L)
   }
 
 
-  tk_matrix_chi2_pair_t *rankings = tk_malloc(L, n_visible * n_hidden * sizeof(tk_matrix_chi2_pair_t));
+  tk_matrix_ranked_pair_t *rankings = tk_malloc(L, n_visible * n_hidden * sizeof(tk_matrix_ranked_pair_t));
   for (uint64_t b = 0; b < n_hidden; b ++) {
-    tk_matrix_chi2_pair_t *rankings_b = rankings + b * n_visible;
+    tk_matrix_ranked_pair_t *rankings_b = rankings + b * n_visible;
     for (uint64_t f = 0; f < n_visible; f ++) {
       uint64_t A = active_counts[f * n_hidden + b];
       uint64_t G = global_counts[b];
@@ -433,7 +432,7 @@ static int tk_matrix_top_chi2 (lua_State *L)
       for (uint64_t j = 0; j < n_hidden; j ++)
         C += active_counts[f * n_hidden + j];
       if (C == 0 || G == 0 || C == n_samples || G == n_samples) {
-        rankings_b[f] = (tk_matrix_chi2_pair_t) { .chi2 = 0, .v = f };
+        rankings_b[f] = (tk_matrix_ranked_pair_t) { .score = 0.0, .v = f };
         continue;
       }
       uint64_t B = G - A;
@@ -453,7 +452,7 @@ static int tk_matrix_top_chi2 (lua_State *L)
         chi2 += ((C_ - E_C)*(C_ - E_C)) / E_C;
       if (E_D > 0)
         chi2 += ((D - E_D)*(D - E_D)) / E_D;
-      rankings_b[f] = (tk_matrix_chi2_pair_t) { .chi2 = chi2, .v = f };
+      rankings_b[f] = (tk_matrix_ranked_pair_t) { .score = chi2, .v = f };
     }
   }
 
@@ -463,26 +462,111 @@ static int tk_matrix_top_chi2 (lua_State *L)
 
 
   for (uint64_t b = 0; b < n_hidden; b ++)
-    ks_introsort(chi2_desc, n_visible, rankings + b * n_visible);
+    ks_introsort(ranked_desc, n_visible, rankings + b * n_visible);
 
 
-  uint64_t *shuf = tk_malloc(L, n_hidden * sizeof(uint64_t));
-  for (uint64_t i = 0; i < n_hidden; i ++)
-    shuf[i] = i;
+  return rankings;
+}
+
+static inline void tk_matrix_select_mi_proportional (
+  lua_State *L,
+  i64_hash_t *selected,
+  tk_matrix_ranked_pair_t *feat_rankings,
+  double *mi_scores,
+  uint64_t n_samples,
+  uint64_t n_visible,
+  uint64_t n_hidden,
+  uint64_t top_k
+) {
+
+  double *residual = tk_malloc(L, n_hidden * sizeof(double));
+  for (uint64_t b = 0; b < n_hidden; b ++)
+    residual[b] = 1.0;
+
+
+  uint64_t *cursor = tk_malloc(L, n_hidden * sizeof(uint64_t));
+  for (uint64_t b = 0; b < n_hidden; b ++)
+    cursor[b] = 0;
+
+
+  while (kh_size(selected) < top_k) {
+
+
+    uint64_t best_b = 0;
+    for (uint64_t b = 1; b < n_hidden; b++)
+      if (residual[b] > residual[best_b])
+        best_b = b;
+
+
+    tk_matrix_ranked_pair_t *rankings_b = feat_rankings + best_b * n_visible;
+
+
+    while (cursor[best_b] < n_visible) {
+
+
+      uint64_t fid = rankings_b[cursor[best_b]].v;
+      int ret;
+      kh_put(i64, selected, fid, &ret);
+      cursor[best_b] ++;
+
+
+      if (!ret)
+        continue;
+
+
+
+      for (uint64_t b = 0; b < n_hidden; b ++) {
+        double mi = mi_scores[b * n_visible + fid];
+        if (mi > 0.0)
+          residual[b] = fmax(0.0, residual[b] - mi);
+      }
+
+
+      break;
+    }
+
+
+    bool done = true;
+    for (uint64_t b = 0; b < n_hidden; b ++)
+      if (cursor[b] < n_visible) {
+        done = false;
+        break;
+      }
+
+    if (done)
+      break;
+  }
+
+
+  free(residual);
+  free(cursor);
+}
+
+static inline void tk_matrix_select_round_robin (
+  lua_State *L,
+  i64_hash_t *selected,
+  tk_matrix_ranked_pair_t *rankings,
+  uint64_t n_visible,
+  uint64_t n_hidden,
+  uint64_t top_k
+) {
+
+  uint64_t *shuf = malloc(n_hidden * sizeof(uint64_t));
+  for (uint64_t j = 0; j < n_hidden; j ++)
+    shuf[j] = j;
   ks_shuffle(u64, n_hidden, shuf);
 
 
   int kha;
-  i64_hash_t *selected = kh_init(i64);
   uint64_t *offsets = tk_malloc(L, n_hidden * sizeof(uint64_t));
   memset(offsets, 0, n_hidden * sizeof(uint64_t));
   while (true) {
     bool added = false;
     for (uint64_t s = 0; s < n_hidden && kh_size(selected) < top_k; s ++) {
       uint64_t j = shuf[s];
-      tk_matrix_chi2_pair_t *rankings_h = rankings + j * n_visible;
+      tk_matrix_ranked_pair_t *rankings_h = rankings + j * n_visible;
       for (; offsets[j] < n_visible; offsets[j] ++) {
-        tk_matrix_chi2_pair_t candidate = rankings_h[offsets[j]];
+        tk_matrix_ranked_pair_t candidate = rankings_h[offsets[j]];
         kh_put(i64, selected, candidate.v, &kha);
         if (!kha)
           continue;
@@ -495,20 +579,85 @@ static int tk_matrix_top_chi2 (lua_State *L)
   }
 
 
-  free(rankings);
   free(offsets);
   free(shuf);
+}
+
+static int tk_matrix_top_mi (lua_State *L)
+{
+  lua_settop(L, 7);
+  tk_matrix_t *m0 = tk_matrix_peek(L, 1);
+  int64_t *set_bits = m0->data;
+  size_t n_set_bits = m0->values;
+  const char *codes = luaL_checkstring(L, 2);
+  uint64_t n_samples = tk_lua_checkunsigned(L, 3);
+  uint64_t n_visible = tk_lua_checkunsigned(L, 4);
+  uint64_t n_hidden = tk_lua_checkunsigned(L, 5);
+  uint64_t top_k = tk_lua_checkunsigned(L, 6);
+  const char *strategy = luaL_optstring(L, 7, "round-robin");
 
 
-  int64_t *top_v = tk_malloc(L, kh_size(selected) * sizeof(int64_t));
-  uint64_t write = 0;
-  for (khint_t khi = kh_begin(selected); khi < kh_end(selected); khi ++) {
-    if (!kh_exist(selected, khi))
-      continue;
-    top_v[write ++] = kh_key(selected, khi);
+  ks_introsort(i64, n_set_bits, set_bits);
+
+
+  i64_hash_t *selected = kh_init(i64);
+  if (!strcmp(strategy, "round-robin")) {
+    tk_matrix_ranked_pair_t *mi_rankings = tk_matrix_mi_rankings(L, set_bits, n_set_bits, codes, n_samples, n_visible, n_hidden, NULL);
+    tk_matrix_select_round_robin(L, selected, mi_rankings, n_visible, n_hidden, top_k);
+    free(mi_rankings);
+  } else if (!strcmp(strategy, "mi-proportional")) {
+    double *mi_scores = NULL;
+    tk_matrix_ranked_pair_t *mi_rankings = tk_matrix_mi_rankings(L, set_bits, n_set_bits, codes, n_samples, n_visible, n_hidden, &mi_scores);
+    tk_matrix_select_mi_proportional(L, selected, mi_rankings, mi_scores, n_samples, n_visible, n_hidden, top_k);
+    free(mi_scores);
+    free(mi_rankings);
+  } else {
+    tk_lua_verror(L, 2, "invalid selection strategy", strategy);
   }
-  _tk_matrix_create(L, 1, write, top_v, NULL);
-  kh_destroy(i64, selected);
+
+
+  tk_matrix_push_selected_matrix(L, selected);
+
+
+  return 1;
+}
+
+static int tk_matrix_top_chi2 (lua_State *L)
+{
+  lua_settop(L, 7);
+  tk_matrix_t *m0 = tk_matrix_peek(L, 1);
+  int64_t *set_bits = m0->data;
+  size_t n_set_bits = m0->values;
+  const char *codes = luaL_checkstring(L, 2);
+  uint64_t n_samples = tk_lua_checkunsigned(L, 3);
+  uint64_t n_visible = tk_lua_checkunsigned(L, 4);
+  uint64_t n_hidden = tk_lua_checkunsigned(L, 5);
+  uint64_t top_k = tk_lua_checkunsigned(L, 6);
+  const char *strategy = luaL_optstring(L, 7, "round-robin");
+
+
+  ks_introsort(i64, n_set_bits, set_bits);
+
+
+  tk_matrix_ranked_pair_t *chi2_rankings = tk_matrix_chi2_rankings(L, set_bits, n_set_bits, codes, n_samples, n_visible, n_hidden);
+
+
+  i64_hash_t *selected = kh_init(i64);
+  if (!strcmp(strategy, "round-robin")) {
+    tk_matrix_select_round_robin(L, selected, chi2_rankings, n_visible, n_hidden, top_k);
+  } else if (!strcmp(strategy, "mi-proportional")) {
+    double *mi_scores = tk_matrix_mi_scores(L, set_bits, n_set_bits, codes, n_samples, n_visible, n_hidden);
+    tk_matrix_select_mi_proportional(L, selected, chi2_rankings, mi_scores, n_samples, n_visible, n_hidden, top_k);
+    free(mi_scores);
+  } else {
+    tk_lua_verror(L, 2, "invalid selection strategy", strategy);
+  }
+
+
+  free(chi2_rankings);
+
+
+  tk_matrix_push_selected_matrix(L, selected);
 
 
   return 1;
