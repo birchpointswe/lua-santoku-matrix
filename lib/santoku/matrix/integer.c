@@ -280,30 +280,31 @@ static inline double *_tk_matrix_chi2_scores (
 
   int64_t *active_counts = tk_malloc(L, n_visible * n_hidden * sizeof(int64_t));
   int64_t *global_counts = tk_malloc(L, n_hidden * sizeof(int64_t));
+  uint64_t *feat_counts = tk_malloc(L, n_visible * sizeof(uint64_t));
   memset(active_counts, 0, n_visible * n_hidden * sizeof(int64_t));
   memset(global_counts, 0, n_hidden * sizeof(int64_t));
-  for (uint64_t i = 0; i < n_set_bits; i++) {
+  memset(feat_counts, 0, n_visible * sizeof(int64_t));
+  for (uint64_t i = 0; i < n_set_bits; i ++) {
     uint64_t s = set_bits[i] / n_visible;
     uint64_t f = set_bits[i] % n_visible;
-    for (uint64_t b = 0; b < n_hidden; b++) {
+    feat_counts[f] ++;
+    for (uint64_t b = 0; b < n_hidden; b ++) {
       uint64_t chunk = b / CHAR_BIT, bit = b % CHAR_BIT;
       if (codes[s * (n_hidden / CHAR_BIT) + chunk] & (1 << bit)) {
         active_counts[f * n_hidden + b] ++;
-        global_counts[b]++;
+        global_counts[b] ++;
       }
     }
   }
 
 
   double *scores = tk_malloc(L, n_hidden * n_visible * sizeof(double));
-  for (uint64_t b = 0; b < n_hidden; b ++) {
+  for (uint64_t b = 0; b < n_hidden; b  ++) {
     double *scores_b = scores + b * n_visible;
     for (uint64_t f = 0; f < n_visible; f ++) {
       uint64_t A = active_counts[f * n_hidden + b];
       uint64_t G = global_counts[b];
-      uint64_t C = 0;
-      for (uint64_t j = 0; j < n_hidden; j ++)
-        C += active_counts[f * n_hidden + j];
+      uint64_t C = feat_counts[f];
       if (C == 0 || G == 0 || C == n_samples || G == n_samples) {
         scores_b[f] = 0.0;
         continue;
@@ -312,10 +313,10 @@ static inline double *_tk_matrix_chi2_scores (
       uint64_t C_ = C - A;
       uint64_t D = n_samples - C - B;
       double n = (double) n_samples;
-      double E_A = (C * G) / n;
-      double E_B = ((n - C) * G) / n;
-      double E_C = (C * (n - G)) / n;
-      double E_D = ((n - C) * (n - G)) / n;
+      double E_A = ((double) C * (double) G) / n;
+      double E_B = ((double)(n - C) * (double) G) / n;
+      double E_C = ((double) C * (double)(n - G)) / n;
+      double E_D = ((double)(n - C) * (double)(n - G)) / n;
       double chi2 = 0.0;
       if (E_A > 0)
         chi2 += ((A - E_A)*(A - E_A)) / E_A;
@@ -442,7 +443,7 @@ static inline double *_tk_matrix_mi_scores (
 static inline int tk_matrix_score_chi2 (
   lua_State *L
 ) {
-  lua_settop(L, 6);
+  lua_settop(L, 7);
   tk_matrix_t *m0 = tk_matrix_peek(L, 1);
   int64_t *set_bits = m0->data;
   size_t n_set_bits = m0->values;
@@ -451,13 +452,30 @@ static inline int tk_matrix_score_chi2 (
   uint64_t n_visible = tk_lua_checkunsigned(L, 4);
   uint64_t n_hidden = tk_lua_checkunsigned(L, 5);
   bool ret_counts = lua_toboolean(L, 6);
+  bool do_sums = lua_toboolean(L, 7);
   int64_t *actives;
   int64_t *globals;
   double *scores = _tk_matrix_chi2_scores(L, set_bits, n_set_bits, codes, n_samples, n_visible, n_hidden, &actives, &globals);
-  lua_pushlightuserdata(L, scores);
-  lua_pushinteger(L, n_hidden);
-  lua_pushinteger(L, n_visible);
-  tk_lua_callmod(L, 3, 1, "santoku.matrix.number", "from_view");
+  if (do_sums) {
+    double *sums = tk_malloc(L, n_hidden * sizeof(double));
+    memset(sums, 0, n_hidden * sizeof(double));
+    for (uint64_t i = 0; i < n_hidden; i ++) {
+      double sum = 0.0;
+      for (uint64_t j = 0; j < n_visible; j ++)
+        sum += scores[i * n_visible + j];
+      sums[i] = sum;
+    }
+    free(scores);
+    lua_pushlightuserdata(L, sums);
+    lua_pushinteger(L, 1);
+    lua_pushinteger(L, n_hidden);
+    tk_lua_callmod(L, 3, 1, "santoku.matrix.number", "from_view");
+  } else {
+    lua_pushlightuserdata(L, scores);
+    lua_pushinteger(L, n_hidden);
+    lua_pushinteger(L, n_visible);
+    tk_lua_callmod(L, 3, 1, "santoku.matrix.number", "from_view");
+  }
   if (!ret_counts)
     return 1;
   lua_pushlightuserdata(L, actives);
