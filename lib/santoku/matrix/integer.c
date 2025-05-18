@@ -278,21 +278,40 @@ static inline double *_tk_matrix_chi2_scores (
   int64_t **globalp
 ) {
 
+
   int64_t *active_counts = tk_malloc(L, n_visible * n_hidden * sizeof(int64_t));
   int64_t *global_counts = tk_malloc(L, n_hidden * sizeof(int64_t));
-  uint64_t *feat_counts = tk_malloc(L, n_visible * sizeof(uint64_t));
+  uint64_t *feat_counts  = tk_malloc(L, n_visible * sizeof(uint64_t));
   memset(active_counts, 0, n_visible * n_hidden * sizeof(int64_t));
+  memset(feat_counts,  0, n_visible * sizeof(uint64_t));
+
+
   memset(global_counts, 0, n_hidden * sizeof(int64_t));
-  memset(feat_counts, 0, n_visible * sizeof(int64_t));
-  for (uint64_t i = 0; i < n_set_bits; i ++) {
+  for (uint64_t s = 0; s < n_samples; s++) {
+    const unsigned char *sample_bitmap
+      = (const unsigned char*)(codes + s * (n_hidden/CHAR_BIT));
+    for (uint64_t chunk = 0; chunk < (n_hidden/CHAR_BIT); chunk++) {
+      unsigned char byte = sample_bitmap[chunk];
+      while (byte) {
+        int bit = __builtin_ctz(byte);
+        uint64_t b = chunk * CHAR_BIT + bit;
+        if (b < n_hidden)
+          global_counts[b]++;
+        byte &= byte - 1;
+      }
+    }
+  }
+
+
+  for (uint64_t i = 0; i < n_set_bits; i++) {
     uint64_t s = set_bits[i] / n_visible;
     uint64_t f = set_bits[i] % n_visible;
-    feat_counts[f] ++;
-    for (uint64_t b = 0; b < n_hidden; b ++) {
+    feat_counts[f]++;
+    const unsigned char *bitmap = (unsigned char*)(codes + s * (n_hidden/CHAR_BIT));
+    for (uint64_t b = 0; b < n_hidden; b++) {
       uint64_t chunk = b / CHAR_BIT, bit = b % CHAR_BIT;
-      if (codes[s * (n_hidden / CHAR_BIT) + chunk] & (1 << bit)) {
-        active_counts[f * n_hidden + b] ++;
-        global_counts[b] ++;
+      if (bitmap[chunk] & (1u << bit)) {
+        active_counts[f * n_hidden + b]++;
       }
     }
   }
@@ -339,6 +358,8 @@ static inline double *_tk_matrix_chi2_scores (
     *globalp = global_counts;
   else
     free(global_counts);
+
+  free(feat_counts);
 
   return scores;
 }
