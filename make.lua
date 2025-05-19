@@ -1,10 +1,13 @@
 local env = {
 
   name = "santoku-matrix",
-  version = "0.0.33-1",
+  version = "0.0.34-1",
   variable_prefix = "TK_MATRIX",
   license = "MIT",
   public = true,
+
+  cflags = { "-fopenmp" },
+  ldflags = { "-fopenmp" },
 
   dependencies = {
     "lua == 5.1",

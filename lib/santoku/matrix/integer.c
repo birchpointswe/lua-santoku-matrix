@@ -271,6 +271,7 @@ static inline double *_tk_matrix_chi2_scores (
   int64_t *set_bits,
   size_t n_set_bits,
   const char *codes,
+  int64_t *labels,
   uint64_t n_samples,
   uint64_t n_visible,
   uint64_t n_hidden,
@@ -303,21 +304,39 @@ static inline double *_tk_matrix_chi2_scores (
   }
 
 
-  for (uint64_t i = 0; i < n_set_bits; i++) {
-    uint64_t s = set_bits[i] / n_visible;
-    uint64_t f = set_bits[i] % n_visible;
-    feat_counts[f]++;
-    const unsigned char *bitmap = (unsigned char*)(codes + s * (n_hidden/CHAR_BIT));
-    for (uint64_t b = 0; b < n_hidden; b++) {
-      uint64_t chunk = b / CHAR_BIT, bit = b % CHAR_BIT;
-      if (bitmap[chunk] & (1u << bit)) {
-        active_counts[f * n_hidden + b]++;
+  if (codes != NULL) {
+    for (uint64_t i = 0; i < n_set_bits; i ++) {
+      uint64_t s = set_bits[i] / n_visible;
+      uint64_t f = set_bits[i] % n_visible;
+      feat_counts[f] ++;
+      const unsigned char *bitmap = (unsigned char*)(codes + s * (n_hidden/CHAR_BIT));
+      for (uint64_t b = 0; b < n_hidden; b ++) {
+        uint64_t chunk = b / CHAR_BIT, bit = b % CHAR_BIT;
+        if (bitmap[chunk] & (1u << bit)) {
+          active_counts[f * n_hidden + b] ++;
+        }
       }
+    }
+  } else if (labels != NULL) {
+    for (uint64_t i = 0; i < n_set_bits; i ++) {
+      uint64_t s = set_bits[i] / n_visible;
+      uint64_t f = set_bits[i] % n_visible;
+      feat_counts[f] ++;
+      int64_t label = labels[s];
+      if ((size_t)label < n_hidden)
+        active_counts[f * n_hidden + label] ++;
+    }
+    memset(global_counts, 0, n_hidden * sizeof(int64_t));
+    for (uint64_t s = 0; s < n_samples; s ++) {
+      int64_t label = labels[s];
+      if ((size_t)label < n_hidden)
+        global_counts[label] ++;
     }
   }
 
 
   double *scores = tk_malloc(L, n_hidden * n_visible * sizeof(double));
+  #pragma omp parallel for
   for (uint64_t b = 0; b < n_hidden; b  ++) {
     double *scores_b = scores + b * n_visible;
     for (uint64_t f = 0; f < n_visible; f ++) {
@@ -369,6 +388,7 @@ static inline double *_tk_matrix_mi_scores (
   int64_t *set_bits,
   size_t n_set_bits,
   const char *codes,
+  int64_t *labels,
   uint64_t n_samples,
   uint64_t n_visible,
   uint64_t n_hidden
@@ -377,17 +397,32 @@ static inline double *_tk_matrix_mi_scores (
   uint64_t *counts = tk_malloc(L, n_visible * n_hidden * 4 * sizeof(uint64_t));
   memset(counts, 0, n_visible * n_hidden * 4 * sizeof(uint64_t));
 
-
-  int64_t last_set_bit = -1;
-  for (uint64_t i = 0; i < n_set_bits; i ++) {
-
-
-    int64_t set_bit = set_bits[i];
-    if (set_bit < 0)
-      continue;
-
-
-    for (uint64_t unset_bit = last_set_bit + 1; unset_bit < set_bit; unset_bit ++) {
+  if (codes != NULL) {
+    int64_t last_set_bit = -1;
+    for (uint64_t i = 0; i < n_set_bits; i ++) {
+      int64_t set_bit = set_bits[i];
+      if (set_bit < 0) continue;
+      for (uint64_t unset_bit = last_set_bit + 1; unset_bit < set_bit; unset_bit ++) {
+        uint64_t sample = unset_bit / n_visible;
+        uint64_t visible = unset_bit % n_visible;
+        for (uint64_t j = 0; j < n_hidden; j ++) {
+          uint64_t chunk = j / CHAR_BIT;
+          uint64_t bit = j % CHAR_BIT;
+          bool hidden = (codes[sample * (n_hidden / CHAR_BIT) + chunk] & (1 << bit)) > 0;
+          counts[visible * n_hidden * 4 + j * 4 + (hidden ? 1 : 0)] ++;
+        }
+      }
+      uint64_t sample = set_bit / n_visible;
+      uint64_t visible = set_bit % n_visible;
+      for (uint64_t j = 0; j < n_hidden; j ++) {
+        uint64_t chunk = j / CHAR_BIT;
+        uint64_t bit = j % CHAR_BIT;
+        bool hidden = (codes[sample * (n_hidden / CHAR_BIT) + chunk] & (1 << bit)) > 0;
+        counts[visible * n_hidden * 4 + j * 4 + 2 + (hidden ? 1 : 0)] ++;
+      }
+      last_set_bit = set_bit;
+    }
+    for (uint64_t unset_bit = last_set_bit + 1; unset_bit < n_samples * n_visible; unset_bit ++) {
       uint64_t sample = unset_bit / n_visible;
       uint64_t visible = unset_bit % n_visible;
       for (uint64_t j = 0; j < n_hidden; j ++) {
@@ -397,36 +432,44 @@ static inline double *_tk_matrix_mi_scores (
         counts[visible * n_hidden * 4 + j * 4 + (hidden ? 1 : 0)] ++;
       }
     }
-
-
-    uint64_t sample = set_bit / n_visible;
-    uint64_t visible = set_bit % n_visible;
-    for (uint64_t j = 0; j < n_hidden; j ++) {
-      uint64_t chunk = j / CHAR_BIT;
-      uint64_t bit = j % CHAR_BIT;
-      bool hidden = (codes[sample * (n_hidden / CHAR_BIT) + chunk] & (1 << bit)) > 0;
-      counts[visible * n_hidden * 4 + j * 4 + 2 + (hidden ? 1 : 0)] ++;
+  } else if (labels != NULL) {
+    int64_t last_set_bit = -1;
+    for (uint64_t i = 0; i < n_set_bits; i ++) {
+      int64_t set_bit = set_bits[i];
+      if (set_bit < 0) continue;
+      for (uint64_t unset_bit = last_set_bit + 1; unset_bit < set_bit; unset_bit ++) {
+        uint64_t sample = unset_bit / n_visible;
+        uint64_t visible = unset_bit % n_visible;
+        int64_t label = labels[sample];
+        for (uint64_t j = 0; j < n_hidden; j ++) {
+          bool hidden = ((size_t)j == (size_t)label);
+          counts[visible * n_hidden * 4 + j * 4 + (hidden ? 1 : 0)] ++;
+        }
+      }
+      uint64_t sample = set_bit / n_visible;
+      uint64_t visible = set_bit % n_visible;
+      int64_t label = labels[sample];
+      for (uint64_t j = 0; j < n_hidden; j ++) {
+        bool hidden = ((size_t)j == (size_t)label);
+        counts[visible * n_hidden * 4 + j * 4 + 2 + (hidden ? 1 : 0)] ++;
+      }
+      last_set_bit = set_bit;
     }
-
-
-    last_set_bit = set_bit;
-  }
-
-
-  for (uint64_t unset_bit = last_set_bit + 1; unset_bit < n_samples * n_visible; unset_bit ++) {
-    uint64_t sample = unset_bit / n_visible;
-    uint64_t visible = unset_bit % n_visible;
-    for (uint64_t j = 0; j < n_hidden; j ++) {
-      uint64_t chunk = j / CHAR_BIT;
-      uint64_t bit = j % CHAR_BIT;
-      bool hidden = (codes[sample * (n_hidden / CHAR_BIT) + chunk] & (1 << bit)) > 0;
-      counts[visible * n_hidden * 4 + j * 4 + (hidden ? 1 : 0)] ++;
+    for (uint64_t unset_bit = last_set_bit + 1; unset_bit < n_samples * n_visible; unset_bit ++) {
+      uint64_t sample = unset_bit / n_visible;
+      uint64_t visible = unset_bit % n_visible;
+      int64_t label = labels[sample];
+      for (uint64_t j = 0; j < n_hidden; j ++) {
+        bool hidden = ((size_t)j == (size_t)label);
+        counts[visible * n_hidden * 4 + j * 4 + (hidden ? 1 : 0)] ++;
+      }
     }
   }
 
 
   double *scores = tk_malloc(L, n_hidden * n_visible * sizeof(double));
   memset(scores, 0, n_hidden * n_visible * sizeof(double));
+  #pragma omp parallel for
   for (int64_t j = 0; j < n_hidden; j ++) {
     double *scores_h = scores + j * n_visible;
     for (int64_t i = 0; i < n_visible; i ++) {
@@ -467,15 +510,28 @@ static inline int tk_matrix_score_chi2 (
   tk_matrix_t *m0 = tk_matrix_peek(L, 1);
   int64_t *set_bits = m0->data;
   size_t n_set_bits = m0->values;
-  const char *codes = lua_type(L, 2) == LUA_TLIGHTUSERDATA ? lua_touserdata(L, 2) : luaL_checkstring(L, 2);
   uint64_t n_samples = tk_lua_checkunsigned(L, 3);
   uint64_t n_visible = tk_lua_checkunsigned(L, 4);
   uint64_t n_hidden = tk_lua_checkunsigned(L, 5);
   bool ret_counts = lua_toboolean(L, 6);
   bool do_sums = lua_toboolean(L, 7);
+
+  char *codes = NULL;
+  int64_t *labels = NULL;
+
+  if (lua_type(L, 2) == LUA_TSTRING) {
+    codes = (char *) luaL_checkstring(L, 2);
+  } else if (lua_type(L, 2) == LUA_TLIGHTUSERDATA) {
+    codes = (char *) lua_touserdata(L, 2);
+  } else {
+    tk_matrix_t *m1 = tk_matrix_peek(L, 2);
+    n_samples = m1->values < n_samples ? m1->values : n_samples;
+    labels = m1->data;
+  }
+
   int64_t *actives;
   int64_t *globals;
-  double *scores = _tk_matrix_chi2_scores(L, set_bits, n_set_bits, codes, n_samples, n_visible, n_hidden, &actives, &globals);
+  double *scores = _tk_matrix_chi2_scores(L, set_bits, n_set_bits, codes, labels, n_samples, n_visible, n_hidden, &actives, &globals);
   if (do_sums) {
     double *sums = tk_malloc(L, n_hidden * sizeof(double));
     memset(sums, 0, n_hidden * sizeof(double));
@@ -516,11 +572,25 @@ static inline int tk_matrix_score_mi (
   tk_matrix_t *m0 = tk_matrix_peek(L, 1);
   int64_t *set_bits = m0->data;
   size_t n_set_bits = m0->values;
-  const char *codes = luaL_checkstring(L, 2);
   uint64_t n_samples = tk_lua_checkunsigned(L, 3);
   uint64_t n_visible = tk_lua_checkunsigned(L, 4);
   uint64_t n_hidden = tk_lua_checkunsigned(L, 5);
-  double *scores = _tk_matrix_mi_scores(L, set_bits, n_set_bits, codes, n_samples, n_visible, n_hidden);
+
+  char *codes = NULL;
+  int64_t *labels = NULL;
+
+  if (lua_type(L, 2) == LUA_TSTRING) {
+    codes = (char *) luaL_checkstring(L, 2);
+  } else if (lua_type(L, 2) == LUA_TLIGHTUSERDATA) {
+    codes = (char *) lua_touserdata(L, 2);
+  } else {
+    tk_matrix_t *m1 = tk_matrix_peek(L, 2);
+    n_samples = m1->values < n_samples ? m1->values : n_samples;
+    labels = m1->data;
+  }
+
+  double *scores = _tk_matrix_mi_scores(L, set_bits, n_set_bits, codes, labels, n_samples, n_visible, n_hidden);
+
   lua_pushlightuserdata(L, scores);
   lua_pushinteger(L, n_hidden);
   lua_pushinteger(L, n_visible);
@@ -533,13 +603,14 @@ static inline tk_matrix_ranked_pair_t *tk_matrix_mi_rankings (
   int64_t *set_bits,
   size_t n_set_bits,
   const char *codes,
+  int64_t *labels,
   uint64_t n_samples,
   uint64_t n_visible,
   uint64_t n_hidden,
   double **scoresp
 ) {
 
-  double *scores = _tk_matrix_mi_scores(L, set_bits, n_set_bits, codes, n_samples, n_visible, n_hidden);
+  double *scores = _tk_matrix_mi_scores(L, set_bits, n_set_bits, codes, labels, n_samples, n_visible, n_hidden);
 
 
   tk_matrix_ranked_pair_t *rankings = tk_malloc(L, n_hidden * n_visible * sizeof(tk_matrix_ranked_pair_t));
@@ -565,12 +636,13 @@ static inline tk_matrix_ranked_pair_t *tk_matrix_chi2_rankings (
   int64_t *set_bits,
   size_t n_set_bits,
   const char *codes,
+  int64_t *labels,
   uint64_t n_samples,
   uint64_t n_visible,
   uint64_t n_hidden
 ) {
 
-  double *scores = _tk_matrix_chi2_scores(L, set_bits, n_set_bits, codes, n_samples, n_visible, n_hidden, NULL, NULL);
+  double *scores = _tk_matrix_chi2_scores(L, set_bits, n_set_bits, codes, labels, n_samples, n_visible, n_hidden, NULL, NULL);
 
 
   tk_matrix_ranked_pair_t *rankings = tk_malloc(L, n_hidden * n_visible * sizeof(tk_matrix_ranked_pair_t));
@@ -584,80 +656,6 @@ static inline tk_matrix_ranked_pair_t *tk_matrix_chi2_rankings (
 
 
   return rankings;
-}
-
-static inline void tk_matrix_select_mi_proportional (
-  lua_State *L,
-  i64_hash_t *selected,
-  tk_matrix_ranked_pair_t *feat_rankings,
-  double *mi_scores,
-  uint64_t n_samples,
-  uint64_t n_visible,
-  uint64_t n_hidden,
-  uint64_t top_k
-) {
-
-  double *residual = tk_malloc(L, n_hidden * sizeof(double));
-  for (uint64_t b = 0; b < n_hidden; b ++)
-    residual[b] = 1.0;
-
-
-  uint64_t *cursor = tk_malloc(L, n_hidden * sizeof(uint64_t));
-  for (uint64_t b = 0; b < n_hidden; b ++)
-    cursor[b] = 0;
-
-
-  while (kh_size(selected) < top_k) {
-
-
-    uint64_t best_b = 0;
-    for (uint64_t b = 1; b < n_hidden; b++)
-      if (residual[b] > residual[best_b])
-        best_b = b;
-
-
-    tk_matrix_ranked_pair_t *rankings_b = feat_rankings + best_b * n_visible;
-
-
-    while (cursor[best_b] < n_visible) {
-
-
-      uint64_t fid = rankings_b[cursor[best_b]].v;
-      int ret;
-      kh_put(i64, selected, fid, &ret);
-      cursor[best_b] ++;
-
-
-      if (!ret)
-        continue;
-
-
-
-      for (uint64_t b = 0; b < n_hidden; b ++) {
-        double mi = mi_scores[b * n_visible + fid];
-        if (mi > 0.0)
-          residual[b] = fmax(0.0, residual[b] - mi);
-      }
-
-
-      break;
-    }
-
-
-    bool done = true;
-    for (uint64_t b = 0; b < n_hidden; b ++)
-      if (cursor[b] < n_visible) {
-        done = false;
-        break;
-      }
-
-    if (done)
-      break;
-  }
-
-
-  free(residual);
-  free(cursor);
 }
 
 static inline void tk_matrix_select_union (
@@ -697,11 +695,23 @@ static int tk_matrix_top_mi (lua_State *L)
   tk_matrix_t *m0 = tk_matrix_peek(L, 1);
   int64_t *set_bits = m0->data;
   size_t n_set_bits = m0->values;
-  const char *codes = luaL_checkstring(L, 2);
   uint64_t n_samples = tk_lua_checkunsigned(L, 3);
   uint64_t n_visible = tk_lua_checkunsigned(L, 4);
   uint64_t n_hidden = tk_lua_checkunsigned(L, 5);
   uint64_t top_k = tk_lua_checkunsigned(L, 6);
+
+  char *codes = NULL;
+  int64_t *labels = NULL;
+
+  if (lua_type(L, 2) == LUA_TSTRING) {
+    codes = (char *) luaL_checkstring(L, 2);
+  } else if (lua_type(L, 2) == LUA_TLIGHTUSERDATA) {
+    codes = (char *) lua_touserdata(L, 2);
+  } else {
+    tk_matrix_t *m1 = tk_matrix_peek(L, 2);
+    n_samples = m1->values < n_samples ? m1->values : n_samples;
+    labels = m1->data;
+  }
 
 
   ks_introsort(i64, n_set_bits, set_bits);
@@ -709,8 +719,8 @@ static int tk_matrix_top_mi (lua_State *L)
 
   i64_hash_t *selected = kh_init(i64);
   double *mi_scores = NULL;
-  tk_matrix_ranked_pair_t *mi_rankings = tk_matrix_mi_rankings(L, set_bits, n_set_bits, codes, n_samples, n_visible, n_hidden, &mi_scores);
-  tk_matrix_select_mi_proportional(L, selected, mi_rankings, mi_scores, n_samples, n_visible, n_hidden, top_k);
+  tk_matrix_ranked_pair_t *mi_rankings = tk_matrix_mi_rankings(L, set_bits, n_set_bits, codes, labels, n_samples, n_visible, n_hidden, &mi_scores);
+  tk_matrix_select_union(L, selected, mi_rankings, n_visible, n_hidden, top_k);
   free(mi_scores);
   free(mi_rankings);
 
@@ -719,24 +729,37 @@ static int tk_matrix_top_mi (lua_State *L)
   return 1;
 }
 
+
 static int tk_matrix_top_chi2 (lua_State *L)
 {
   lua_settop(L, 6);
   tk_matrix_t *m0 = tk_matrix_peek(L, 1);
   int64_t *set_bits = m0->data;
   size_t n_set_bits = m0->values;
-  const char *codes = luaL_checkstring(L, 2);
   uint64_t n_samples = tk_lua_checkunsigned(L, 3);
   uint64_t n_visible = tk_lua_checkunsigned(L, 4);
   uint64_t n_hidden = tk_lua_checkunsigned(L, 5);
   uint64_t top_k = tk_lua_checkunsigned(L, 6);
+
+  char *codes = NULL;
+  int64_t *labels = NULL;
+
+  if (lua_type(L, 2) == LUA_TSTRING) {
+    codes = (char *) luaL_checkstring(L, 2);
+  } else if (lua_type(L, 2) == LUA_TLIGHTUSERDATA) {
+    codes = (char *) lua_touserdata(L, 2);
+  } else {
+    tk_matrix_t *m1 = tk_matrix_peek(L, 2);
+    n_samples = m1->values < n_samples ? m1->values : n_samples;
+    labels = m1->data;
+  }
 
 
   ks_introsort(i64, n_set_bits, set_bits);
 
 
   i64_hash_t *selected = kh_init(i64);
-  tk_matrix_ranked_pair_t *chi2_rankings = tk_matrix_chi2_rankings(L, set_bits, n_set_bits, codes, n_samples, n_visible, n_hidden);
+  tk_matrix_ranked_pair_t *chi2_rankings = tk_matrix_chi2_rankings(L, set_bits, n_set_bits, codes, labels, n_samples, n_visible, n_hidden);
   tk_matrix_select_union(L, selected, chi2_rankings, n_visible, n_hidden, top_k);
   free(chi2_rankings);
 
