@@ -1,10 +1,4 @@
-#include "lua.h"
-#include "lauxlib.h"
-
-#include <string.h>
-#include <stdint.h>
-#include <stdbool.h>
-#include <stdlib.h>
+#include <santoku/lua/utils.h>
 #include <math.h>
 #include <float.h>
 
@@ -19,43 +13,6 @@ typedef struct {
   size_t values;
   tk_base_t *data;
 } tk_matrix_t;
-
-static inline void tk_lua_callmod (lua_State *L, int nargs, int nret, const char *smod, const char *sfn)
-{
-  lua_getglobal(L, "require");
-  lua_pushstring(L, smod);
-  lua_call(L, 1, 1);
-  lua_pushstring(L, sfn);
-  lua_gettable(L, -2);
-  lua_remove(L, -2);
-  lua_insert(L, - nargs - 1);
-  lua_call(L, nargs, nret);
-}
-
-
-static inline void *tk_lua_checkuserdata (lua_State *L, int i, char *mt)
-{
-  if (mt == NULL && (lua_islightuserdata(L, i) || lua_isuserdata(L, i)))
-    return lua_touserdata(L, i);
-  void *p = luaL_checkudata(L, -1, mt);
-  lua_pop(L, 1);
-  return p;
-}
-
-static inline uint64_t tk_lua_checkunsigned (lua_State *L, int i)
-{
-  lua_Integer l = luaL_checkinteger(L, i);
-  if (l < 0)
-    luaL_error(L, "value can't be negative");
-  return (uint64_t) l;
-}
-
-static inline unsigned int tk_lua_optunsigned (lua_State *L, int i, unsigned int def)
-{
-  if (lua_type(L, i) < 1)
-    return def;
-  return tk_lua_checkunsigned(L, i);
-}
 
 static inline tk_matrix_t *_tk_matrix_create (lua_State *L, size_t rows, size_t columns, tk_base_t *data, tk_matrix_t *m0)
 {
@@ -189,11 +146,11 @@ static inline void tk_matrix_rorder_push_row (
 
 static inline int tk_matrix_rorder (lua_State *L)
 {
-  lua_settop(L, 5);
+  lua_settop(L, 6);
   tk_matrix_t *m0 = tk_matrix_peek(L, 1);
-  lua_Integer min = tk_lua_optunsigned(L, 2, 0);
-  lua_Integer max = tk_lua_optunsigned(L, 3, m0->columns);
-  lua_Number cutoff = luaL_optnumber(L, 4, -DBL_MAX);
+  lua_Integer min = tk_lua_optunsigned(L, 2, "min", 0);
+  lua_Integer max = tk_lua_optunsigned(L, 3, "max", m0->columns);
+  lua_Number cutoff = tk_lua_optnumber(L, 4, "cutoff", -DBL_MAX);
   bool lt = !lua_toboolean(L, 5);
   bool asc = lua_toboolean(L, 6);
   if (max < min)
@@ -564,8 +521,8 @@ static inline int tk_matrix_from_view (lua_State *L)
 {
   lua_settop(L, 4);
   tk_base_t *data = tk_lua_checkuserdata(L, 1, NULL);
-  size_t rows = tk_lua_checkunsigned(L, 2);
-  size_t columns = tk_lua_checkunsigned(L, 3);
+  size_t rows = tk_lua_checkunsigned(L, 2, "rows");
+  size_t columns = tk_lua_checkunsigned(L, 3, "columns");
   tk_matrix_t *m0 = lua_type(L, 4) == LUA_TNIL ? NULL : tk_matrix_peek(L, 4);
   _tk_matrix_create(L, rows, columns, data, m0);
   return 1;
