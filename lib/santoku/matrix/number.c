@@ -143,7 +143,26 @@ static inline int tk_matrix_magnitude (lua_State *L)
   return 1;
 }
 
+static inline int tk_matrix_fill_norm (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_matrix_t *m0 = tk_matrix_peek(L, 1);
+  for (uint64_t i = 0; i < m0->values; i ++)
+    m0->data[i] = tk_fast_normal(0, 1);
+  return 0;
+}
+
+static inline void tm_init_random_z (
+  lua_State *L,
+  double *z,
+  uint64_t n_sentences,
+  uint64_t n_hidden
+) {
+}
+
+
 static luaL_Reg tk_matrix_extra_fns[] =
 {
+  { "fill_norm", tk_matrix_fill_norm },
   { NULL, NULL }
 };
