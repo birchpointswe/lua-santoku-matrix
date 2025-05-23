@@ -1,25 +1,8 @@
-#define tk_base_t int64_t
-#define tk_sort(...) ks_introsort(int64_t, __VA_ARGS__)
-#define tk_matrix_pushbase(...) lua_pushinteger(__VA_ARGS__)
-#define tk_matrix_peekbase(...) luaL_checkinteger(__VA_ARGS__)
-#define TK_MT "santoku_matrix_integer"
-#define TK_OPEN luaopen_santoku_matrix_integer
-#include "gen.h"
-#include <errno.h>
-
-#include "kvec.h"
-#include "khash.h"
-KHASH_SET_INIT_INT64(i64)
-typedef khash_t(i64) i64_hash_t;
-
-typedef struct { double score; uint64_t v; } tk_matrix_ranked_pair_t;
-#define tk_matrix_ranked_pair_gt(a, b) ((a).score > (b).score)
-KSORT_INIT(ranked_desc, tk_matrix_ranked_pair_t, tk_matrix_ranked_pair_gt)
-
-KSORT_INIT(u64, uint64_t, ks_lt_generic)
+#include <santoku/matrix/integer.conf.h>
+#include <santoku/matrix/gen.h>
+#include <santoku/matrix/integer.h>
 
 static inline tk_matrix_t *_tk_matrix_create (lua_State *, size_t, size_t, tk_base_t *, tk_matrix_t *);
-
 
 static inline int tk_matrix_radd (lua_State *L)
 {
@@ -213,22 +196,6 @@ static inline int tk_matrix_flip_interleave (lua_State *L)
   m0->data = data;
   tk_matrix_sort(L);
   return 0;
-}
-
-static inline void tk_matrix_push_selected_matrix (
-  lua_State *L,
-  i64_hash_t *selected
-) {
-
-  int64_t *top_v = tk_malloc(L, kh_size(selected) * sizeof(int64_t));
-  uint64_t write = 0;
-  for (khint_t khi = kh_begin(selected); khi < kh_end(selected); khi ++) {
-    if (!kh_exist(selected, khi))
-      continue;
-    top_v[write ++] = kh_key(selected, khi);
-  }
-  _tk_matrix_create(L, 1, write, top_v, NULL);
-  kh_destroy(i64, selected);
 }
 
 static inline double *_tk_matrix_chi2_scores (
@@ -563,97 +530,6 @@ static inline int tk_matrix_score_mi (
   return 1;
 }
 
-static inline tk_matrix_ranked_pair_t *tk_matrix_mi_rankings (
-  lua_State *L,
-  int64_t *set_bits,
-  size_t n_set_bits,
-  const char *codes,
-  int64_t *labels,
-  uint64_t n_samples,
-  uint64_t n_visible,
-  uint64_t n_hidden,
-  double **scoresp
-) {
-
-  double *scores = _tk_matrix_mi_scores(L, set_bits, n_set_bits, codes, labels, n_samples, n_visible, n_hidden);
-
-
-  tk_matrix_ranked_pair_t *rankings = tk_malloc(L, n_hidden * n_visible * sizeof(tk_matrix_ranked_pair_t));
-  for (uint64_t h = 0; h < n_hidden; h ++)
-    for (uint64_t v = 0; v < n_visible; v ++)
-      rankings[h * n_visible + v] = (tk_matrix_ranked_pair_t) { scores[h * n_visible + v], v };
-
-
-  for (uint64_t j = 0; j < n_hidden; j ++)
-    ks_introsort(ranked_desc, n_visible, rankings + j * n_visible);
-
-  if (scoresp != NULL)
-    *scoresp = scores;
-  else
-    free(scores);
-
-
-  return rankings;
-}
-
-static inline tk_matrix_ranked_pair_t *tk_matrix_chi2_rankings (
-  lua_State *L,
-  int64_t *set_bits,
-  size_t n_set_bits,
-  const char *codes,
-  int64_t *labels,
-  uint64_t n_samples,
-  uint64_t n_visible,
-  uint64_t n_hidden
-) {
-
-  double *scores = _tk_matrix_chi2_scores(L, set_bits, n_set_bits, codes, labels, n_samples, n_visible, n_hidden, NULL, NULL);
-
-
-  tk_matrix_ranked_pair_t *rankings = tk_malloc(L, n_hidden * n_visible * sizeof(tk_matrix_ranked_pair_t));
-  for (uint64_t h = 0; h < n_hidden; h ++)
-    for (uint64_t v = 0; v < n_visible; v ++)
-      rankings[h * n_visible + v] = (tk_matrix_ranked_pair_t) { scores[h * n_visible + v], v };
-
-
-  for (uint64_t b = 0; b < n_hidden; b ++)
-    ks_introsort(ranked_desc, n_visible, rankings + b * n_visible);
-
-
-  return rankings;
-}
-
-static inline void tk_matrix_select_union (
-  lua_State *L,
-  i64_hash_t *selected,
-  tk_matrix_ranked_pair_t *rankings,
-  uint64_t n_visible,
-  uint64_t n_hidden,
-  uint64_t top_k
-) {
-
-  int kha;
-  uint64_t *offsets = tk_malloc(L, n_hidden * sizeof(uint64_t));
-  memset(offsets, 0, n_hidden * sizeof(uint64_t));
-  while (true) {
-    bool added = false;
-    for (uint64_t j = 0; j < n_hidden && kh_size(selected) < top_k; j ++) {
-      tk_matrix_ranked_pair_t *rankings_h = rankings + j * n_visible;
-      if (offsets[j] >= n_visible)
-        continue;
-      tk_matrix_ranked_pair_t candidate = rankings_h[offsets[j] ++];
-      kh_put(i64, selected, candidate.v, &kha);
-      if (kha)
-        added = true;
-    }
-    if (!added)
-      break;
-  }
-
-
-  free(offsets);
-}
-
 static int tk_matrix_top_mi (lua_State *L)
 {
   lua_settop(L, 6);
@@ -682,15 +558,9 @@ static int tk_matrix_top_mi (lua_State *L)
   ks_introsort(i64, n_set_bits, set_bits);
 
 
-  i64_hash_t *selected = kh_init(i64);
-  double *mi_scores = NULL;
-  tk_matrix_ranked_pair_t *mi_rankings = tk_matrix_mi_rankings(L, set_bits, n_set_bits, codes, labels, n_samples, n_visible, n_hidden, &mi_scores);
-  tk_matrix_select_union(L, selected, mi_rankings, n_visible, n_hidden, top_k);
-  free(mi_scores);
-  free(mi_rankings);
-
-
-  tk_matrix_push_selected_matrix(L, selected);
+  double *scores = _tk_matrix_mi_scores(L, set_bits, n_set_bits, codes, labels, n_samples, n_visible, n_hidden);
+  tk_matrix_top_generic(L, scores, n_visible, n_hidden, top_k, 0);
+  free(scores);
   return 1;
 }
 
@@ -723,13 +593,9 @@ static int tk_matrix_top_chi2 (lua_State *L)
   ks_introsort(i64, n_set_bits, set_bits);
 
 
-  i64_hash_t *selected = kh_init(i64);
-  tk_matrix_ranked_pair_t *chi2_rankings = tk_matrix_chi2_rankings(L, set_bits, n_set_bits, codes, labels, n_samples, n_visible, n_hidden);
-  tk_matrix_select_union(L, selected, chi2_rankings, n_visible, n_hidden, top_k);
-  free(chi2_rankings);
-
-
-  tk_matrix_push_selected_matrix(L, selected);
+  double *scores = _tk_matrix_chi2_scores(L, set_bits, n_set_bits, codes, labels, n_samples, n_visible, n_hidden, NULL, NULL);
+  tk_matrix_top_generic(L, scores, n_visible, n_hidden, top_k, 0);
+  free(scores);
   return 1;
 }
 
