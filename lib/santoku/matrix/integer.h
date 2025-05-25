@@ -67,7 +67,7 @@ static inline void tk_matrix_select_union (
         offsets[j]++;
         if (candidate.v >= (n_visible - trunc))
           continue;
-        kh_put(i64, selected, candidate.v, &kha);
+        kh_put(i64, selected, (int64_t) candidate.v, &kha);
         advanced = true;
         break;
       }
