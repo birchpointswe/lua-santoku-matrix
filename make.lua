@@ -1,17 +1,17 @@
 local env = {
 
   name = "santoku-matrix",
-  version = "0.0.38-1",
+  version = "0.0.39-1",
   variable_prefix = "TK_MATRIX",
   license = "MIT",
   public = true,
 
-  cflags = { "-fopenmp", "-I$(shell luarocks show santoku --rock-dir)/include" },
-  ldflags = { "-fopenmp" },
+  cflags = { "-I$(shell luarocks show santoku --rock-dir)/include" },
+  ldflags = { },
 
   dependencies = {
     "lua == 5.1",
-    "santoku >= 0.0.261-1",
+    "santoku >= 0.0.263-1",
   },
 
   test = {
