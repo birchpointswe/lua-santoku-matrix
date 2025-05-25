@@ -1,7 +1,7 @@
 #include <santoku/matrix/integer.conf.h>
 #include <santoku/matrix/base.h>
 
-KHASH_SET_INIT_INT64(i64)
+KHASH_INIT(i64, int64_t, char, 0, kh_int64_hash_func, kh_int64_hash_equal)
 typedef khash_t(i64) i64_hash_t;
 
 typedef struct { double score; uint64_t v; } tk_matrix_ranked_pair_t;
