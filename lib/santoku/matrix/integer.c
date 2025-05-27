@@ -1,8 +1,108 @@
+#include <santoku/threads.h>
 #include <santoku/matrix/integer.conf.h>
 #include <santoku/matrix/gen.h>
 #include <santoku/matrix/integer.h>
 
 static inline tk_matrix_t *_tk_matrix_create (lua_State *, size_t, size_t, tk_base_t *, tk_matrix_t *);
+
+typedef enum {
+  TK_MTX_CHI2,
+  TK_MTX_MI,
+} tk_mtx_stage_t;
+
+typedef struct {
+  uint64_t n_visible, n_hidden, n_samples;
+  double *scores;
+  uint64_t *counts, *feat_counts;
+  int64_t *active_counts, *global_counts;
+  int64_t *set_bits;
+  uint64_t n_set_bits;
+  int64_t *labels;
+  char *codes;
+} tk_mtx_ctx_t;
+
+typedef struct {
+  tk_mtx_ctx_t *state;
+  uint64_t hfirst, hlast;
+} tk_mtx_thread_t;
+
+static void tk_eval_worker (void *dp, int sig)
+{
+  tk_mtx_thread_t *data = (tk_mtx_thread_t *) dp;
+  tk_mtx_ctx_t *state = data->state;
+  uint64_t n_visible = state->n_visible;
+  uint64_t n_hidden = state->n_hidden;
+  uint64_t n_samples = state->n_samples;
+  double *scores = state->scores;
+  uint64_t *counts = state->counts;
+  int64_t *active_counts = state->active_counts;
+  int64_t *global_counts = state->global_counts;
+  uint64_t *feat_counts = state->feat_counts;
+  switch ((tk_mtx_stage_t) sig) {
+
+    case TK_MTX_CHI2:
+      for (uint64_t b = data->hfirst; b <= data->hlast; b  ++) {
+        double *scores_b = scores + b * n_visible;
+        for (uint64_t f = 0; f < n_visible; f ++) {
+          uint64_t A = active_counts[f * n_hidden + b];
+          uint64_t G = global_counts[b];
+          uint64_t C = feat_counts[f];
+          if (C == 0 || G == 0 || C == n_samples || G == n_samples) {
+            scores_b[f] = 0.0;
+            continue;
+          }
+          uint64_t B = G - A;
+          uint64_t C_ = C - A;
+          uint64_t D = n_samples - C - B;
+          double n = (double) n_samples;
+          double E_A = ((double) C * (double) G) / n;
+          double E_B = ((double)(n - C) * (double) G) / n;
+          double E_C = ((double) C * (double)(n - G)) / n;
+          double E_D = ((double)(n - C) * (double)(n - G)) / n;
+          double chi2 = 0.0;
+          if (E_A > 0)
+            chi2 += ((A - E_A)*(A - E_A)) / E_A;
+          if (E_B > 0)
+            chi2 += ((B - E_B)*(B - E_B)) / E_B;
+          if (E_C > 0)
+            chi2 += ((C_ - E_C)*(C_ - E_C)) / E_C;
+          if (E_D > 0)
+            chi2 += ((D - E_D)*(D - E_D)) / E_D;
+          scores_b[f] = chi2;
+        }
+      }
+      break;
+
+    case TK_MTX_MI:
+      for (int64_t j = data->hfirst; j <= data->hlast; j ++) {
+        double *scores_h = scores + j * n_visible;
+        for (int64_t i = 0; i < n_visible; i ++) {
+          uint64_t *c = counts + i * n_hidden * 4 + j * 4;
+          for (int k = 0; k < 4; k ++)
+            c[k] += 1;
+          double total = c[0] + c[1] + c[2] + c[3];
+          double mi = 0.0;
+          if (total == 0.0)
+            continue;
+          for (unsigned int o = 0; o < 4; o ++) {
+            if (c[o] == 0)
+              continue;
+            double p_fb = c[o] / total;
+            unsigned int f = o >> 1;
+            unsigned int b = o & 1;
+            double pf = (c[2] + c[3]) / total;
+            if (f == 0) pf = 1.0 - pf;
+            double pb = (c[1] + c[3]) / total;
+            if (b == 0) pb = 1.0 - pb;
+            double d = pf * pb;
+            if (d > 0) mi += p_fb * log2(p_fb / d);
+          }
+          scores_h[i] = mi;
+        }
+      }
+      break;
+  }
+}
 
 static inline int tk_matrix_radd (lua_State *L)
 {
@@ -202,243 +302,224 @@ static inline double *_tk_matrix_chi2_scores (
   lua_State *L,
   int64_t *set_bits,
   size_t n_set_bits,
-  const char *codes,
+  char *codes,
   int64_t *labels,
   uint64_t n_samples,
   uint64_t n_visible,
   uint64_t n_hidden,
   int64_t **activep,
-  int64_t **globalp
+  int64_t **globalp,
+  unsigned int n_threads
 ) {
+  tk_mtx_ctx_t ctx;
+  tk_mtx_thread_t threads[n_threads];
+  tk_threadpool_t *pool = tk_threads_create(L, n_threads, tk_eval_worker);
+  ctx.set_bits = set_bits;
+  ctx.n_set_bits = n_set_bits;
+  ctx.codes = codes;
+  ctx.labels = labels;
+  ctx.n_visible = n_visible;
+  ctx.n_hidden = n_hidden;
+  ctx.n_samples = n_samples;
+  ctx.active_counts = tk_malloc(L, ctx.n_visible * ctx.n_hidden * sizeof(int64_t));
+  ctx.global_counts = tk_malloc(L, ctx.n_hidden * sizeof(int64_t));
+  ctx.feat_counts  = tk_malloc(L, ctx.n_visible * sizeof(uint64_t));
+  memset(ctx.active_counts, 0, ctx.n_visible * ctx.n_hidden * sizeof(int64_t));
+  memset(ctx.global_counts, 0, ctx.n_hidden * sizeof(int64_t));
+  memset(ctx.feat_counts,  0, ctx.n_visible * sizeof(uint64_t));
+  for (unsigned int i = 0; i < n_threads; i ++) {
+    tk_mtx_thread_t *data = threads + i;
+    pool->threads[i].data = data;
+    data->state = &ctx;
+    tk_thread_range(i, n_threads, ctx.n_hidden, &data->hfirst, &data->hlast);
+  }
 
 
-  int64_t *active_counts = tk_malloc(L, n_visible * n_hidden * sizeof(int64_t));
-  int64_t *global_counts = tk_malloc(L, n_hidden * sizeof(int64_t));
-  uint64_t *feat_counts  = tk_malloc(L, n_visible * sizeof(uint64_t));
-  memset(active_counts, 0, n_visible * n_hidden * sizeof(int64_t));
-  memset(feat_counts,  0, n_visible * sizeof(uint64_t));
 
-
-  memset(global_counts, 0, n_hidden * sizeof(int64_t));
-  for (uint64_t s = 0; s < n_samples; s++) {
+  for (uint64_t s = 0; s < ctx.n_samples; s++) {
     const unsigned char *sample_bitmap
-      = (const unsigned char*)(codes + s * (n_hidden/CHAR_BIT));
-    for (uint64_t chunk = 0; chunk < (n_hidden/CHAR_BIT); chunk++) {
+      = (const unsigned char *) (ctx.codes + s * (ctx.n_hidden / CHAR_BIT));
+    for (uint64_t chunk = 0; chunk < (ctx.n_hidden / CHAR_BIT); chunk ++) {
       unsigned char byte = sample_bitmap[chunk];
       while (byte) {
         int bit = __builtin_ctz(byte);
         uint64_t b = chunk * CHAR_BIT + bit;
-        if (b < n_hidden)
-          global_counts[b]++;
+        if (b < ctx.n_hidden)
+          ctx.global_counts[b] ++;
         byte &= byte - 1;
       }
     }
   }
 
 
-  if (codes != NULL) {
-    for (uint64_t i = 0; i < n_set_bits; i ++) {
-      uint64_t s = set_bits[i] / n_visible;
-      uint64_t f = set_bits[i] % n_visible;
-      feat_counts[f] ++;
-      const unsigned char *bitmap = (unsigned char*)(codes + s * (n_hidden/CHAR_BIT));
-      for (uint64_t b = 0; b < n_hidden; b ++) {
+
+  if (ctx.codes != NULL) {
+    for (uint64_t i = 0; i < ctx.n_set_bits; i ++) {
+      uint64_t s = ctx.set_bits[i] / ctx.n_visible;
+      uint64_t f = ctx.set_bits[i] % ctx.n_visible;
+      ctx.feat_counts[f] ++;
+      const unsigned char *bitmap = (unsigned char *) (ctx.codes + s * (ctx.n_hidden / CHAR_BIT));
+      for (uint64_t b = 0; b < ctx.n_hidden; b ++) {
         uint64_t chunk = b / CHAR_BIT, bit = b % CHAR_BIT;
         if (bitmap[chunk] & (1u << bit)) {
-          active_counts[f * n_hidden + b] ++;
+          ctx.active_counts[f * ctx.n_hidden + b] ++;
         }
       }
     }
   } else if (labels != NULL) {
-    for (uint64_t i = 0; i < n_set_bits; i ++) {
-      uint64_t s = set_bits[i] / n_visible;
-      uint64_t f = set_bits[i] % n_visible;
-      feat_counts[f] ++;
-      int64_t label = labels[s];
-      if ((size_t)label < n_hidden)
-        active_counts[f * n_hidden + label] ++;
+    for (uint64_t i = 0; i < ctx.n_set_bits; i ++) {
+      uint64_t s = ctx.set_bits[i] / ctx.n_visible;
+      uint64_t f = ctx.set_bits[i] % ctx.n_visible;
+      ctx.feat_counts[f] ++;
+      int64_t label = ctx.labels[s];
+      if ((size_t) label < ctx.n_hidden)
+        ctx.active_counts[f * ctx.n_hidden + label] ++;
     }
-    memset(global_counts, 0, n_hidden * sizeof(int64_t));
-    for (uint64_t s = 0; s < n_samples; s ++) {
-      int64_t label = labels[s];
-      if ((size_t)label < n_hidden)
-        global_counts[label] ++;
+    memset(ctx.global_counts, 0, ctx.n_hidden * sizeof(int64_t));
+    for (uint64_t s = 0; s < ctx.n_samples; s ++) {
+      int64_t label = ctx.labels[s];
+      if ((size_t) label < ctx.n_hidden)
+        ctx.global_counts[label] ++;
     }
   }
 
 
-  double *scores = tk_malloc(L, n_hidden * n_visible * sizeof(double));
-  #pragma omp parallel for
-  for (uint64_t b = 0; b < n_hidden; b  ++) {
-    double *scores_b = scores + b * n_visible;
-    for (uint64_t f = 0; f < n_visible; f ++) {
-      uint64_t A = active_counts[f * n_hidden + b];
-      uint64_t G = global_counts[b];
-      uint64_t C = feat_counts[f];
-      if (C == 0 || G == 0 || C == n_samples || G == n_samples) {
-        scores_b[f] = 0.0;
-        continue;
-      }
-      uint64_t B = G - A;
-      uint64_t C_ = C - A;
-      uint64_t D = n_samples - C - B;
-      double n = (double) n_samples;
-      double E_A = ((double) C * (double) G) / n;
-      double E_B = ((double)(n - C) * (double) G) / n;
-      double E_C = ((double) C * (double)(n - G)) / n;
-      double E_D = ((double)(n - C) * (double)(n - G)) / n;
-      double chi2 = 0.0;
-      if (E_A > 0)
-        chi2 += ((A - E_A)*(A - E_A)) / E_A;
-      if (E_B > 0)
-        chi2 += ((B - E_B)*(B - E_B)) / E_B;
-      if (E_C > 0)
-        chi2 += ((C_ - E_C)*(C_ - E_C)) / E_C;
-      if (E_D > 0)
-        chi2 += ((D - E_D)*(D - E_D)) / E_D;
-      scores_b[f] = chi2;
-    }
-  }
+
+  ctx.scores = tk_malloc(L, ctx.n_hidden * ctx.n_visible * sizeof(double));
+  memset(ctx.scores, 0, ctx.n_hidden * ctx.n_visible * sizeof(double));
+  tk_threads_signal(pool, TK_MTX_CHI2);
+  tk_threads_destroy(pool);
 
   if (activep != NULL)
-    *activep = active_counts;
+    *activep = ctx.active_counts;
   else
-    free(active_counts);
+    free(ctx.active_counts);
 
   if (globalp != NULL)
-    *globalp = global_counts;
+    *globalp = ctx.global_counts;
   else
-    free(global_counts);
+    free(ctx.global_counts);
 
-  free(feat_counts);
+  free(ctx.feat_counts);
 
-  return scores;
+  return ctx.scores;
 }
 
 static inline double *_tk_matrix_mi_scores (
   lua_State *L,
   int64_t *set_bits,
   size_t n_set_bits,
-  const char *codes,
+  char *codes,
   int64_t *labels,
   uint64_t n_samples,
   uint64_t n_visible,
-  uint64_t n_hidden
+  uint64_t n_hidden,
+  unsigned int n_threads
 ) {
+  tk_mtx_ctx_t ctx;
+  tk_mtx_thread_t threads[n_threads];
+  tk_threadpool_t *pool = tk_threads_create(L, n_threads, tk_eval_worker);
+  ctx.set_bits = set_bits;
+  ctx.n_set_bits = n_set_bits;
+  ctx.codes = codes;
+  ctx.labels = labels;
+  ctx.n_visible = n_visible;
+  ctx.n_hidden = n_hidden;
+  ctx.n_samples = n_samples;
+  ctx.counts = tk_malloc(L, ctx.n_visible * ctx.n_hidden * 4 * sizeof(uint64_t));
+  memset(ctx.counts, 0, ctx.n_visible * ctx.n_hidden * 4 * sizeof(uint64_t));
+  for (unsigned int i = 0; i < n_threads; i ++) {
+    tk_mtx_thread_t *data = threads + i;
+    pool->threads[i].data = data;
+    data->state = &ctx;
+    tk_thread_range(i, n_threads, ctx.n_hidden, &data->hfirst, &data->hlast);
+  }
 
-  uint64_t *counts = tk_malloc(L, n_visible * n_hidden * 4 * sizeof(uint64_t));
-  memset(counts, 0, n_visible * n_hidden * 4 * sizeof(uint64_t));
-
-  if (codes != NULL) {
+  if (ctx.codes != NULL) {
     int64_t last_set_bit = -1;
-    for (uint64_t i = 0; i < n_set_bits; i ++) {
-      int64_t set_bit = set_bits[i];
+    for (uint64_t i = 0; i < ctx.n_set_bits; i ++) {
+      int64_t set_bit = ctx.set_bits[i];
       if (set_bit < 0) continue;
       for (uint64_t unset_bit = last_set_bit + 1; unset_bit < set_bit; unset_bit ++) {
-        uint64_t sample = unset_bit / n_visible;
-        uint64_t visible = unset_bit % n_visible;
-        for (uint64_t j = 0; j < n_hidden; j ++) {
+        uint64_t sample = unset_bit / ctx.n_visible;
+        uint64_t visible = unset_bit % ctx.n_visible;
+        for (uint64_t j = 0; j < ctx.n_hidden; j ++) {
           uint64_t chunk = j / CHAR_BIT;
           uint64_t bit = j % CHAR_BIT;
-          bool hidden = (codes[sample * (n_hidden / CHAR_BIT) + chunk] & (1 << bit)) > 0;
-          counts[visible * n_hidden * 4 + j * 4 + (hidden ? 1 : 0)] ++;
+          bool hidden = (ctx.codes[sample * (ctx.n_hidden / CHAR_BIT) + chunk] & (1 << bit)) > 0;
+          ctx.counts[visible * ctx.n_hidden * 4 + j * 4 + (hidden ? 1 : 0)] ++;
         }
       }
-      uint64_t sample = set_bit / n_visible;
-      uint64_t visible = set_bit % n_visible;
-      for (uint64_t j = 0; j < n_hidden; j ++) {
+      uint64_t sample = set_bit / ctx.n_visible;
+      uint64_t visible = set_bit % ctx.n_visible;
+      for (uint64_t j = 0; j < ctx.n_hidden; j ++) {
         uint64_t chunk = j / CHAR_BIT;
         uint64_t bit = j % CHAR_BIT;
-        bool hidden = (codes[sample * (n_hidden / CHAR_BIT) + chunk] & (1 << bit)) > 0;
-        counts[visible * n_hidden * 4 + j * 4 + 2 + (hidden ? 1 : 0)] ++;
+        bool hidden = (ctx.codes[sample * (ctx.n_hidden / CHAR_BIT) + chunk] & (1 << bit)) > 0;
+        ctx.counts[visible * ctx.n_hidden * 4 + j * 4 + 2 + (hidden ? 1 : 0)] ++;
       }
       last_set_bit = set_bit;
     }
     for (uint64_t unset_bit = last_set_bit + 1; unset_bit < n_samples * n_visible; unset_bit ++) {
-      uint64_t sample = unset_bit / n_visible;
-      uint64_t visible = unset_bit % n_visible;
-      for (uint64_t j = 0; j < n_hidden; j ++) {
+      uint64_t sample = unset_bit / ctx.n_visible;
+      uint64_t visible = unset_bit % ctx.n_visible;
+      for (uint64_t j = 0; j < ctx.n_hidden; j ++) {
         uint64_t chunk = j / CHAR_BIT;
         uint64_t bit = j % CHAR_BIT;
-        bool hidden = (codes[sample * (n_hidden / CHAR_BIT) + chunk] & (1 << bit)) > 0;
-        counts[visible * n_hidden * 4 + j * 4 + (hidden ? 1 : 0)] ++;
+        bool hidden = (ctx.codes[sample * (ctx.n_hidden / CHAR_BIT) + chunk] & (1 << bit)) > 0;
+        ctx.counts[visible * ctx.n_hidden * 4 + j * 4 + (hidden ? 1 : 0)] ++;
       }
     }
-  } else if (labels != NULL) {
+  } else if (ctx.labels != NULL) {
     int64_t last_set_bit = -1;
     for (uint64_t i = 0; i < n_set_bits; i ++) {
-      int64_t set_bit = set_bits[i];
+      int64_t set_bit = ctx.set_bits[i];
       if (set_bit < 0) continue;
       for (uint64_t unset_bit = last_set_bit + 1; unset_bit < set_bit; unset_bit ++) {
-        uint64_t sample = unset_bit / n_visible;
-        uint64_t visible = unset_bit % n_visible;
-        int64_t label = labels[sample];
-        for (uint64_t j = 0; j < n_hidden; j ++) {
+        uint64_t sample = unset_bit / ctx.n_visible;
+        uint64_t visible = unset_bit % ctx.n_visible;
+        int64_t label = ctx.labels[sample];
+        for (uint64_t j = 0; j < ctx.n_hidden; j ++) {
           bool hidden = ((size_t)j == (size_t)label);
-          counts[visible * n_hidden * 4 + j * 4 + (hidden ? 1 : 0)] ++;
+          ctx.counts[visible * ctx.n_hidden * 4 + j * 4 + (hidden ? 1 : 0)] ++;
         }
       }
-      uint64_t sample = set_bit / n_visible;
-      uint64_t visible = set_bit % n_visible;
-      int64_t label = labels[sample];
-      for (uint64_t j = 0; j < n_hidden; j ++) {
+      uint64_t sample = set_bit / ctx.n_visible;
+      uint64_t visible = set_bit % ctx.n_visible;
+      int64_t label = ctx.labels[sample];
+      for (uint64_t j = 0; j < ctx.n_hidden; j ++) {
         bool hidden = ((size_t)j == (size_t)label);
-        counts[visible * n_hidden * 4 + j * 4 + 2 + (hidden ? 1 : 0)] ++;
+        ctx.counts[visible * ctx.n_hidden * 4 + j * 4 + 2 + (hidden ? 1 : 0)] ++;
       }
       last_set_bit = set_bit;
     }
-    for (uint64_t unset_bit = last_set_bit + 1; unset_bit < n_samples * n_visible; unset_bit ++) {
-      uint64_t sample = unset_bit / n_visible;
-      uint64_t visible = unset_bit % n_visible;
-      int64_t label = labels[sample];
-      for (uint64_t j = 0; j < n_hidden; j ++) {
+    for (uint64_t unset_bit = last_set_bit + 1; unset_bit < ctx.n_samples * ctx.n_visible; unset_bit ++) {
+      uint64_t sample = unset_bit / ctx.n_visible;
+      uint64_t visible = unset_bit % ctx.n_visible;
+      int64_t label = ctx.labels[sample];
+      for (uint64_t j = 0; j < ctx.n_hidden; j ++) {
         bool hidden = ((size_t)j == (size_t)label);
-        counts[visible * n_hidden * 4 + j * 4 + (hidden ? 1 : 0)] ++;
+        ctx.counts[visible * ctx.n_hidden * 4 + j * 4 + (hidden ? 1 : 0)] ++;
       }
     }
   }
 
 
-  double *scores = tk_malloc(L, n_hidden * n_visible * sizeof(double));
-  memset(scores, 0, n_hidden * n_visible * sizeof(double));
-  #pragma omp parallel for
-  for (int64_t j = 0; j < n_hidden; j ++) {
-    double *scores_h = scores + j * n_visible;
-    for (int64_t i = 0; i < n_visible; i ++) {
-      uint64_t *c = counts + i * n_hidden * 4 + j * 4;
-      for (int k = 0; k < 4; k ++)
-        c[k] += 1;
-      double total = c[0] + c[1] + c[2] + c[3];
-      double mi = 0.0;
-      if (total == 0.0)
-        continue;
-      for (unsigned int o = 0; o < 4; o ++) {
-        if (c[o] == 0)
-          continue;
-        double p_fb = c[o] / total;
-        unsigned int f = o >> 1;
-        unsigned int b = o & 1;
-        double pf = (c[2] + c[3]) / total;
-        if (f == 0) pf = 1.0 - pf;
-        double pb = (c[1] + c[3]) / total;
-        if (b == 0) pb = 1.0 - pb;
-        double d = pf * pb;
-        if (d > 0) mi += p_fb * log2(p_fb / d);
-      }
-      scores_h[i] = mi;
-    }
-  }
+  ctx.scores = tk_malloc(L, ctx.n_hidden * ctx.n_visible * sizeof(double));
+  memset(ctx.scores, 0, ctx.n_hidden * ctx.n_visible * sizeof(double));
+  tk_threads_signal(pool, TK_MTX_MI);
+  tk_threads_destroy(pool);
 
 
-  free(counts);
+  free(ctx.counts);
 
-  return scores;
+  return ctx.scores;
 }
 
 static inline int tk_matrix_score_chi2 (
   lua_State *L
 ) {
-  lua_settop(L, 7);
+  lua_settop(L, 8);
   tk_matrix_t *m0 = tk_matrix_peek(L, 1);
   int64_t *set_bits = m0->data;
   size_t n_set_bits = m0->values;
@@ -447,6 +528,7 @@ static inline int tk_matrix_score_chi2 (
   uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
   bool ret_counts = lua_toboolean(L, 6);
   bool do_sums = lua_toboolean(L, 7);
+  unsigned int n_threads = tk_threads_getn(L, 8, "threads", NULL);
 
   char *codes = NULL;
   int64_t *labels = NULL;
@@ -463,7 +545,7 @@ static inline int tk_matrix_score_chi2 (
 
   int64_t *actives;
   int64_t *globals;
-  double *scores = _tk_matrix_chi2_scores(L, set_bits, n_set_bits, codes, labels, n_samples, n_visible, n_hidden, &actives, &globals);
+  double *scores = _tk_matrix_chi2_scores(L, set_bits, n_set_bits, codes, labels, n_samples, n_visible, n_hidden, &actives, &globals, n_threads);
   if (do_sums) {
     double *sums = tk_malloc(L, n_hidden * sizeof(double));
     memset(sums, 0, n_hidden * sizeof(double));
@@ -500,13 +582,14 @@ static inline int tk_matrix_score_chi2 (
 static inline int tk_matrix_score_mi (
   lua_State *L
 ) {
-  lua_settop(L, 5);
+  lua_settop(L, 6);
   tk_matrix_t *m0 = tk_matrix_peek(L, 1);
   int64_t *set_bits = m0->data;
   size_t n_set_bits = m0->values;
   uint64_t n_samples = tk_lua_checkunsigned(L, 3, "samples");
   uint64_t n_visible = tk_lua_checkunsigned(L, 4, "visible");
   uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
+  unsigned int n_threads = tk_threads_getn(L, 6, "threads", NULL);
 
   char *codes = NULL;
   int64_t *labels = NULL;
@@ -521,7 +604,7 @@ static inline int tk_matrix_score_mi (
     labels = m1->data;
   }
 
-  double *scores = _tk_matrix_mi_scores(L, set_bits, n_set_bits, codes, labels, n_samples, n_visible, n_hidden);
+  double *scores = _tk_matrix_mi_scores(L, set_bits, n_set_bits, codes, labels, n_samples, n_visible, n_hidden, n_threads);
 
   lua_pushlightuserdata(L, scores);
   lua_pushinteger(L, n_hidden);
@@ -532,7 +615,7 @@ static inline int tk_matrix_score_mi (
 
 static int tk_matrix_top_mi (lua_State *L)
 {
-  lua_settop(L, 6);
+  lua_settop(L, 7);
   tk_matrix_t *m0 = tk_matrix_peek(L, 1);
   int64_t *set_bits = m0->data;
   size_t n_set_bits = m0->values;
@@ -540,6 +623,7 @@ static int tk_matrix_top_mi (lua_State *L)
   uint64_t n_visible = tk_lua_checkunsigned(L, 4, "visible");
   uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
   uint64_t top_k = tk_lua_checkunsigned(L, 6, "top_k");
+  unsigned int n_threads = tk_threads_getn(L, 7, "threads", NULL);
 
   char *codes = NULL;
   int64_t *labels = NULL;
@@ -558,7 +642,7 @@ static int tk_matrix_top_mi (lua_State *L)
   ks_introsort(i64, n_set_bits, set_bits);
 
 
-  double *scores = _tk_matrix_mi_scores(L, set_bits, n_set_bits, codes, labels, n_samples, n_visible, n_hidden);
+  double *scores = _tk_matrix_mi_scores(L, set_bits, n_set_bits, codes, labels, n_samples, n_visible, n_hidden, n_threads);
   tk_matrix_top_generic(L, scores, n_visible, n_hidden, top_k, 0);
   free(scores);
   return 1;
@@ -567,7 +651,7 @@ static int tk_matrix_top_mi (lua_State *L)
 
 static int tk_matrix_top_chi2 (lua_State *L)
 {
-  lua_settop(L, 6);
+  lua_settop(L, 7);
   tk_matrix_t *m0 = tk_matrix_peek(L, 1);
   int64_t *set_bits = m0->data;
   size_t n_set_bits = m0->values;
@@ -575,6 +659,7 @@ static int tk_matrix_top_chi2 (lua_State *L)
   uint64_t n_visible = tk_lua_checkunsigned(L, 4, "visible");
   uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
   uint64_t top_k = tk_lua_checkunsigned(L, 6, "top_k");
+  unsigned int n_threads = tk_threads_getn(L, 7, "threads", NULL);
 
   char *codes = NULL;
   int64_t *labels = NULL;
@@ -593,7 +678,7 @@ static int tk_matrix_top_chi2 (lua_State *L)
   ks_introsort(i64, n_set_bits, set_bits);
 
 
-  double *scores = _tk_matrix_chi2_scores(L, set_bits, n_set_bits, codes, labels, n_samples, n_visible, n_hidden, NULL, NULL);
+  double *scores = _tk_matrix_chi2_scores(L, set_bits, n_set_bits, codes, labels, n_samples, n_visible, n_hidden, NULL, NULL, n_threads);
   tk_matrix_top_generic(L, scores, n_visible, n_hidden, top_k, 0);
   free(scores);
   return 1;

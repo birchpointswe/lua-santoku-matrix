@@ -1,5 +1,10 @@
 #include <santoku/matrix/integer.conf.h>
 #include <santoku/matrix/base.h>
+#include <stdatomic.h>
+
+typedef struct { uint64_t sim; bool label; } tm_dl_t;
+#define tm_dl_lt(a, b) ((a).sim < (b).sim)
+KSORT_INIT(dl, tm_dl_t, tm_dl_lt)
 
 KHASH_INIT(i64, int64_t, char, 0, kh_int64_hash_func, kh_int64_hash_equal)
 typedef khash_t(i64) i64_hash_t;
