@@ -85,7 +85,7 @@ static inline void tk_ivec_top_generic (
   tk_iuset_t *selected = tk_iuset_create();
   tk_rvec_t *rankings = tk_rvec_rankings(L, scores, n_visible, n_hidden);
   tk_ivec_select_union(L, selected, rankings, n_visible, n_hidden, top_k, trunc);
-  tk_ivec_destroy(rankings);
+  tk_rvec_destroy(rankings);
 
   tk_ivec_push_selected(L, selected);
 }
