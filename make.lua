@@ -1,18 +1,14 @@
 local env = {
 
   name = "santoku-matrix",
-  version = "0.0.44-1",
+  version = "0.0.45-1",
   variable_prefix = "TK_MATRIX",
   license = "MIT",
   public = true,
 
   cflags = {
     "-march=native", "-std=gnu11", "-O3", "-Wall", "-Wextra",
-    "-Wstrict-overflow",
-
-
-    "-Wno-sign-compare", "-Wno-absolute-value",
-
+    "-Wstrict-overflow", "-Wno-sign-compare", "-Wno-absolute-value",
     "-Wno-unused-parameter", "-Wno-unused-but-set-variable",
     "-I$(shell luarocks show santoku --rock-dir)/include/",
     "-I$(shell luarocks show santoku-threads --rock-dir)/include/",
