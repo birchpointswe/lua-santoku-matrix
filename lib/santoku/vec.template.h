@@ -1,53 +1,3 @@
-
-#ifndef TK_TODO_MOVEME
-#define TK_TODO_MOVEME
-#include <santoku/lua/utils.h>
-#define tk_lua_newuserdata(L, t, mt, gc) \
-  (tk_lua_newuserdata_(L, sizeof(t), mt, gc))
-static inline void *tk_lua_newuserdata_ (
-  lua_State *L,
-  size_t s,
-  char *mt,
-  lua_CFunction gc
-) {
-  void *v = lua_newuserdata(L, s);
-  if (!v)
-    tk_lua_verror(L, 2, "newuserdata failed", mt);
-  memset(v, 0, s);
-  if (luaL_newmetatable(L, mt)) {
-    lua_pushcfunction(L, gc);
-    lua_setfield(L, -2, "__gc");
-  }
-  lua_setmetatable(L, -2);
-  return v;
-}
-static inline void *tk_lua_testuserdata (lua_State *L, int idx, const char *tname)
-{
-  void *ud = lua_touserdata(L, idx);
-  if (ud == NULL) return NULL;
-  if (!lua_getmetatable(L, idx)) return NULL;
-  luaL_getmetatable(L, tname);
-  int equal = lua_rawequal(L, -1, -2);
-  lua_pop(L, 2);
-  return equal ? ud : NULL;
-}
-static inline double tk_lua_checknumber (lua_State *L, int i, char *name)
-{
-  if (lua_type(L, i) != LUA_TNUMBER)
-    tk_lua_verror(L, 2, name, "value is not a number");
-  lua_Number l = luaL_checknumber(L, i);
-  return (double) l;
-}
-static inline const char *tk_lua_optstring (lua_State *L, int i, char *name, char *def)
-{
-  if (lua_type(L, i) < 1)
-    return def;
-  if (lua_type(L, i) != LUA_TSTRING)
-    tk_lua_verror(L, 2, name, "value is not a string");
-  return luaL_checkstring(L, i);
-}
-#endif
-
 #include <santoku/lua/utils.h>
 #include <santoku/klib.h>
 
@@ -1012,11 +962,11 @@ static inline int tk_vec_pfx(scale_lua) (lua_State *L)
   tk_vec_base scale;
   int64_t start, end;
   if (t == 2) {
-    scale = tk_lua_checknumber(L, 2, "scale");
+    scale = tk_lua_checkdouble(L, 2, "scale");
     start = 0;
     end = m0->n;
   } else if (t == 3) {
-    scale = tk_lua_checknumber(L, 2, "scale");
+    scale = tk_lua_checkdouble(L, 2, "scale");
     start = tk_lua_checkinteger(L, 3, "start");
     end = tk_lua_checkinteger(L, 4, "end");
   } else {
@@ -1036,11 +986,11 @@ static inline int tk_vec_pfx(add_lua) (lua_State *L)
   tk_vec_base add;
   int64_t start, end;
   if (t == 2) {
-    add = tk_lua_checknumber(L, 2, "add");
+    add = tk_lua_checkdouble(L, 2, "add");
     start = 0;
     end = m0->n;
   } else if (t == 3) {
-    add = tk_lua_checknumber(L, 2, "add");
+    add = tk_lua_checkdouble(L, 2, "add");
     start = tk_lua_checkinteger(L, 3, "start");
     end = tk_lua_checkinteger(L, 4, "end");
   } else {
@@ -1083,11 +1033,11 @@ static inline int tk_vec_pfx(exp_lua) (lua_State *L)
   tk_vec_base exp;
   int64_t start, end;
   if (t == 2) {
-    exp = tk_lua_checknumber(L, 2, "exp");
+    exp = tk_lua_checkdouble(L, 2, "exp");
     start = 0;
     end = m0->n;
   } else if (t == 3) {
-    exp = tk_lua_checknumber(L, 2, "exp");
+    exp = tk_lua_checkdouble(L, 2, "exp");
     start = tk_lua_checkinteger(L, 3, "start");
     end = tk_lua_checkinteger(L, 4, "end");
   } else {

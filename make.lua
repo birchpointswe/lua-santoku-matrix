@@ -1,7 +1,7 @@
 local env = {
 
   name = "santoku-matrix",
-  version = "0.0.47-1",
+  version = "0.0.48-1",
   variable_prefix = "TK_MATRIX",
   license = "MIT",
   public = true,
@@ -20,8 +20,8 @@ local env = {
 
   dependencies = {
     "lua == 5.1",
-    "santoku >= 0.0.266-1",
-    "santoku-threads >= 0.0.4-1",
+    "santoku >= 0.0.268-1",
+    "santoku-threads >= 0.0.5-1",
   },
 
   test = {
