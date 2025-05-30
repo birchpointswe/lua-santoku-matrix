@@ -8,12 +8,12 @@ static inline void tk_ivec_push_selected (
   tk_iuset_t *selected
 ) {
 
-  tk_ivec_t *top_v = tk_ivec_create(L, tk_iuset_size(selected), 0, 0);
-  uint64_t write = 0;
+  tk_ivec_t *top_v = tk_ivec_create(L, 0, 0, 0);
   int64_t sel;
   tk_iuset_foreach(selected, sel, ({
-    top_v->a[write ++] = sel;
+    tk_ivec_push(top_v, sel);
   }));
+  tk_ivec_shrink(L, top_v);
   tk_iuset_destroy(selected);
 }
 

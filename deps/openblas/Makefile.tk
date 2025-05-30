@@ -12,7 +12,7 @@ results.mk: Makefile
 	  if pkg-config --exists openblas; then \
 	    echo "LIB_CFLAGS += $$(pkg-config --cflags openblas)" >> results.mk; \
 	    echo "LIB_CFLAGS += -D<% return var("HAS_OPENBLAS") %>" >> results.mk; \
-	    echo "LIB_LDFLAGS += $$(pkg-config --libs openblas)" >> results.mk; \
+	    echo "LIB_LDFLAGS += -Wl,--no-as-needed $$(pkg-config --libs openblas)" >> results.mk; \
 	  fi; \
 	fi
 	@if [ $(<% return var("PTHREAD") %>) = "auto" ]; then \

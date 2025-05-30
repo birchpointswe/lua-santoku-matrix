@@ -332,10 +332,6 @@ static inline int tk_ivec_flip_interleave_lua (lua_State *L)
     int64_t x = m0->a[i_present];
     s = x / n_features;
     k = x % n_features;
-    if (s >= n_samples)
-      printf("> %lu %lu %lu %lu %lu\n", i_present, m0->n, m0->m, s, n_samples);
-    assert(s < n_samples);
-    assert(k < n_features);
     m0->a[i_present] = (s * 2 * n_features) + k;
     for (size_t y = last; y < x; y ++) {
       int64_t s = y / n_features;
