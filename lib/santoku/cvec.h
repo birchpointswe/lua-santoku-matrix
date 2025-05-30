@@ -5,8 +5,6 @@
 #include <santoku/rvec/base.h>
 #include <santoku/dvec/base.h>
 
-#include <santoku/cvec/ext.h>
-
 #define tk_vec_name tk_cvec
 #define tk_vec_base char
 #define tk_vec_limited

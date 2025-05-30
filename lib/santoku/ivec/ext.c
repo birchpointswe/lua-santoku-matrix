@@ -49,7 +49,7 @@ static void tk_ivec_worker (void *dp, int sig)
   switch ((tk_ivec_stage_t) sig) {
 
     case TK_IVEC_CHI2:
-      for (uint64_t b = data->hfirst; b <= data->hlast; b  ++) {
+      for (uint64_t b = data->hfirst; b <= data->hlast; b ++) {
         double *scores_b = scores->a + b * n_visible;
         for (uint64_t f = 0; f < n_visible; f ++) {
           uint64_t A = active_counts->a[f * n_hidden + b];
@@ -192,7 +192,6 @@ static inline tk_dvec_t *tk_ivec_chi2_scores (
         ctx.global_counts->a[label] ++;
     }
   }
-
 
 
   ctx.scores = tk_dvec_create(L, ctx.n_hidden * ctx.n_visible, 0, 0);

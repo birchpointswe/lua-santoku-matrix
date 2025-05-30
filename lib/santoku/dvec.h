@@ -5,8 +5,6 @@
 #include <santoku/rvec/base.h>
 #include <santoku/dvec/base.h>
 
-#include <santoku/dvec/ext.h>
-
 #define tk_vec_name tk_dvec
 #define tk_vec_base double
 #define tk_vec_pushbase(...) lua_pushnumber(__VA_ARGS__)
