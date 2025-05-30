@@ -451,6 +451,7 @@ static int tk_ivec_top_mi_lua (lua_State *L)
   return 1;
 }
 
+
 static int tk_ivec_top_chi2_lua (lua_State *L)
 {
   lua_settop(L, 7);

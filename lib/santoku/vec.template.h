@@ -186,7 +186,7 @@ static inline void tk_vec_pfx(clear) (
 static inline void tk_vec_pfx(zero) (
   tk_vec_pfx(t) *v
 ) {
-  memset(v->a, 0, sizeof(tk_vec_base));
+  memset(v->a, 0, v->m * sizeof(tk_vec_base));
 }
 
 static inline tk_vec_base tk_vec_pfx(get) (
