@@ -289,20 +289,20 @@ static inline void tk_vec_pfx(rtable) (
 }
 #endif
 
-static inline void tk_vec_pfx(asc) (tk_vec_pfx(t) *v) {
-  tk_vec_introsort(tk_vec_pfx(asc), v->n, v->a);
+static inline void tk_vec_pfx(asc) (tk_vec_pfx(t) *v, uint64_t s, uint64_t e) {
+  tk_vec_introsort(tk_vec_pfx(asc), e - s, v->a + s);
 }
 
-static inline void tk_vec_pfx(desc) (tk_vec_pfx(t) *v) {
-  tk_vec_introsort(tk_vec_pfx(desc), v->n, v->a);
+static inline void tk_vec_pfx(desc) (tk_vec_pfx(t) *v, uint64_t s, uint64_t e) {
+  tk_vec_introsort(tk_vec_pfx(desc), e - s, v->a + s);
 }
 
-static inline void tk_vec_pfx(kasc) (tk_vec_pfx(t) *v, size_t k) {
-  tk_vec_ksmall(tk_vec_pfx(asc), v->n, v->a, k);
+static inline void tk_vec_pfx(kasc) (tk_vec_pfx(t) *v, size_t k, uint64_t s, uint64_t e) {
+  tk_vec_ksmall(tk_vec_pfx(asc), e - s, v->a + s, k);
 }
 
-static inline void tk_vec_pfx(kdesc) (tk_vec_pfx(t) *v, size_t k) {
-  tk_vec_ksmall(tk_vec_pfx(desc), v->n, v->a, k);
+static inline void tk_vec_pfx(kdesc) (tk_vec_pfx(t) *v, size_t k, uint64_t s, uint64_t e) {
+  tk_vec_ksmall(tk_vec_pfx(desc), e - s, v->a + s, k);
 }
 
 #ifndef tk_vec_limited
@@ -397,11 +397,9 @@ static inline tk_vec_pfx(t) *tk_vec_pfx(cmaxs) (
 ) {
   tk_vec_pfx(t) *out = tk_vec_pfx(create)(L, cols, NULL, NULL);
   for (uint64_t c = 0; c < cols; c ++) {
-    uint64_t maxr = 0;
     tk_vec_base maxv = m0->a[0 * cols + c];
     for (size_t r = 1; r < m0->n / cols; r ++) {
       if (m0->a[r * cols + c] > maxv) {
-        maxr = r;
         maxv = m0->a[r * cols + c];
       }
     }
@@ -425,11 +423,9 @@ static inline tk_vec_pfx(t) *tk_vec_pfx(rmaxs) (
       sum += val;
     }
     out->a[r] = sum;
-    uint64_t maxc = 0;
     tk_vec_base maxv = m0->a[r * cols + 0];
     for (uint64_t c = 1; c < cols; c ++) {
       if (m0->a[r * cols + c] > maxv) {
-        maxc = c;
         maxv = m0->a[r * cols + c];
       }
     }
@@ -467,11 +463,9 @@ static inline tk_vec_pfx(t) *tk_vec_pfx(cmins) (
 ) {
   tk_vec_pfx(t) *out = tk_vec_pfx(create)(L, cols, NULL, NULL);
   for (uint64_t c = 0; c < cols; c ++) {
-    uint64_t minr = 0;
     tk_vec_base minv = m0->a[0 * cols + c];
     for (size_t r = 1; r < m0->n / cols; r ++) {
       if (m0->a[r * cols + c] < minv) {
-        minr = r;
         minv = m0->a[r * cols + c];
       }
     }
@@ -495,11 +489,9 @@ static inline tk_vec_pfx(t) *tk_vec_pfx(rmins) (
       sum += val;
     }
     out->a[r] = sum;
-    uint64_t minc = 0;
     tk_vec_base minv = m0->a[r * cols + 0];
     for (uint64_t c = 1; c < cols; c ++) {
       if (m0->a[r * cols + c] < minv) {
-        minc = c;
         minv = m0->a[r * cols + c];
       }
     }
@@ -586,6 +578,9 @@ static inline void tk_vec_pfx(multiply) (
 ) {
   size_t m = transpose_a ? k : a->n / k;
   size_t n = transpose_b ? k : b->n / k;
+  tk_vec_pfx(ensure)(L, a, transpose_a ? k * m : m * k);
+  tk_vec_pfx(ensure)(L, b, transpose_b ? k * n : k * n);
+  tk_vec_pfx(ensure)(L, c, m * n);
   for (size_t i = 0; i < m; i ++) {
     for (size_t j = 0; j < n; j ++) {
       double sum = 0.0;
@@ -689,14 +684,14 @@ cleanup:
 }
 #endif
 
-static inline void tk_vec_pfx(fill) (lua_State *L, tk_vec_pfx(t) *v, tk_vec_base x)
+static inline void tk_vec_pfx(fill) (tk_vec_pfx(t) *v, tk_vec_base x)
 {
   for (uint64_t i = 0; i < v->n; i ++)
     v->a[i] = x;
 }
 
 #ifndef tk_vec_limited
-static inline void tk_vec_pfx(fill_indices) (lua_State *L, tk_vec_pfx(t) *v)
+static inline void tk_vec_pfx(fill_indices) (tk_vec_pfx(t) *v)
 {
   for (uint64_t i = 0; i < v->n; i ++)
     v->a[i] = (tk_vec_base) i;
@@ -1151,35 +1146,43 @@ static inline int tk_vec_pfx(rsums_lua) (lua_State *L) {
 
 static inline int tk_vec_pfx(asc_lua) (lua_State *L)
 {
-  lua_settop(L, 1);
+  lua_settop(L, 3);
   tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1);
-  tk_vec_pfx(asc)(m0);
+  uint64_t start = tk_lua_optunsigned(L, 2, "start", 0);
+  uint64_t end = tk_lua_optunsigned(L, 3, "end", m0->n);
+  tk_vec_pfx(asc)(m0, start, end);
   return 1;
 }
 
 static inline int tk_vec_pfx(desc_lua) (lua_State *L)
 {
-  lua_settop(L, 1);
+  lua_settop(L, 3);
   tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1);
-  tk_vec_pfx(desc)(m0);
+  uint64_t start = tk_lua_optunsigned(L, 2, "start", 0);
+  uint64_t end = tk_lua_optunsigned(L, 3, "end", m0->n);
+  tk_vec_pfx(desc)(m0, start, end);
   return 1;
 }
 
 static inline int tk_vec_pfx(kasc_lua) (lua_State *L)
 {
-  lua_settop(L, 2);
+  lua_settop(L, 4);
   tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1);
   uint64_t k = tk_lua_checkunsigned(L, 2, "k");
-  tk_vec_pfx(kasc)(m0, k);
+  uint64_t start = tk_lua_optunsigned(L, 3, "start", 0);
+  uint64_t end = tk_lua_optunsigned(L, 4, "end", m0->n);
+  tk_vec_pfx(kasc)(m0, k, start, end);
   return 1;
 }
 
 static inline int tk_vec_pfx(kdesc_lua) (lua_State *L)
 {
-  lua_settop(L, 2);
+  lua_settop(L, 4);
   tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1);
   uint64_t k = tk_lua_checkunsigned(L, 2, "k");
-  tk_vec_pfx(kdesc)(m0, k);
+  uint64_t start = tk_lua_optunsigned(L, 3, "start", 0);
+  uint64_t end = tk_lua_optunsigned(L, 4, "end", m0->n);
+  tk_vec_pfx(kdesc)(m0, k, start, end);
   return 1;
 }
 
@@ -1215,7 +1218,7 @@ static inline int tk_vec_pfx(fill_lua) (lua_State *L)
   lua_settop(L, 2);
   tk_vec_pfx(t) *v = tk_vec_pfx(peek)(L, 1);
   tk_vec_base x = tk_vec_peekbase(L, 2);
-  tk_vec_pfx(fill)(L, v, x);
+  tk_vec_pfx(fill)(v, x);
   return 1;
 }
 #endif
@@ -1225,7 +1228,7 @@ static inline int tk_vec_pfx(fill_indices_lua) (lua_State *L)
 {
   lua_settop(L, 1);
   tk_vec_pfx(t) *v = tk_vec_pfx(peek)(L, 1);
-  tk_vec_pfx(fill_indices)(L, v);
+  tk_vec_pfx(fill_indices)(v);
   return 1;
 }
 #endif

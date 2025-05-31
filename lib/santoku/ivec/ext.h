@@ -31,7 +31,7 @@ static inline tk_rvec_t *tk_rvec_rankings (
 
 
   for (uint64_t j = 0; j < n_hidden; j ++)
-    tk_rvec_desc(rankings);
+    tk_rvec_desc(rankings, j * n_visible, (j + 1) * n_visible);
 
 
   return rankings;
