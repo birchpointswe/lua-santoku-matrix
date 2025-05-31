@@ -465,11 +465,15 @@ static int tk_ivec_top_chi2_lua (lua_State *L)
   char *codes = NULL;
   tk_ivec_t *labels = NULL;
 
+  printf("test 1\n");
   if (lua_type(L, 2) == LUA_TSTRING) {
+    printf("test 2\n");
     codes = (char *) luaL_checkstring(L, 2);
   } else if (lua_type(L, 2) == LUA_TLIGHTUSERDATA) {
+    printf("test 3\n");
     codes = (char *) lua_touserdata(L, 2);
   } else {
+    printf("test 4\n");
     tk_ivec_t *m1 = tk_ivec_peek(L, 2);
     n_samples = m1->n < n_samples ? m1->n : n_samples;
     labels = m1;
