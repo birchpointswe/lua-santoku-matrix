@@ -25,7 +25,7 @@ static inline void tk_vec_pfx(rasc) (
       ranks->a[c].i = (int64_t) c;
       ranks->a[c].d = m0->a[r * cols + c];
     }
-    tk_rvec_asc(ranks);
+    tk_rvec_asc(ranks, 0, ranks->n);
     for (size_t c = 0; c < cols; c ++)
       out->a[r * cols + c] = ranks->a[c].i;
   }
@@ -46,7 +46,7 @@ static inline void tk_vec_pfx(rdesc) (
       ranks->a[c].i = (int64_t) c;
       ranks->a[c].d = m0->a[r * cols + c];
     }
-    tk_rvec_desc(ranks);
+    tk_rvec_desc(ranks, 0, ranks->n);
     for (size_t c = 0; c < cols; c ++)
       out->a[r * cols + c] = ranks->a[c].i;
   }
@@ -68,7 +68,7 @@ static inline void tk_vec_pfx(casc) (
       ranks->a[r].i = (int64_t) r;
       ranks->a[r].d = m0->a[c * rows + r];
     }
-    tk_rvec_asc(ranks);
+    tk_rvec_asc(ranks, 0, ranks->n);
     for (size_t r = 0; r < rows; r ++)
       out->a[c * rows + r] = ranks->a[r].i;
   }
@@ -90,7 +90,7 @@ static inline void tk_vec_pfx(cdesc) (
       ranks->a[r].i = (int64_t) r;
       ranks->a[r].d = m0->a[c * rows + r];
     }
-    tk_rvec_desc(ranks);
+    tk_rvec_desc(ranks, 0, ranks->n);
     for (size_t r = 0; r < rows; r ++)
       out->a[c * rows + r] = ranks->a[r].i;
   }

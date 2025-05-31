@@ -82,9 +82,9 @@ static void tk_ivec_worker (void *dp, int sig)
       break;
 
     case TK_IVEC_MI:
-      for (int64_t j = data->hfirst; j <= data->hlast; j ++) {
+      for (int64_t j = (int64_t) data->hfirst; j <= (int64_t) data->hlast; j ++) {
         double *scores_h = scores->a + j * n_visible;
-        for (int64_t i = 0; i < n_visible; i ++) {
+        for (int64_t i = 0; i < (int64_t) n_visible; i ++) {
           int64_t *c = counts->a + i * n_hidden * 4 + j * 4;
           for (int k = 0; k < 4; k ++)
             c[k] += 1;
@@ -239,7 +239,7 @@ static inline tk_dvec_t *tk_ivec_mi_scores (
     for (uint64_t i = 0; i < ctx.set_bits->n; i ++) {
       int64_t set_bit = ctx.set_bits->a[i];
       if (set_bit < 0) continue;
-      for (uint64_t unset_bit = last_set_bit + 1; unset_bit < set_bit; unset_bit ++) {
+      for (uint64_t unset_bit = last_set_bit + 1; unset_bit < (uint64_t) set_bit; unset_bit ++) {
         uint64_t sample = unset_bit / ctx.n_visible;
         uint64_t visible = unset_bit % ctx.n_visible;
         for (uint64_t j = 0; j < ctx.n_hidden; j ++) {
@@ -274,7 +274,7 @@ static inline tk_dvec_t *tk_ivec_mi_scores (
     for (uint64_t i = 0; i < set_bits->n; i ++) {
       int64_t set_bit = ctx.set_bits->a[i];
       if (set_bit < 0) continue;
-      for (uint64_t unset_bit = last_set_bit + 1; unset_bit < set_bit; unset_bit ++) {
+      for (uint64_t unset_bit = last_set_bit + 1; unset_bit < (uint64_t) set_bit; unset_bit ++) {
         uint64_t sample = unset_bit / ctx.n_visible;
         uint64_t visible = unset_bit % ctx.n_visible;
         int64_t label = ctx.labels->a[sample];
@@ -321,7 +321,7 @@ static inline int tk_ivec_flip_interleave_lua (lua_State *L)
   tk_ivec_t *m0 = tk_ivec_peek(L, 1);
   uint64_t n_samples = tk_lua_checkunsigned(L, 2, "samples");
   uint64_t n_features = tk_lua_checkunsigned(L, 3, "features");
-  tk_ivec_asc(m0);
+  tk_ivec_asc(m0, 0, m0->n);
   size_t total = n_samples * n_features;
   tk_ivec_ensure(L, m0, 2 * total);
   size_t write = m0->n;
@@ -333,7 +333,7 @@ static inline int tk_ivec_flip_interleave_lua (lua_State *L)
     s = x / n_features;
     k = x % n_features;
     m0->a[i_present] = (s * 2 * n_features) + k;
-    for (size_t y = last; y < x; y ++) {
+    for (size_t y = last; y < (size_t) x; y ++) {
       int64_t s = y / n_features;
       int64_t k = y % n_features;
       m0->a[write ++] = (s * 2 * n_features) + n_features + k;
@@ -346,7 +346,7 @@ static inline int tk_ivec_flip_interleave_lua (lua_State *L)
     m0->a[write ++] = (s * 2 * n_features) + n_features + k;
   }
   m0->n = write;
-  tk_ivec_asc(m0);
+  tk_ivec_asc(m0, 0, m0->n);
   return 0;
 }
 
@@ -442,7 +442,7 @@ static int tk_ivec_top_mi_lua (lua_State *L)
   }
 
 
-  tk_ivec_asc(set_bits);
+  tk_ivec_asc(set_bits, 0, set_bits->n);
 
 
   tk_dvec_t *scores = tk_ivec_mi_scores(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, n_threads);
@@ -476,7 +476,7 @@ static int tk_ivec_top_chi2_lua (lua_State *L)
   }
 
 
-  tk_ivec_asc(set_bits);
+  tk_ivec_asc(set_bits, 0, set_bits->n);
 
 
   tk_dvec_t *scores = tk_ivec_chi2_scores(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, n_threads);
@@ -559,8 +559,8 @@ static int tk_ivec_extend_bits_lua (lua_State *L)
   tk_ivec_t *ext = tk_ivec_peek(L, 2);
   uint64_t n_feat = tk_lua_checkunsigned(L, 3, "features");
   uint64_t n_extfeat = tk_lua_checkunsigned(L, 4, "extended");
-  tk_ivec_asc(base);
-  tk_ivec_asc(ext);
+  tk_ivec_asc(base, 0, base->n);
+  tk_ivec_asc(ext, 0, ext->n);
   size_t total = base->n + ext->n;
   tk_ivec_ensure(L, base, total);
   for (size_t i = 0; i < base->n; i ++) {
@@ -578,7 +578,7 @@ static int tk_ivec_extend_bits_lua (lua_State *L)
     base->a[base->n + i] = (int64_t) (bit - old_off + new_off);
   }
   base->n = total;
-  tk_ivec_asc(base);
+  tk_ivec_asc(base, 0, base->n);
   return 0;
 }
 
