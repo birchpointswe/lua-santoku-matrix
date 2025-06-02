@@ -2,7 +2,6 @@
 #define TK_IUSET_H
 
 #include <santoku/klib.h>
-#include <santoku/ivec.h>
 
 KHASH_INIT(tk_iuset, int64_t, char, 0, kh_int64_hash_func, kh_int64_hash_equal)
 typedef khash_t(tk_iuset) tk_iuset_t;
@@ -28,15 +27,6 @@ typedef khash_t(tk_iuset) tk_iuset_t;
 		(kvar) = kh_key(h,__i); \
 		code;	\
 	} }
-
-static inline tk_iuset_t *tk_iuset_from_ivec (tk_ivec_t *v)
-{
-  int kha;
-  tk_iuset_t *s = tk_iuset_create();
-  for (uint64_t i = 0; i < v->n; i ++)
-    tk_iuset_put(s, v->a[i], &kha);
-  return s;
-}
 
 
 

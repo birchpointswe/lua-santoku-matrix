@@ -3,6 +3,15 @@
 
 #include <santoku/iuset.h>
 
+static inline tk_iuset_t *tk_iuset_from_ivec (tk_ivec_t *v)
+{
+  int kha;
+  tk_iuset_t *s = tk_iuset_create();
+  for (uint64_t i = 0; i < v->n; i ++)
+    tk_iuset_put(s, v->a[i], &kha);
+  return s;
+}
+
 static inline void tk_ivec_push_selected (
   lua_State *L,
   tk_iuset_t *selected
