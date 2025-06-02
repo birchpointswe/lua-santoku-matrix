@@ -4,7 +4,7 @@
 #include <santoku/klib.h>
 
 KHASH_INIT(tk_iumap, int64_t, int64_t, 1, kh_int64_hash_func, kh_int64_hash_equal)
-typedef khash_t(int64_t) tk_iumap_t;
+typedef khash_t(tk_iumap) tk_iumap_t;
 
 #define tk_iumap_put(...) kh_put(tk_iumap, __VA_ARGS__)
 #define tk_iumap_get(...) kh_get(tk_iumap, __VA_ARGS__)
@@ -18,7 +18,7 @@ typedef khash_t(int64_t) tk_iumap_t;
 #define tk_iumap_resize(...) kh_resize(tk_iumap, __VA_ARGS__)
 #define tk_iumap_clear(...) kh_clear(tk_iumap, __VA_ARGS__)
 #define tk_iumap_destroy(...) kh_destroy(tk_iumap, __VA_ARGS__)
-#define tk_iumap_init(...) kh_init(tk_iumap, __VA_ARGS__)
+#define tk_iumap_create() kh_init(tk_iumap)
 #define tk_iumap_foreach(...) kh_foreach(__VA_ARGS__)
 
 
