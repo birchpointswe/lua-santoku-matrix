@@ -30,7 +30,7 @@ typedef khash_t(tk_duset) tk_duset_t;
 		code;	\
 	} }
 
-static void tk_duset_dump (tk_duset_t *s, tk_dvec_t *v)
+static inline void tk_duset_dump (tk_duset_t *s, tk_dvec_t *v)
 {
   double x;
   tk_duset_foreach(s, x, ({

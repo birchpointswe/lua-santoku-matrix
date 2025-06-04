@@ -1,17 +1,6 @@
 #define _GNU_SOURCE
 
-#include <santoku/ivec/base.h>
-#include <santoku/rvec/base.h>
-#include <santoku/dvec/base.h>
-
-#define tk_vec_name tk_ivec
-#define tk_vec_base int64_t
-#define tk_vec_pushbase(...) lua_pushinteger(__VA_ARGS__)
-#define tk_vec_peekbase(...) luaL_checkinteger(__VA_ARGS__)
-#define tk_vec_lua
-#include <santoku/vec.ext.template.h>
-
-#include <santoku/ivec/ext.h>
+#include <santoku/ivec.h>
 #include <santoku/threads.h>
 
 typedef enum {
@@ -582,7 +571,7 @@ static int tk_ivec_extend_bits_lua (lua_State *L)
   return 0;
 }
 
-static luaL_Reg tk_ivec_extra_fns[] =
+static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
 {
   { "flip_interleave", tk_ivec_flip_interleave_lua },
   { "top_chi2", tk_ivec_top_chi2_lua },
@@ -596,10 +585,15 @@ static luaL_Reg tk_ivec_extra_fns[] =
   { NULL, NULL }
 };
 
-int luaopen_santoku_ivec_ext (lua_State *L)
+int luaopen_santoku_ivec (lua_State *L)
 {
   lua_newtable(L);
   luaL_register(L, NULL, tk_ivec_lua_fns);
-  luaL_register(L, NULL, tk_ivec_extra_fns);
+  tk_ivec_create(L, 0, 0, 0);
+  luaL_getmetafield(L, -1, "__index");
+  luaL_register(L, NULL, tk_ivec_lua_mt_fns);
+  luaL_register(L, NULL, tk_ivec_lua_mt_ext_fns);
+  luaL_register(L, NULL, tk_ivec_lua_mt_ext2_fns);
+  lua_pop(L, 2);
   return 1;
 }

@@ -1,9 +1,11 @@
 # Now
 
-- Integrate into toku base or separate library
+- templatize ordered/unordered map/set under a single map.template.h
 - Update iuset/ioset/iumap/iomap to have a lua API and to use lua state for cleanup
 - x_create functions should accept optional int pointer to fill with lua stack
   position (for ref)
+
+- Integrate into toku base or separate library
 
 # Later
 

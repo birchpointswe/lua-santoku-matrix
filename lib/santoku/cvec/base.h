@@ -11,6 +11,6 @@
 #define tk_vec_name tk_cvec
 #define tk_vec_base char
 #define tk_vec_limited
-#include <santoku/vec.template.h>
+#include <santoku/vec/tpl.h>
 
 #endif

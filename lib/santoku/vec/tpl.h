@@ -1,26 +1,6 @@
 #include <santoku/lua/utils.h>
 #include <santoku/klib.h>
 
-#ifndef tk_vec_name
-#error "tk_vec_name missing"
-#endif
-
-#ifndef tk_vec_base
-#error "tk_vec_base missing"
-#endif
-
-#ifndef tk_vec_limited
-
-#ifndef tk_vec_pushbase
-#error "tk_vec_pushbase missing"
-#endif
-
-#ifndef tk_vec_peekbase
-#error "tk_vec_peekbase missing"
-#endif
-
-#endif
-
 #ifndef tk_vec_lt
 #define tk_vec_lt(a, b) ((a) < (b))
 #endif
@@ -30,22 +10,19 @@
 #endif
 
 #ifndef tk_vec_mt
-#define tk_vec_mt tk_xstr(tk_vec_pfx(t))
+#define tk_vec_mt tk_pp_xstr(tk_vec_pfx(t))
 #endif
 
-#define tk_str(x) #x
-#define tk_xstr(x) tk_str(x)
-#define tk_strcat2(a, b) a##_##b
-#define tk_strcat(a, b) tk_strcat2(a, b)
-#define tk_vec_pfx(name) tk_strcat(tk_vec_name, name)
+#define tk_vec_pfx(name) tk_pp_strcat(tk_vec_name, name)
 #define tk_vec_err(L, name, n, ...) \
-  tk_lua_verror((L), ((n) + 1), tk_xstr(tk_vec_pfx(name)), __VA_ARGS__)
+  tk_lua_verror((L), ((n) + 1), tk_pp_xstr(tk_vec_pfx(name)), __VA_ARGS__)
 
 typedef kvec_t(tk_vec_base) tk_vec_pfx(t);
 #define tk_vec_ksort(...) KSORT_INIT(__VA_ARGS__)
 tk_vec_ksort(tk_vec_pfx(asc), tk_vec_base, tk_vec_lt)
 tk_vec_ksort(tk_vec_pfx(desc), tk_vec_base, tk_vec_gt)
 
+#define tk_vec_shuffle(...) ks_shuffle(__VA_ARGS__)
 #define tk_vec_introsort(...) ks_introsort(__VA_ARGS__)
 #define tk_vec_ksmall(...) ks_ksmall(__VA_ARGS__)
 
@@ -76,25 +53,7 @@ static inline int tk_vec_pfx(destroy_lua) (lua_State *L)
   return 0;
 }
 
-static inline tk_vec_pfx(t) *tk_vec_pfx(create) (lua_State *L, size_t n, tk_vec_base *data, tk_vec_pfx(t) *v)
-{
-  tk_vec_pfx(t) v0;
-  if (v == NULL) {
-    v = tk_lua_newuserdata(L, tk_vec_pfx(t), tk_vec_mt, NULL, tk_vec_pfx(destroy_lua));
-    v0 = *v;
-    kv_init(v0);
-    kv_resize(tk_vec_base, v0, n);
-    v0.n = n;
-    *v = v0;
-    return v;
-  } else if (v->a && v->a != data) {
-    free(v->a);
-  }
-  v->n = n;
-  v->m = n;
-  v->a = data;
-  return v;
-}
+static inline tk_vec_pfx(t) *tk_vec_pfx(create) (lua_State *, size_t, tk_vec_base *, tk_vec_pfx(t) *);
 
 static inline void tk_vec_pfx(resize) (
   lua_State *L,
@@ -288,6 +247,10 @@ static inline void tk_vec_pfx(rtable) (
   }
 }
 #endif
+
+static inline void tk_vec_pfx(shuffle) (tk_vec_pfx(t) *v) {
+  tk_vec_shuffle(tk_vec_pfx(asc), v->n, v->a);
+}
 
 static inline void tk_vec_pfx(asc) (tk_vec_pfx(t) *v, uint64_t s, uint64_t e) {
   tk_vec_introsort(tk_vec_pfx(asc), e - s, v->a + s);
@@ -698,8 +661,6 @@ static inline void tk_vec_pfx(fill_indices) (tk_vec_pfx(t) *v)
 }
 #endif
 
-#ifdef tk_vec_lua
-
 static inline int tk_vec_pfx(create_lua) (lua_State *L)
 {
   lua_settop(L, 2);
@@ -707,7 +668,7 @@ static inline int tk_vec_pfx(create_lua) (lua_State *L)
   uint64_t m = tk_lua_optunsigned(L, 2, "size", 0);
   if (m0 != NULL) {
     tk_vec_pfx(t) *m1 = tk_vec_pfx(create)(L, m > 0 ? m : m0->n, NULL, NULL);
-    tk_vec_pfx(copy)(L, m1, m0, 0, m0->n, 0);
+    tk_vec_pfx(copy)(L, m1, m0, 0, (int64_t) m0->n, 0);
     return 1;
 #ifndef tk_vec_limited
   } else if (lua_type(L, 1) == LUA_TTABLE) {
@@ -767,11 +728,11 @@ static inline int tk_vec_pfx(copy_lua) (lua_State *L)
   int64_t start, end, dest;
   if (t == 2) {
     start = 0;
-    end = m1->n;
-    dest = m0->n;
+    end = (int64_t) m1->n;
+    dest = (int64_t) m0->n;
   } else if (t == 3) {
     start = 0;
-    end = m1->n;
+    end = (int64_t) m1->n;
     dest = tk_lua_checkinteger(L, 3, "dest");
   } else {
     start = tk_lua_checkinteger(L, 3, "start");
@@ -848,6 +809,14 @@ static inline int tk_vec_pfx(transpose_lua) (lua_State *L)
   uint64_t cols = tk_lua_checkunsigned(L, 3, "cols");
   tk_vec_pfx(transpose)(L, m0, m1, cols);
   return 0;
+}
+
+static inline int tk_vec_pfx(shuffle_lua) (lua_State *L)
+{
+  lua_settop(L, 1);
+  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1);
+  tk_vec_pfx(shuffle)(m0);
+  return 1;
 }
 
 static inline int tk_vec_pfx(asc_lua) (lua_State *L)
@@ -927,13 +896,13 @@ static inline int tk_vec_pfx(table_lua) (lua_State *L)
 {
   int t = lua_gettop(L);
   tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1);
-  int64_t start, end;
+  uint64_t start, end;
   if (t == 1) {
     start = 0;
-    end = m0->n;
+    end =  m0->n;
   } else if (t == 3) {
-    start = tk_lua_checkinteger(L, 3, "start");
-    end = tk_lua_checkinteger(L, 4, "end");
+    start = tk_lua_checkunsigned(L, 3, "start");
+    end = tk_lua_checkunsigned(L, 4, "end");
   } else {
     tk_vec_err(L, table, 1, "expected either 1 or 3 arguments (vec and optionally start/end indices)");
     return 0;
@@ -947,13 +916,13 @@ static inline int tk_vec_pfx(ctable_lua) (lua_State *L)
   int t = lua_gettop(L);
   tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1);
   uint64_t cols = tk_lua_checkunsigned(L, 2, "cols");
-  int64_t start, end;
+  uint64_t start, end;
   if (t == 2) {
     start = 0;
     end = cols;
   } else if (t == 4) {
-    start = tk_lua_checkinteger(L, 3, "start");
-    end = tk_lua_checkinteger(L, 4, "end");
+    start = tk_lua_checkunsigned(L, 3, "start");
+    end = tk_lua_checkunsigned(L, 4, "end");
   } else {
     tk_vec_err(L, ctable, 1, "expected either 2 or 4 arguments (vec, cols and optionally start/end rows)");
     return 0;
@@ -967,13 +936,13 @@ static inline int tk_vec_pfx(rtable_lua) (lua_State *L)
   int t = lua_gettop(L);
   tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1);
   uint64_t cols = tk_lua_checkunsigned(L, 2, "cols");
-  int64_t start, end;
+  uint64_t start, end;
   if (t == 2) {
     start = 0;
     end = (m0->n + cols - 1) / cols;
   } else if (t == 4) {
-    start = tk_lua_checkinteger(L, 3, "start");
-    end = tk_lua_checkinteger(L, 4, "end");
+    start = tk_lua_checkunsigned(L, 3, "start");
+    end = tk_lua_checkunsigned(L, 4, "end");
   } else {
     tk_vec_err(L, rtable, 1, "expected either 2 or 4 arguments (vec, cols and optionally start/end cols)");
     return 0;
@@ -995,15 +964,15 @@ static inline int tk_vec_pfx(scale_lua) (lua_State *L)
   int t = lua_gettop(L);
   tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1);
   tk_vec_base scale;
-  int64_t start, end;
+  uint64_t start, end;
   if (t == 2) {
     scale = tk_lua_checkdouble(L, 2, "scale");
     start = 0;
     end = m0->n;
   } else if (t == 3) {
     scale = tk_lua_checkdouble(L, 2, "scale");
-    start = tk_lua_checkinteger(L, 3, "start");
-    end = tk_lua_checkinteger(L, 4, "end");
+    start = tk_lua_checkunsigned(L, 3, "start");
+    end = tk_lua_checkunsigned(L, 4, "end");
   } else {
     tk_vec_err(L, rtable, 1, "expected either 2 or 4 arguments (vec, scale, or vec, scale, start, end)");
     return 0;
@@ -1017,15 +986,15 @@ static inline int tk_vec_pfx(add_lua) (lua_State *L)
   int t = lua_gettop(L);
   tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1);
   tk_vec_base add;
-  int64_t start, end;
+  uint64_t start, end;
   if (t == 2) {
     add = tk_lua_checkdouble(L, 2, "add");
     start = 0;
     end = m0->n;
   } else if (t == 3) {
     add = tk_lua_checkdouble(L, 2, "add");
-    start = tk_lua_checkinteger(L, 3, "start");
-    end = tk_lua_checkinteger(L, 4, "end");
+    start = tk_lua_checkunsigned(L, 3, "start");
+    end = tk_lua_checkunsigned(L, 4, "end");
   } else {
     tk_vec_err(L, rtable, 1, "expected either 2 or 4 arguments (vec, add or vec, add, start, end)");
     return 0;
@@ -1039,13 +1008,13 @@ static inline int tk_vec_pfx(abs_lua) (lua_State *L)
 {
   int t = lua_gettop(L);
   tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1);
-  int64_t start, end;
+  uint64_t start, end;
   if (t == 1) {
     start = 0;
     end = m0->n;
   } else if (t == 2) {
-    start = tk_lua_checkinteger(L, 2, "start");
-    end = tk_lua_checkinteger(L, 3, "end");
+    start = tk_lua_checkunsigned(L, 2, "start");
+    end = tk_lua_checkunsigned(L, 3, "end");
   } else {
     tk_vec_err(L, rtable, 1, "expected either 1 or 3 arguments (vec or vec, start, end)");
     return 0;
@@ -1060,15 +1029,15 @@ static inline int tk_vec_pfx(exp_lua) (lua_State *L)
   int t = lua_gettop(L);
   tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1);
   tk_vec_base exp;
-  int64_t start, end;
+  uint64_t start, end;
   if (t == 2) {
     exp = tk_lua_checkdouble(L, 2, "exp");
     start = 0;
     end = m0->n;
   } else if (t == 3) {
     exp = tk_lua_checkdouble(L, 2, "exp");
-    start = tk_lua_checkinteger(L, 3, "start");
-    end = tk_lua_checkinteger(L, 4, "end");
+    start = tk_lua_checkunsigned(L, 3, "start");
+    end = tk_lua_checkunsigned(L, 4, "end");
   } else {
     tk_vec_err(L, rtable, 1, "expected either 2 or 4 arguments (vec, exp or vec, exp, start, end)");
     return 0;
@@ -1173,11 +1142,34 @@ static inline int tk_vec_pfx(each_lua_iter) (lua_State *L)
   return 1;
 }
 
+static inline int tk_vec_pfx(ieach_lua_iter) (lua_State *L)
+{
+  lua_settop(L, 0);
+  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, lua_upvalueindex(1));
+  uint64_t n = tk_lua_checkunsigned(L, lua_upvalueindex(2), "idx");
+  if (n >= m0->n)
+    return 0;
+  tk_vec_base v = m0->a[n];
+  lua_pushinteger(L, (int64_t) n + 1);
+  lua_replace(L, lua_upvalueindex(2));
+  lua_pushinteger(L, (int64_t) n);
+  tk_vec_pushbase(L, v);
+  return 2;
+}
+
 static inline int tk_vec_pfx(each_lua) (lua_State *L)
 {
   lua_settop(L, 1);
   lua_pushinteger(L, 0);
   lua_pushcclosure(L, tk_vec_pfx(each_lua_iter), 2);
+  return 1;
+}
+
+static inline int tk_vec_pfx(ieach_lua) (lua_State *L)
+{
+  lua_settop(L, 1);
+  lua_pushinteger(L, 0);
+  lua_pushcclosure(L, tk_vec_pfx(ieach_lua_iter), 2);
   return 1;
 }
 
@@ -1218,10 +1210,9 @@ static inline int tk_vec_pfx(from_raw_lua) (lua_State *L)
 
 #endif
 
-static luaL_Reg tk_vec_pfx(lua_fns)[] =
+static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
 {
 
-  { "create", tk_vec_pfx(create_lua) },
   { "copy", tk_vec_pfx(copy_lua) },
   { "size", tk_vec_pfx(size_lua) },
   { "capacity", tk_vec_pfx(capacity_lua) },
@@ -1276,6 +1267,7 @@ static luaL_Reg tk_vec_pfx(lua_fns)[] =
   { "rmins", tk_vec_pfx(cmins_lua) },
 
 
+  { "shuffle", tk_vec_pfx(shuffle_lua) },
   { "asc", tk_vec_pfx(asc_lua) },
   { "desc", tk_vec_pfx(desc_lua) },
   { "kasc", tk_vec_pfx(kasc_lua) },
@@ -1283,6 +1275,7 @@ static luaL_Reg tk_vec_pfx(lua_fns)[] =
 
 
   { "each", tk_vec_pfx(each_lua) },
+  { "ieach", tk_vec_pfx(ieach_lua) },
 
 
   { "fill", tk_vec_pfx(fill_lua) },
@@ -1290,13 +1283,46 @@ static luaL_Reg tk_vec_pfx(lua_fns)[] =
 
 
   { "raw", tk_vec_pfx(raw_lua) },
-  { "from_raw", tk_vec_pfx(from_raw_lua) },
 
 #endif
 
   { NULL, NULL }
 };
 
-#endif
+static inline void tk_vec_pfx(suppress_unused_lua_mt_fns) (void)
+  { (void) tk_vec_pfx(lua_mt_fns); }
 
-#include <santoku/vec.undef.h>
+static inline tk_vec_pfx(t) *tk_vec_pfx(create) (lua_State *L, size_t n, tk_vec_base *data, tk_vec_pfx(t) *v)
+{
+  tk_vec_pfx(t) v0;
+  if (v == NULL) {
+    v = tk_lua_newuserdata(L, tk_vec_pfx(t), tk_vec_mt, tk_vec_pfx(lua_mt_fns), tk_vec_pfx(destroy_lua));
+    v0 = *v;
+    kv_init(v0);
+    kv_resize(tk_vec_base, v0, n);
+    v0.n = n;
+    *v = v0;
+    return v;
+  } else if (v->a && v->a != data) {
+    free(v->a);
+  }
+  v->n = n;
+  v->m = n;
+  v->a = data;
+  return v;
+}
+
+static luaL_Reg tk_vec_pfx(lua_fns)[] =
+{
+  { "create", tk_vec_pfx(create_lua) },
+  { "destroy", tk_vec_pfx(destroy_lua) },
+#ifndef tk_vec_limited
+  { "from_raw", tk_vec_pfx(from_raw_lua) },
+#endif
+  { NULL, NULL }
+};
+
+static inline void tk_vec_pfx(suppress_unused_lua_fns) (void)
+  { (void) tk_vec_pfx(lua_fns); }
+
+#include <santoku/vec/undef.h>

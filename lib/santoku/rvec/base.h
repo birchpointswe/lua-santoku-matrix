@@ -9,7 +9,7 @@ typedef struct { int64_t i; double d; } tk_rank_t;
 #define tk_vec_lt(a, b) ((a).d < (b).d)
 #define tk_vec_gt(a, b) ((a).d > (b).d)
 #define tk_vec_limited
-#include <santoku/vec.template.h>
+#include <santoku/vec/tpl.h>
 
 static inline void tk_rvec_hasc (tk_rvec_t *v, tk_rank_t r)
 {

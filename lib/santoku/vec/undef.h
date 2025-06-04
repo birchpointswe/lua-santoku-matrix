@@ -1,6 +1,3 @@
-#undef tk_str
-#undef tk_strcat
-#undef tk_strcat2
 #undef tk_vec_base
 #undef tk_vec_err
 #undef tk_vec_gt
@@ -15,5 +12,4 @@
 #undef tk_vec_pfx
 #undef tk_vec_pushbase
 #undef tk_vec_limited
-#undef tk_xstr
 #undef tk_vec_abs

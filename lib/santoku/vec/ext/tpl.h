@@ -1,16 +1,4 @@
-#ifndef tk_vec_name
-#error "tk_vec_name missing"
-#endif
-
-#ifndef tk_vec_base
-#error "tk_vec_base missing"
-#endif
-
-#define tk_str(x) #x
-#define tk_xstr(x) tk_str(x)
-#define tk_strcat2(a, b) a##_##b
-#define tk_strcat(a, b) tk_strcat2(a, b)
-#define tk_vec_pfx(name) tk_strcat(tk_vec_name, name)
+#define tk_vec_pfx(name) tk_pp_strcat(tk_vec_name, name)
 
 #ifndef tk_vec_limited
 
@@ -220,8 +208,6 @@ static inline tk_ivec_t *tk_vec_pfx(rminargs) (
 
 #endif
 
-#ifdef tk_vec_lua
-
 #ifndef tk_vec_limited
 
 static inline int tk_vec_pfx(rmagnitudes_lua) (lua_State *L) {
@@ -310,7 +296,7 @@ static inline int tk_vec_pfx(cdesc_lua) (lua_State *L)
 
 #endif
 
-static luaL_Reg tk_vec_pfx(lua_fns)[] =
+static luaL_Reg tk_vec_pfx(lua_mt_ext_fns)[] =
 {
 #ifndef tk_vec_limited
   { "cmagnitudes", tk_vec_pfx(cmagnitudes_lua) },
@@ -327,6 +313,7 @@ static luaL_Reg tk_vec_pfx(lua_fns)[] =
   { NULL, NULL }
 };
 
-#endif
+static inline void tk_vec_pfx(suppress_unused_lua_mt_ext_fns) (void)
+  { (void) tk_vec_pfx(lua_mt_ext_fns); }
 
-#include <santoku/vec.undef.h>
+#include <santoku/vec/undef.h>
