@@ -13,4 +13,6 @@
 #define tk_vec_limited
 #include <santoku/vec/ext/tpl.h>
 
+#include <santoku/rvec/ext.h>
+
 #endif

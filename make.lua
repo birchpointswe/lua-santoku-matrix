@@ -7,7 +7,8 @@ local env = {
   public = true,
 
   cflags = {
-    "-march=native", "-std=gnu11", "-O3", "-Wall", "-Wextra", "-Wstrict-overflow",
+    "-march=native", "-std=gnu11", "-O3", "-Wall", "-Wextra",
+    "-Wstrict-overflow", "-Wsign-conversion", "-Wsign-compare",
     "-I$(shell luarocks show santoku --rock-dir)/include/",
     "-I$(shell luarocks show santoku-threads --rock-dir)/include/",
   },
