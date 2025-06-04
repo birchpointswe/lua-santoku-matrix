@@ -43,6 +43,7 @@ static inline void tk_ivec_worker (void *dp, int sig)
   tk_ivec_t *feat_counts = state->feat_counts;
   atomic_ulong *bit_counts = state->bit_counts;
   char *codes = state->codes;
+  uint64_t chunks = (n_hidden + CHAR_BIT - 1) / CHAR_BIT;
   switch ((tk_ivec_stage_t) sig) {
 
     case TK_IVEC_CHI2:
@@ -112,7 +113,7 @@ static inline void tk_ivec_worker (void *dp, int sig)
         for (uint64_t j = 0; j < n_hidden; j ++) {
           uint64_t word = j / CHAR_BIT;
           uint64_t bit = j % CHAR_BIT;
-          if ((codes[i * (n_hidden / CHAR_BIT) + word] >> bit) & 1)
+          if (codes[i * chunks + word] & (1 << bit))
             atomic_fetch_add(bit_counts + j, 1);
         }
       }
