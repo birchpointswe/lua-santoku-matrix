@@ -6,11 +6,7 @@
   there should be no destroy function (users must user the lua api)
 
 - templatize ordered/unordered map/set under a single map.template.h
-
 - Update iuset/ioset/iumap/iomap to have a lua API and to use lua state for cleanup
-
-- x_create functions should accept optional int pointer to fill with lua stack
-  position (for ref)
 
 - Integrate into toku base or separate library
 
@@ -19,34 +15,26 @@
 - Use these structures across all libraries where possibe
 
 - cvec: tests, to/from string
-- rvec: lua api, especially for heap fns
+- rvec, pvec: lua api for heap fns, get/set item/rank, keys, values,
 - ivec: bitmap functions
-- dvec: glove clustering test case
-
-- Pull ephemeron logic from toku web/python (attach arbitrary lua values weakly
-  to other lua values) for linking garbage collection of xvec and xmap/set
-  objects to other lua values
 
 # Next
 
+- Tests for containers
+
 - Intelligent handling of pthread availability. When threads == 0 or 1,
   completely avoid threads (don't just use one spawned thread).
-
-- Can we replace dense codes with sparse set-bits format in tk_ivec_t bitmap
-  functions?
 
 - Heap for top_chi2 and top_mi instead of keeping full list
 
 # Consider
 
-- Additional containers?
+- Additional default containers?
 
-    - tk_cuset_t: khash_t(tk_cvec_t)
     - tk_coset_t: kbtree_t(tk_cvec_t)
-
     - tk_cumap_t: khash_t(int64_t, tk_cvec_t)
     - tk_comap_t: kbtree_t(int64_t, tk_cvec_t)
-    - tk_zumap_t: khash_t(tk_cvec_t, int64_t)
+
     - tk_zomap_t: kbtree_t(tk_cvec_t, int64_t)
     - tk_vumap_t: khash_t(tk_cvec_t, tk_cvec_t)
     - tk_vomap_t: kbtree_t(tk_cvec_t, tk_cvec_t)
@@ -55,3 +43,6 @@
     - tk_domap_t: kbtree_t(int64_t, double)
     - tk_rumap_t: khash_t(int64_t, tk_rank_t)
     - tk_romap_t: kbtree_t(int64_t, tk_rank_t)
+
+    - tk_pumap_t: khash_t(int64_t, tk_pair_t)
+    - tk_pomap_t: kbtree_t(int64_t, tk_pair_t)
