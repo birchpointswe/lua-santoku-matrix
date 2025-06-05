@@ -1,10 +1,7 @@
 #ifndef TK_RVEC_H
 #define TK_RVEC_H
 
-#include <santoku/ivec/base.h>
-#include <santoku/rvec/base.h>
-#include <santoku/dvec/base.h>
-#include <santoku/cvec/base.h>
+#include <santoku/vec/base.h>
 
 #define tk_vec_name tk_rvec
 #define tk_vec_base tk_rank_t

@@ -4,7 +4,7 @@
 
 static inline int tk_ivec_flip_interleave_lua (lua_State *L) {
   lua_settop(L, 3);
-  tk_ivec_t *m0 = tk_ivec_peek(L, 1);
+  tk_ivec_t *m0 = tk_ivec_peek(L, 1, "set_bits");
   uint64_t n_samples = tk_lua_checkunsigned(L, 2, "samples");
   uint64_t n_features = tk_lua_checkunsigned(L, 3, "features");
   tk_ivec_flip_interleave(L, m0, n_samples, n_features);
@@ -27,7 +27,7 @@ static inline int tk_ivec_score_chi2_lua (
   lua_State *L
 ) {
   lua_settop(L, 6);
-  tk_ivec_t *set_bits = tk_ivec_peek(L, 1);
+  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
   uint64_t n_samples = tk_lua_checkunsigned(L, 3, "samples");
   uint64_t n_visible = tk_lua_checkunsigned(L, 4, "visible");
   uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
@@ -39,7 +39,7 @@ static inline int tk_ivec_score_chi2_lua (
   } else if (lua_type(L, 2) == LUA_TLIGHTUSERDATA) {
     codes = (char *) lua_touserdata(L, 2);
   } else {
-    tk_ivec_t *m1 = tk_ivec_peek(L, 2);
+    tk_ivec_t *m1 = tk_ivec_peek(L, 2, "labels");
     n_samples = m1->n < n_samples ? m1->n : n_samples;
     labels = m1;
   }
@@ -51,7 +51,7 @@ static inline int tk_ivec_score_mi_lua (
   lua_State *L
 ) {
   lua_settop(L, 6);
-  tk_ivec_t *set_bits = tk_ivec_peek(L, 1);
+  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
   uint64_t n_samples = tk_lua_checkunsigned(L, 3, "samples");
   uint64_t n_visible = tk_lua_checkunsigned(L, 4, "visible");
   uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
@@ -63,7 +63,7 @@ static inline int tk_ivec_score_mi_lua (
   } else if (lua_type(L, 2) == LUA_TLIGHTUSERDATA) {
     codes = (char *) lua_touserdata(L, 2);
   } else {
-    tk_ivec_t *m1 = tk_ivec_peek(L, 2);
+    tk_ivec_t *m1 = tk_ivec_peek(L, 2, "labels");
     n_samples = m1->n < n_samples ? m1->n : n_samples;
     labels = m1;
   }
@@ -74,7 +74,7 @@ static inline int tk_ivec_score_mi_lua (
 static inline int tk_ivec_top_mi_lua (lua_State *L)
 {
   lua_settop(L, 7);
-  tk_ivec_t *set_bits = tk_ivec_peek(L, 1);
+  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
   uint64_t n_samples = tk_lua_checkunsigned(L, 3, "samples");
   uint64_t n_visible = tk_lua_checkunsigned(L, 4, "visible");
   uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
@@ -87,7 +87,7 @@ static inline int tk_ivec_top_mi_lua (lua_State *L)
   } else if (lua_type(L, 2) == LUA_TLIGHTUSERDATA) {
     codes = (char *) lua_touserdata(L, 2);
   } else {
-    tk_ivec_t *m1 = tk_ivec_peek(L, 2);
+    tk_ivec_t *m1 = tk_ivec_peek(L, 2, "labels");
     n_samples = m1->n < n_samples ? m1->n : n_samples;
     labels = m1;
   }
@@ -110,7 +110,7 @@ static inline int tk_ivec_top_entropy_lua (lua_State *L)
 static inline int tk_ivec_top_chi2_lua (lua_State *L)
 {
   lua_settop(L, 7);
-  tk_ivec_t *set_bits = tk_ivec_peek(L, 1);
+  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
   uint64_t n_samples = tk_lua_checkunsigned(L, 3, "samples");
   uint64_t n_visible = tk_lua_checkunsigned(L, 4, "visible");
   uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
@@ -123,7 +123,7 @@ static inline int tk_ivec_top_chi2_lua (lua_State *L)
   } else if (lua_type(L, 2) == LUA_TLIGHTUSERDATA) {
     codes = (char *) lua_touserdata(L, 2);
   } else {
-    tk_ivec_t *m1 = tk_ivec_peek(L, 2);
+    tk_ivec_t *m1 = tk_ivec_peek(L, 2, "labels");
     n_samples = m1->n < n_samples ? m1->n : n_samples;
     labels = m1;
   }
@@ -134,8 +134,8 @@ static inline int tk_ivec_top_chi2_lua (lua_State *L)
 static inline int tk_ivec_filter_lua (lua_State *L)
 {
   lua_settop(L, 3);
-  tk_ivec_t *set_bits = tk_ivec_peek(L, 1);
-  tk_ivec_t *top_v = tk_ivec_peek(L, 2);
+  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
+  tk_ivec_t *top_v = tk_ivec_peek(L, 2, "top_v");
   uint64_t n_visible = tk_lua_checkunsigned(L, 3, "visible");
   tk_ivec_filter(L, set_bits, top_v, n_visible);
   return 0;
@@ -144,7 +144,7 @@ static inline int tk_ivec_filter_lua (lua_State *L)
 static inline int tk_ivec_raw_bitmap_lua (lua_State *L)
 {
   lua_settop(L, 3);
-  tk_ivec_t *set_bits = tk_ivec_peek(L, 1);
+  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
   uint64_t n_samples = tk_lua_checkunsigned(L, 2, "samples");
   uint64_t n_features = tk_lua_checkunsigned(L, 3, "features");
   size_t l;
@@ -167,8 +167,8 @@ static inline int tk_ivec_from_bitmap_lua (lua_State *L)
 static inline int tk_ivec_extend_bits_lua (lua_State *L)
 {
   lua_settop(L, 4);
-  tk_ivec_t *base = tk_ivec_peek(L, 1);
-  tk_ivec_t *ext = tk_ivec_peek(L, 2);
+  tk_ivec_t *base = tk_ivec_peek(L, 1, "base_bits");
+  tk_ivec_t *ext = tk_ivec_peek(L, 2, "ext_bits");
   uint64_t n_feat = tk_lua_checkunsigned(L, 3, "features");
   uint64_t n_extfeat = tk_lua_checkunsigned(L, 4, "extended");
   tk_ivec_extend_bits(L, base, ext, n_feat, n_extfeat);

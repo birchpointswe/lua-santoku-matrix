@@ -1,10 +1,7 @@
 #ifndef TK_DVEC_H
 #define TK_DVEC_H
 
-#include <santoku/ivec/base.h>
-#include <santoku/rvec/base.h>
-#include <santoku/dvec/base.h>
-#include <santoku/cvec/base.h>
+#include <santoku/vec/base.h>
 
 #define tk_vec_name tk_dvec
 #define tk_vec_base double
