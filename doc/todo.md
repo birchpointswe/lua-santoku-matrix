@@ -1,5 +1,7 @@
 # Now
 
+- Merge into base santoku
+
 - Standard peek/test: tk_xvec_check, tk_xvec_test, tk_xvec_fcheck, tk_xvec_ftest
 
 - usage of lua state in the C api should be limited strictly to create, and

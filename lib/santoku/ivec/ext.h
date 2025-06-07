@@ -122,6 +122,17 @@ static inline void tk_ivec_worker (void *dp, int sig)
   }
 }
 
+static inline tk_ivec_t *tk_ivec_from_iuset (lua_State *L, tk_iuset_t *s)
+{
+  tk_ivec_t *v = tk_ivec_create(L, tk_iuset_size(s), 0, 0);
+  int64_t x;
+  v->n = 0;
+  tk_iuset_foreach(s, x, ({
+    v->a[v->n ++] = x;
+  }))
+  return v;
+}
+
 static inline tk_iuset_t *tk_iuset_from_ivec (tk_ivec_t *v)
 {
   int kha;

@@ -28,6 +28,50 @@ typedef khash_t(tk_iuset) tk_iuset_t;
 		code;	\
 	} }
 
+static inline void tk_iuset_union (tk_iuset_t *a, tk_iuset_t *b)
+{
+  int kha;
+  int64_t x;
+  tk_iuset_foreach(b, x, ({
+    tk_iuset_put(a, x, &kha);
+  }));
+}
+
+static inline double tk_iuset_jaccard (tk_iuset_t *a, tk_iuset_t *b)
+{
+  uint64_t intersection = 0;
+  uint64_t union_count = 0;
+  int64_t x;
+  tk_iuset_foreach(a, x, ({
+    if (tk_iuset_contains(b, x))
+      intersection ++;
+  }));
+  union_count = tk_iuset_size(a) + tk_iuset_size(b) - intersection;
+  if (union_count == 0)
+    return 0.0;
+  return (double) intersection / (double) union_count;
+}
+
+static inline void tk_iuset_intersect (tk_iuset_t *a, tk_iuset_t *b)
+{
+  khint_t i;
+  int64_t x;
+  tk_iuset_foreach(a, x, ({
+    if (!tk_iuset_contains(b, x))
+      kh_del(tk_iuset, a, i);
+  }))
+}
+
+static inline void tk_iuset_difference (tk_iuset_t *a, tk_iuset_t *b)
+{
+  khint_t i;
+  int64_t x;
+  tk_iuset_foreach(a, x, ({
+    if (tk_iuset_contains(b, x))
+      kh_del(tk_iuset, a, i);
+  }))
+}
+
 
 
 
