@@ -43,6 +43,10 @@ static inline tk_vec_pfx(t) *tk_vec_pfx(peekopt) (lua_State *L, int i)
 
 static inline void tk_vec_pfx(destroy) (tk_vec_pfx(t) *r)
 {
+#ifdef tk_vec_destroy_item
+  for (uint64_t i = 0; i < r->n; i ++)
+    tk_vec_destroy_item(r->a[i]);
+#endif
   kv_destroy(*r);
   memset(r, 0, sizeof(tk_vec_pfx(t)));
 }

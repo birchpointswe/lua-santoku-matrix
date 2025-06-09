@@ -1,9 +1,12 @@
+#undef tk_vec_abs
 #undef tk_vec_base
+#undef tk_vec_destroy_item
 #undef tk_vec_err
 #undef tk_vec_gt
 #undef tk_vec_introsort
 #undef tk_vec_ksmall
 #undef tk_vec_ksort
+#undef tk_vec_limited
 #undef tk_vec_lt
 #undef tk_vec_lua
 #undef tk_vec_mt
@@ -11,5 +14,3 @@
 #undef tk_vec_peekbase
 #undef tk_vec_pfx
 #undef tk_vec_pushbase
-#undef tk_vec_limited
-#undef tk_vec_abs

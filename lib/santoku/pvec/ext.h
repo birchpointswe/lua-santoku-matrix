@@ -32,4 +32,3 @@ static inline tk_ivec_t *tk_pvec_values (
 }
 
 #endif
-
