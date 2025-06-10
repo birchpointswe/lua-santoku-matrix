@@ -34,12 +34,26 @@ static inline tk_iumap_t *tk_iumap_from_ivec (tk_ivec_t *V)
   return M;
 }
 
+#define tk_iumap_foreach_keys(h, kvar, code) { khint_t __i; \
+	for (__i = kh_begin(h); __i != kh_end(h); ++__i) { \
+		if (!kh_exist(h,__i)) continue; \
+		(kvar) = kh_key(h,__i); \
+		code;	\
+	} }
+
+#define tk_iumap_foreach_values(h, vvar, code) { khint_t __i; \
+	for (__i = kh_begin(h); __i != kh_end(h); ++__i) { \
+		if (!kh_exist(h,__i)) continue; \
+		(vvar) = kh_value(h,__i); \
+		code;	\
+	} }
+
 static inline tk_ivec_t *tk_iumap_values (lua_State *L, tk_iumap_t *M)
 {
   tk_ivec_t *out = tk_ivec_create(L, tk_iumap_size(M), 0, 0);
-  int64_t k, v;
+  int64_t v;
   out->n = 0;
-  tk_iumap_foreach(M, k, v, ({
+  tk_iumap_foreach_values(M, v, ({
     out->a[out->n ++] = v;
   }));
   return out;
@@ -48,9 +62,9 @@ static inline tk_ivec_t *tk_iumap_values (lua_State *L, tk_iumap_t *M)
 static inline tk_ivec_t *tk_iumap_keys (lua_State *L, tk_iumap_t *M)
 {
   tk_ivec_t *out = tk_ivec_create(L, tk_iumap_size(M), 0, 0);
-  int64_t k, v;
+  int64_t k;
   out->n = 0;
-  tk_iumap_foreach(M, k, v, ({
+  tk_iumap_foreach_keys(M, k, ({
     out->a[out->n ++] = k;
   }));
   return out;

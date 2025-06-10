@@ -11,6 +11,15 @@ static inline int tk_ivec_flip_interleave_lua (lua_State *L) {
   return 0;
 }
 
+static inline int tk_ivec_bits_rearrange_lua (lua_State *L) {
+  lua_settop(L, 3);
+  tk_ivec_t *m0 = tk_ivec_peek(L, 1, "set_bits");
+  tk_ivec_t *ids = tk_ivec_peek(L, 2, "ids");
+  uint64_t n_features = tk_lua_checkunsigned(L, 3, "features");
+  tk_ivec_bits_rearrange(m0, ids, n_features);
+  return 0;
+}
+
 static inline int tk_ivec_score_entropy_lua (
   lua_State *L
 ) {
@@ -188,6 +197,7 @@ static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
   { "raw_bitmap", tk_ivec_raw_bitmap_lua },
   { "from_bitmap", tk_ivec_from_bitmap_lua },
   { "extend_bits", tk_ivec_extend_bits_lua },
+  { "bits_rearrange", tk_ivec_bits_rearrange_lua },
   { NULL, NULL }
 };
 

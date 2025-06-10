@@ -3,6 +3,7 @@
 
 #include <santoku/rvec.h>
 #include <santoku/iuset.h>
+#include <santoku/iumap.h>
 #include <santoku/threads.h>
 #include <stdatomic.h>
 
@@ -150,6 +151,34 @@ static inline tk_ivec_t *tk_ivec_from_rvec (
   for (int64_t i = 0; i < (int64_t) R->n; i ++)
     I->a[i] = R->a[i].i;
   return I;
+}
+
+static inline int tk_ivec_bits_rearrange (
+  tk_ivec_t *m0,
+  tk_ivec_t *ids,
+  uint64_t n_features
+) {
+  tk_ivec_asc(m0, 0, m0->n);
+  tk_iumap_t *remap = tk_iumap_create();
+  int kha;
+  khint_t khi;
+  for (int64_t i = 0; i < (int64_t) ids->n; i ++) {
+    khi = tk_iumap_put(remap, ids->a[i], &kha);
+    tk_iumap_value(remap, khi) = i;
+  }
+  size_t write = 0;
+  for (int64_t i = 0; i < (int64_t) m0->n; i ++) {
+    int64_t b = m0->a[i];
+    int64_t s0 = b / (int64_t) n_features;
+    khi = tk_iumap_get(remap, s0);
+    if (khi == tk_iumap_end(remap))
+      continue;
+    int64_t s1 = tk_iumap_value(remap, khi);
+    m0->a[write ++] = b - s0 + s1;
+  }
+  m0->n = write;
+  tk_iumap_destroy(remap);
+  return 0;
 }
 
 static inline int tk_ivec_flip_interleave (
