@@ -178,6 +178,7 @@ static inline int tk_ivec_bits_rearrange (
   }
   m0->n = write;
   tk_iumap_destroy(remap);
+  tk_ivec_asc(m0, 0, m0->n);
   return 0;
 }
 
