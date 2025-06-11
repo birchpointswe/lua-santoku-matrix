@@ -62,7 +62,8 @@ static inline tk_vec_pfx(t) *tk_vec_pfx(create) (lua_State *, size_t, tk_vec_bas
 static inline void tk_vec_pfx(resize) (
   lua_State *L,
   tk_vec_pfx(t) *m0,
-  size_t m
+  size_t m,
+  bool setn
 ) {
   tk_vec_pfx(t) v = *m0;
   if (m == 0) {
@@ -74,8 +75,22 @@ static inline void tk_vec_pfx(resize) (
     kv_resize(tk_vec_base, v, m);
     if (m0->a == NULL)
       tk_vec_err(L, resize, 1, "resize failed");
+    v.m = m;
+    if (setn)
+      v.n = m;
     *m0 = v;
   }
+}
+
+static inline void tk_vec_pfx(setn) (
+  lua_State *L,
+  tk_vec_pfx(t) *m0,
+  size_t n
+) {
+  if (n > m0->m)
+    tk_vec_pfx(resize)(L, m0, n, true);
+  else
+    m0->n = n;
 }
 
 static inline void tk_vec_pfx(ensure) (
@@ -85,7 +100,7 @@ static inline void tk_vec_pfx(ensure) (
 ) {
   if (m0->m >= m)
     return;
-  tk_vec_pfx(resize)(L, m0, m);
+  tk_vec_pfx(resize)(L, m0, m, false);
 }
 
 static inline void tk_vec_pfx(copy) (
@@ -137,7 +152,7 @@ static inline void tk_vec_pfx(shrink) (
   lua_State *L,
   tk_vec_pfx(t) *v
 ) {
-  tk_vec_pfx(resize)(L, v, v->n);
+  tk_vec_pfx(resize)(L, v, v->n, true);
 }
 
 static inline void tk_vec_pfx(clear) (
@@ -719,6 +734,15 @@ static inline int tk_vec_pfx(capacity_lua) (lua_State *L)
   return 1;
 }
 
+static inline int tk_vec_pfx(setn_lua) (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
+  uint64_t n = tk_lua_checkunsigned(L, 2, "n");
+  tk_vec_pfx(setn)(L, m0, n);
+  return 0;
+}
+
 static inline int tk_vec_pfx(size_lua) (lua_State *L)
 {
   lua_settop(L, 1);
@@ -732,7 +756,7 @@ static inline int tk_vec_pfx(resize_lua) (lua_State *L)
   lua_settop(L, 2);
   tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
   uint64_t m = tk_lua_checkunsigned(L, 2, "size");
-  tk_vec_pfx(resize)(L, m0, m);
+  tk_vec_pfx(resize)(L, m0, m, true);
   return 0;
 }
 
@@ -1196,6 +1220,7 @@ static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
   { "size", tk_vec_pfx(size_lua) },
   { "capacity", tk_vec_pfx(capacity_lua) },
   { "resize", tk_vec_pfx(resize_lua) },
+  { "setn", tk_vec_pfx(setn_lua) },
   { "ensure", tk_vec_pfx(ensure_lua) },
   { "shrink", tk_vec_pfx(shrink_lua) },
   { "clear", tk_vec_pfx(clear_lua) },

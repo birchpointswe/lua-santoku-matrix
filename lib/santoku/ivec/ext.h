@@ -188,30 +188,25 @@ static inline int tk_ivec_flip_interleave (
   uint64_t n_features
 ) {
   tk_ivec_asc(m0, 0, m0->n);
-  size_t total = n_samples * n_features;
-  tk_ivec_ensure(L, m0, 2 * total);
-  size_t write = m0->n;
-  size_t last = 0;
-  int64_t s, k;
-  size_t n = m0->n;
-  for (size_t i_present = 0; i_present < n; i_present ++) {
-    int64_t x = m0->a[i_present];
-    s = x / (int64_t) n_features;
-    k = x % (int64_t) n_features;
-    m0->a[i_present] = (s * 2 * (int64_t) n_features) + k;
-    for (size_t y = last; y < (size_t) x; y ++) {
-      int64_t s = (int64_t) y / (int64_t) n_features;
-      int64_t k = (int64_t) y % (int64_t) n_features;
-      m0->a[write ++] = (s * 2 * (int64_t) n_features) + (int64_t) n_features + k;
+  size_t orig_n = m0->n;
+  size_t total = (size_t) (n_samples * n_features);
+  tk_ivec_ensure(L, m0, total);
+  int64_t *orig = tk_malloc(L, orig_n * sizeof(int64_t));
+  memcpy(orig, m0->a, orig_n * sizeof(int64_t));
+  size_t p = 0;
+  size_t idx = 0;
+  for (uint64_t y = 0; y < total; y ++) {
+    uint64_t s = y / n_features;
+    uint64_t k = y % n_features;
+    if (p < orig_n && orig[p] == (int64_t) y) {
+      m0->a[idx ++] = (int64_t) (s * 2 * n_features + k);
+      p ++;
+    } else {
+      m0->a[idx ++] = (int64_t) (s * 2 * n_features + n_features + k);
     }
-    last = (size_t) x + 1;
   }
-  for (size_t y = last; y < total; y ++) {
-    int64_t s = (int64_t) y / (int64_t) n_features;
-    int64_t k = (int64_t) y % (int64_t) n_features;
-    m0->a[write ++] = (s * 2 * (int64_t) n_features) + (int64_t) n_features + k;
-  }
-  m0->n = write;
+  free(orig);
+  m0->n = idx;
   tk_ivec_asc(m0, 0, m0->n);
   return 0;
 }
