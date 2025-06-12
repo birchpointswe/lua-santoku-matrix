@@ -174,7 +174,8 @@ static inline int tk_ivec_bits_rearrange (
     if (khi == tk_iumap_end(remap))
       continue;
     int64_t s1 = tk_iumap_value(remap, khi);
-    m0->a[write ++] = b - s0 + s1;
+    int64_t f = b % (int64_t) n_features;
+    m0->a[write ++] = s1 * (int64_t) n_features + f;
   }
   m0->n = write;
   tk_iumap_destroy(remap);
