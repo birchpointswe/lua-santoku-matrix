@@ -10,4 +10,6 @@
 #define tk_vec_abs(...) fabs(__VA_ARGS__)
 #include <santoku/vec/ext/tpl.h>
 
+#include <santoku/dvec/ext.h>
+
 #endif
