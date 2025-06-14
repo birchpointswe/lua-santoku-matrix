@@ -101,7 +101,7 @@ static inline int tk_ivec_top_mi_lua (lua_State *L)
     labels = m1;
   }
   tk_ivec_top_mi(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, top_k, n_threads);
-  return 1;
+  return 2;
 }
 
 static inline int tk_ivec_top_entropy_lua (lua_State *L)
@@ -137,7 +137,7 @@ static inline int tk_ivec_top_chi2_lua (lua_State *L)
     labels = m1;
   }
   tk_ivec_top_chi2(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, top_k, n_threads);
-  return 1;
+  return 2;
 }
 
 static inline int tk_ivec_filter_lua (lua_State *L)

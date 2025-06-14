@@ -663,8 +663,9 @@ static inline tk_ivec_t *tk_ivec_top_mi (
 ) {
   tk_ivec_asc(set_bits, 0, set_bits->n);
   tk_dvec_t *scores = tk_ivec_score_mi(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, n_threads);
+  int iscores = tk_lua_absindex(L, -1);
   tk_ivec_t *out = tk_ivec_top_generic(L, scores, n_visible, n_hidden, top_k, 0);
-  tk_dvec_destroy(scores);
+  lua_pushvalue(L, iscores);
   return out;
 }
 
@@ -698,8 +699,9 @@ static inline tk_ivec_t *tk_ivec_top_chi2 (
 ) {
   tk_ivec_asc(set_bits, 0, set_bits->n);
   tk_dvec_t *scores = tk_ivec_score_chi2(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, n_threads);
+  int iscores = tk_lua_absindex(L, -1);
   tk_ivec_t *out = tk_ivec_top_generic(L, scores, n_visible, n_hidden, top_k, 0);
-  tk_dvec_destroy(scores);
+  lua_pushvalue(L, iscores);
   return out;
 }
 

@@ -42,6 +42,8 @@ static luaL_Reg tk_pvec_lua_mt_ext2_fns[] =
   { "set", tk_pvec_set_lua },
   { "keys", tk_pvec_keys_lua },
   { "values", tk_pvec_values_lua },
+  { "each", tk_pvec_each0_lua },
+  { "ieach", tk_pvec_ieach0_lua },
   { NULL, NULL }
 };
 

@@ -10,8 +10,6 @@
 - templatize ordered/unordered map/set under a single map.template.h
 - Update iuset/ioset/iumap/iomap to have a lua API and to use lua state for cleanup
 
-- Integrate into toku base or separate library
-
 # Later
 
 - Use these structures across all libraries where possibe
