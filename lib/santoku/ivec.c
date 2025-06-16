@@ -184,8 +184,104 @@ static inline int tk_ivec_extend_bits_lua (lua_State *L)
   return 0;
 }
 
+static inline int tk_ivec_copy_pkeys_lua (lua_State *L)
+{
+  int t = lua_gettop(L);
+  tk_ivec_t *m0 = tk_ivec_peek(L, 1, "dest");
+  tk_pvec_t *m1 = tk_pvec_peek(L, 2, "source");
+  int64_t start, end, dest;
+  if (t == 2) {
+    start = 0;
+    end = (int64_t) m1->n;
+    dest = (int64_t) m0->n;
+  } else if (t == 3) {
+    start = 0;
+    end = (int64_t) m1->n;
+    dest = tk_lua_checkinteger(L, 3, "dest");
+  } else {
+    start = tk_lua_checkinteger(L, 3, "start");
+    end = tk_lua_checkinteger(L, 4, "end");
+    dest = tk_lua_checkinteger(L, 5, "dest");
+  }
+  tk_ivec_copy_pkeys(L, m0, m1, start, end, dest);
+  return 0;
+}
+
+static inline int tk_ivec_copy_rkeys_lua (lua_State *L)
+{
+  int t = lua_gettop(L);
+  tk_ivec_t *m0 = tk_ivec_peek(L, 1, "dest");
+  tk_rvec_t *m1 = tk_rvec_peek(L, 2, "source");
+  int64_t start, end, dest;
+  if (t == 2) {
+    start = 0;
+    end = (int64_t) m1->n;
+    dest = (int64_t) m0->n;
+  } else if (t == 3) {
+    start = 0;
+    end = (int64_t) m1->n;
+    dest = tk_lua_checkinteger(L, 3, "dest");
+  } else {
+    start = tk_lua_checkinteger(L, 3, "start");
+    end = tk_lua_checkinteger(L, 4, "end");
+    dest = tk_lua_checkinteger(L, 5, "dest");
+  }
+  tk_ivec_copy_rkeys(L, m0, m1, start, end, dest);
+  return 0;
+}
+
+static inline int tk_ivec_copy_pvalues_lua (lua_State *L)
+{
+  int t = lua_gettop(L);
+  tk_ivec_t *m0 = tk_ivec_peek(L, 1, "dest");
+  tk_pvec_t *m1 = tk_pvec_peek(L, 2, "source");
+  int64_t start, end, dest;
+  if (t == 2) {
+    start = 0;
+    end = (int64_t) m1->n;
+    dest = (int64_t) m0->n;
+  } else if (t == 3) {
+    start = 0;
+    end = (int64_t) m1->n;
+    dest = tk_lua_checkinteger(L, 3, "dest");
+  } else {
+    start = tk_lua_checkinteger(L, 3, "start");
+    end = tk_lua_checkinteger(L, 4, "end");
+    dest = tk_lua_checkinteger(L, 5, "dest");
+  }
+  tk_ivec_copy_pvalues(L, m0, m1, start, end, dest);
+  return 0;
+}
+
+static inline int tk_ivec_copy_rvalues_lua (lua_State *L)
+{
+  int t = lua_gettop(L);
+  tk_ivec_t *m0 = tk_ivec_peek(L, 1, "dest");
+  tk_rvec_t *m1 = tk_rvec_peek(L, 2, "source");
+  int64_t start, end, dest;
+  if (t == 2) {
+    start = 0;
+    end = (int64_t) m1->n;
+    dest = (int64_t) m0->n;
+  } else if (t == 3) {
+    start = 0;
+    end = (int64_t) m1->n;
+    dest = tk_lua_checkinteger(L, 3, "dest");
+  } else {
+    start = tk_lua_checkinteger(L, 3, "start");
+    end = tk_lua_checkinteger(L, 4, "end");
+    dest = tk_lua_checkinteger(L, 5, "dest");
+  }
+  tk_ivec_copy_rvalues(L, m0, m1, start, end, dest);
+  return 0;
+}
+
 static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
 {
+  { "copy_pkeys", tk_ivec_copy_pkeys_lua },
+  { "copy_rkeys", tk_ivec_copy_rkeys_lua },
+  { "copy_pvalues", tk_ivec_copy_pvalues_lua },
+  { "copy_rvalues", tk_ivec_copy_rvalues_lua },
   { "top_chi2", tk_ivec_top_chi2_lua },
   { "top_mi", tk_ivec_top_mi_lua },
   { "top_entropy", tk_ivec_top_entropy_lua },

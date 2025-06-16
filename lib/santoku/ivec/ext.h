@@ -123,6 +123,90 @@ static inline void tk_ivec_worker (void *dp, int sig)
   }
 }
 
+static inline void tk_ivec_copy_pkeys (
+  lua_State *L,
+  tk_ivec_t *m0,
+  tk_pvec_t *m1,
+  int64_t start,
+  int64_t end,
+  int64_t dest
+) {
+  if (start < 0 || start >= end || start >= (int64_t) m1->n)
+    return;
+  if (end >= (int64_t) m1->n)
+    end = (int64_t) m1->n;
+  uint64_t m = (uint64_t) dest + (uint64_t) (end - start);
+  tk_ivec_ensure(L, m0, m);
+  uint64_t write = m0->n;
+  for (int64_t i = start; i < end; i ++)
+    m0->a[write ++] = m1->a[i].i;
+  if (m0->n < m)
+    m0->n = m;
+}
+
+static inline void tk_ivec_copy_pvalues (
+  lua_State *L,
+  tk_ivec_t *m0,
+  tk_pvec_t *m1,
+  int64_t start,
+  int64_t end,
+  int64_t dest
+) {
+  if (start < 0 || start >= end || start >= (int64_t) m1->n)
+    return;
+  if (end >= (int64_t) m1->n)
+    end = (int64_t) m1->n;
+  uint64_t m = (uint64_t) dest + (uint64_t) (end - start);
+  tk_ivec_ensure(L, m0, m);
+  uint64_t write = m0->n;
+  for (int64_t i = start; i < end; i ++)
+    m0->a[write ++] = m1->a[i].p;
+  if (m0->n < m)
+    m0->n = m;
+}
+
+
+static inline void tk_ivec_copy_rkeys (
+  lua_State *L,
+  tk_ivec_t *m0,
+  tk_rvec_t *m1,
+  int64_t start,
+  int64_t end,
+  int64_t dest
+) {
+  if (start < 0 || start >= end || start >= (int64_t) m1->n)
+    return;
+  if (end >= (int64_t) m1->n)
+    end = (int64_t) m1->n;
+  uint64_t m = (uint64_t) dest + (uint64_t) (end - start);
+  tk_ivec_ensure(L, m0, m);
+  uint64_t write = m0->n;
+  for (int64_t i = start; i < end; i ++)
+    m0->a[write ++] = m1->a[i].i;
+  if (m0->n < m)
+    m0->n = m;
+}
+
+static inline void tk_ivec_copy_rvalues (
+  lua_State *L,
+  tk_ivec_t *m0,
+  tk_rvec_t *m1,
+  int64_t start,
+  int64_t end,
+  int64_t dest
+) {
+  if (start < 0 || start >= end || start >= (int64_t) m1->n)
+    return;
+  if (end >= (int64_t) m1->n)
+    end = (int64_t) m1->n;
+  uint64_t m = (uint64_t) dest + (uint64_t) (end - start);
+  tk_ivec_ensure(L, m0, m);
+  uint64_t write = m0->n;
+  for (int64_t i = start; i < end; i ++)
+    m0->a[write ++] = m1->a[i].d;
+  if (m0->n < m)
+    m0->n = m;
+}
 static inline tk_ivec_t *tk_ivec_from_iuset (lua_State *L, tk_iuset_t *s)
 {
   tk_ivec_t *v = tk_ivec_create(L, tk_iuset_size(s), 0, 0);
