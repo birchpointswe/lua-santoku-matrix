@@ -24,6 +24,15 @@ static inline int tk_pvec_set_lua (lua_State *L) {
   return 0;
 }
 
+static inline int tk_pvec_push_lua (lua_State *L) {
+  lua_settop(L, 3);
+  tk_pvec_t *P = tk_pvec_peek(L, 1, "pvec");
+  int64_t a = tk_lua_checkinteger(L, 2, "i");
+  int64_t b = tk_lua_checkinteger(L, 3, "p");
+  tk_pvec_push(P, (tk_pair_t) { a, b });
+  return 0;
+}
+
 static inline int tk_pvec_keys_lua (lua_State *L) {
   lua_settop(L, 1);
   tk_pvec_keys(L, tk_pvec_peek(L, 1, "pvec"));
@@ -40,6 +49,7 @@ static luaL_Reg tk_pvec_lua_mt_ext2_fns[] =
 {
   { "get", tk_pvec_get_lua },
   { "set", tk_pvec_set_lua },
+  { "push", tk_pvec_push_lua },
   { "keys", tk_pvec_keys_lua },
   { "values", tk_pvec_values_lua },
   { "each", tk_pvec_each0_lua },

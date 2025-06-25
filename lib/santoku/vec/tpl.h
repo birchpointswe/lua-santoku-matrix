@@ -977,7 +977,7 @@ static inline int tk_vec_pfx(scale_lua) (lua_State *L)
     start = tk_lua_checkunsigned(L, 3, "start");
     end = tk_lua_checkunsigned(L, 4, "end");
   } else {
-    tk_vec_err(L, rtable, 1, "expected either 2 or 4 arguments (vec, scale, or vec, scale, start, end)");
+    tk_vec_err(L, scale, 1, "expected either 2 or 4 arguments (vec, scale, or vec, scale, start, end)");
     return 0;
   }
   tk_vec_pfx(scale)(m0, scale, start, end);
@@ -994,12 +994,12 @@ static inline int tk_vec_pfx(add_lua) (lua_State *L)
     add = tk_lua_checkdouble(L, 2, "add");
     start = 0;
     end = m0->n;
-  } else if (t == 3) {
+  } else if (t == 4) {
     add = tk_lua_checkdouble(L, 2, "add");
     start = tk_lua_checkunsigned(L, 3, "start");
     end = tk_lua_checkunsigned(L, 4, "end");
   } else {
-    tk_vec_err(L, rtable, 1, "expected either 2 or 4 arguments (vec, add or vec, add, start, end)");
+    tk_vec_err(L, add, 1, "expected either 2 or 4 arguments (vec, add or vec, add, start, end)");
     return 0;
   }
   tk_vec_pfx(add)(m0, add, start, end);
@@ -1019,7 +1019,7 @@ static inline int tk_vec_pfx(abs_lua) (lua_State *L)
     start = tk_lua_checkunsigned(L, 2, "start");
     end = tk_lua_checkunsigned(L, 3, "end");
   } else {
-    tk_vec_err(L, rtable, 1, "expected either 1 or 3 arguments (vec or vec, start, end)");
+    tk_vec_err(L, abs, 1, "expected either 1 or 3 arguments (vec or vec, start, end)");
     return 0;
   }
   tk_vec_pfx(abs)(m0, start, end);
@@ -1042,7 +1042,7 @@ static inline int tk_vec_pfx(exp_lua) (lua_State *L)
     start = tk_lua_checkunsigned(L, 3, "start");
     end = tk_lua_checkunsigned(L, 4, "end");
   } else {
-    tk_vec_err(L, rtable, 1, "expected either 2 or 4 arguments (vec, exp or vec, exp, start, end)");
+    tk_vec_err(L, exp, 1, "expected either 2 or 4 arguments (vec, exp or vec, exp, start, end)");
     return 0;
   }
   tk_vec_pfx(exp)(m0, exp, start, end);
@@ -1240,6 +1240,14 @@ static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
   { "rtable", tk_vec_pfx(rtable_lua) },
 #endif
 
+
+  { "shuffle", tk_vec_pfx(shuffle_lua) },
+  { "asc", tk_vec_pfx(asc_lua) },
+  { "desc", tk_vec_pfx(desc_lua) },
+  { "kasc", tk_vec_pfx(kasc_lua) },
+  { "kdesc", tk_vec_pfx(kdesc_lua) },
+
+
 #ifndef tk_vec_limited
 
 
@@ -1275,13 +1283,6 @@ static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
   { "min", tk_vec_pfx(min_lua) },
   { "cmins", tk_vec_pfx(rmins_lua) },
   { "rmins", tk_vec_pfx(cmins_lua) },
-
-
-  { "shuffle", tk_vec_pfx(shuffle_lua) },
-  { "asc", tk_vec_pfx(asc_lua) },
-  { "desc", tk_vec_pfx(desc_lua) },
-  { "kasc", tk_vec_pfx(kasc_lua) },
-  { "kdesc", tk_vec_pfx(kdesc_lua) },
 
 
   { "each", tk_vec_pfx(each_lua) },

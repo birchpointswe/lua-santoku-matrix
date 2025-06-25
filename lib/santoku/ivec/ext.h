@@ -515,24 +515,23 @@ static inline tk_dvec_t *tk_ivec_score_chi2 (
 
 
 
-  for (uint64_t s = 0; s < ctx.n_samples; s++) {
-    const unsigned char *sample_bitmap
-      = (const unsigned char *) (ctx.codes + s * (ctx.n_hidden / CHAR_BIT));
-    for (uint64_t chunk = 0; chunk < (ctx.n_hidden / CHAR_BIT); chunk ++) {
-      unsigned char byte = sample_bitmap[chunk];
-      while (byte) {
-        int bit = __builtin_ctz(byte);
-        uint64_t b = chunk * CHAR_BIT + (unsigned) bit;
-        if (b < ctx.n_hidden)
-          ctx.global_counts->a[b] ++;
-        byte &= byte - 1;
+  if (ctx.codes != NULL) {
+
+
+    for (uint64_t s = 0; s < ctx.n_samples; s++) {
+      const unsigned char *sample_bitmap
+        = (const unsigned char *) (ctx.codes + s * (ctx.n_hidden / CHAR_BIT));
+      for (uint64_t chunk = 0; chunk < (ctx.n_hidden / CHAR_BIT); chunk ++) {
+        unsigned char byte = sample_bitmap[chunk];
+        while (byte) {
+          int bit = __builtin_ctz(byte);
+          uint64_t b = chunk * CHAR_BIT + (unsigned) bit;
+          if (b < ctx.n_hidden)
+            ctx.global_counts->a[b] ++;
+          byte &= byte - 1;
+        }
       }
     }
-  }
-
-
-
-  if (ctx.codes != NULL) {
     for (uint64_t i = 0; i < ctx.set_bits->n; i ++) {
       if (ctx.set_bits->a[i] < 0)
         continue;

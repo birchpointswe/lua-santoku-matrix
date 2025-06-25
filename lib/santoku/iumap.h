@@ -70,11 +70,4 @@ static inline tk_ivec_t *tk_iumap_keys (lua_State *L, tk_iumap_t *M)
   return out;
 }
 
-
-
-
-
-
-
-
 #endif
