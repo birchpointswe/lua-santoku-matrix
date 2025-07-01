@@ -418,17 +418,21 @@ static inline char *tk_ivec_raw_bitmap (
   uint64_t n_features,
   size_t *lenp
 ) {
-  size_t len = (n_samples * n_features + CHAR_BIT - 1) / CHAR_BIT;
-  char *out = tk_malloc(L, len);
+  uint64_t bytes_per_sample = (n_features + CHAR_BIT - 1) / CHAR_BIT;
+  size_t len = n_samples * bytes_per_sample;
+  uint8_t *out = tk_malloc(L, len);
   memset(out, 0, len);
-  for (uint64_t i = 0; i < set_bits->n; i ++) {
-    int64_t v = set_bits->a[i];
-    if (v < 0 || (uint64_t) v >= n_samples * n_features)
-      continue;
-    out[v / CHAR_BIT] |= (1 << (v % CHAR_BIT));
+  for (uint64_t idx = 0; idx < set_bits->n; idx++) {
+    int64_t v = set_bits->a[idx];
+    if (v < 0) continue;
+    uint64_t s = (uint64_t) v / n_features;
+    uint64_t f = (uint64_t) v % n_features;
+    uint64_t byte_off = s * bytes_per_sample + (f / CHAR_BIT);
+    uint8_t bit_off = f & (CHAR_BIT - 1);
+    out[byte_off] |= (uint8_t) (1u << bit_off);
   }
   *lenp = len;
-  return out;
+  return (char *) out;
 }
 
 
