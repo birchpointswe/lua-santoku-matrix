@@ -41,6 +41,16 @@ static inline tk_vec_pfx(t) *tk_vec_pfx(peekopt) (lua_State *L, int i)
   return (tk_vec_pfx(t) *) tk_lua_testuserdata(L, i, tk_vec_mt);
 }
 
+static inline bool tk_vec_pfx(lt) (tk_vec_base a, tk_vec_base b)
+{
+  return tk_vec_lt(a, b);
+}
+
+static inline bool tk_vec_pfx(gt) (tk_vec_base a, tk_vec_base b)
+{
+  return tk_vec_gt(a, b);
+}
+
 static inline void tk_vec_pfx(destroy) (tk_vec_pfx(t) *r)
 {
 #ifdef tk_vec_destroy_item
