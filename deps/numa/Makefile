@@ -1,7 +1,6 @@
-HAVE_NUMA := $(shell echo '#include <numa.h>' | $(CC) -x c - -o /dev/null 2>/dev/null && echo 1 || echo 0)
+CC ?= gcc
+HAVE_NUMA := $(shell $(CC) -x c check.c -lnuma -o /dev/null -fsyntax-only 2>/dev/null && echo 1 || echo 0)
 
-results.mk:
+results.mk: Makefile
 	touch results.mk
-	[ "$(HAVE_NUMA)" -eq 1 ] && \
-		echo 'LIB_LDFLAGS += -lnuma' >> results.mk || true
-
+	@if [ "$(HAVE_NUMA)" = "1" ]; then echo 'LIB_LDFLAGS += -lnuma' >> results.mk; fi
