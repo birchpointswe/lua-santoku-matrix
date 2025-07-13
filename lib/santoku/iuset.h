@@ -54,7 +54,7 @@ static inline double tk_iuset_jaccard (tk_iuset_t *a, tk_iuset_t *b)
 
 static inline void tk_iuset_intersect (tk_iuset_t *a, tk_iuset_t *b)
 {
-  khint_t i;
+  khint_t i = 0;
   int64_t x;
   tk_iuset_foreach(a, x, ({
     if (!tk_iuset_contains(b, x))
@@ -64,7 +64,7 @@ static inline void tk_iuset_intersect (tk_iuset_t *a, tk_iuset_t *b)
 
 static inline void tk_iuset_difference (tk_iuset_t *a, tk_iuset_t *b)
 {
-  khint_t i;
+  khint_t i = 0;
   int64_t x;
   tk_iuset_foreach(a, x, ({
     if (tk_iuset_contains(b, x))
