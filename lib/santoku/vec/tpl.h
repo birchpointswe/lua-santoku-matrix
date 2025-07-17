@@ -497,8 +497,9 @@ static inline void tk_vec_pfx(add) (
     return;
   if (end > m0->n)
     end = m0->n;
-  for (size_t i = start; i < end; i ++)
+  for (size_t i = start; i < end; i ++) {
     m0->a[i] += add;
+  }
 }
 
 #ifdef tk_vec_abs
