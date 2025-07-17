@@ -17,7 +17,7 @@ static inline void tk_rvec_hasc (tk_rvec_t *v, tk_rank_t r)
     v->a[v->n ++] = r;
     if (v->n == v->m)
       ks_heapmake(tk_rvec_asc, v->m, v->a);
-  } else if (r.d > v->a[0].d) {
+  } else if (r.d < v->a[0].d) {
     v->a[0] = r;
     ks_heapadjust(tk_rvec_asc, 0, v->m, v->a);
   }
@@ -29,7 +29,7 @@ static inline void tk_rvec_hdesc (tk_rvec_t *v, tk_rank_t r)
     v->a[v->n ++] = r;
     if (v->n == v->m)
       ks_heapmake(tk_rvec_desc, v->m, v->a);
-  } else if (r.d < v->a[0].d) {
+  } else if (r.d > v->a[0].d) {
     v->a[0] = r;
     ks_heapadjust(tk_rvec_desc, 0, v->m, v->a);
   }
