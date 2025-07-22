@@ -7,6 +7,17 @@
 #include <santoku/threads.h>
 #include <stdatomic.h>
 
+static inline tk_ivec_t *tk_iuset_keys (lua_State *L, tk_iuset_t *S)
+{
+  tk_ivec_t *out = tk_ivec_create(L, tk_iuset_size(S), 0, 0);
+  int64_t k;
+  out->n = 0;
+  tk_iuset_foreach(S, k, ({
+    out->a[out->n ++] = k;
+  }));
+  return out;
+}
+
 typedef enum {
   TK_IVEC_ENTROPY,
   TK_IVEC_CHI2,

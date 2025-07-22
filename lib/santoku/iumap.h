@@ -4,7 +4,8 @@
 #include <santoku/klib.h>
 #include <santoku/ivec.h>
 
-KHASH_INIT(tk_iumap, int64_t, int64_t, 1, kh_int64_hash_func, kh_int64_hash_equal)
+#define tk_iumap_hash(k) (kh_int64_hash_func((uint64_t)k))
+KHASH_INIT(tk_iumap, int64_t, int64_t, 1, tk_iumap_hash, kh_int64_hash_equal)
 typedef khash_t(tk_iumap) tk_iumap_t;
 
 #define tk_iumap_put(...) kh_put(tk_iumap, __VA_ARGS__)
