@@ -101,4 +101,9 @@ for _, vec in ipairs({ ivec, dvec }) do
     m0:flip_interleave(2, 2)
   end
 
+  m0:persist(".vec.bin")
+  m1 = vec.load(".vec.bin")
+
+  assert(tbl.equals(m0:table(), m1:table()))
+
 end

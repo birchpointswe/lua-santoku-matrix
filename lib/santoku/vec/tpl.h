@@ -657,6 +657,21 @@ static inline void tk_vec_pfx(fill_indices) (tk_vec_pfx(t) *v)
 
 #endif
 
+static inline int tk_vec_pfx(load_lua) (lua_State *L)
+{
+  lua_settop(L, 2);
+  size_t len;
+  const char *data = luaL_checklstring(L, 1, &len);
+  bool isstr = lua_type(L, 2) == LUA_TBOOLEAN && lua_toboolean(L, 2);
+  FILE *fh = isstr ? tk_lua_fmemopen(L, (char *) data, len, "r") : tk_lua_fopen(L, data, "r");
+  size_t n;
+  tk_lua_fread(L, &n, sizeof(size_t), 1, fh);
+  tk_vec_pfx(t) *v = tk_vec_pfx(create)(L, n, 0, 0);
+  tk_lua_fread(L, v->a, sizeof(tk_vec_base), n, fh);
+  tk_lua_fclose(L, fh);
+  return 1;
+}
+
 static inline int tk_vec_pfx(create_lua) (lua_State *L)
 {
   lua_settop(L, 2);
@@ -713,6 +728,36 @@ static inline int tk_vec_pfx(multiply_lua) (lua_State *L)
   return 0;
 }
 #endif
+
+static inline int tk_vec_pfx(persist_lua) (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
+  bool tostr = lua_type(L, 2) == LUA_TNIL;
+  FILE *fh;
+  if (tostr)
+    fh = tk_lua_tmpfile(L);
+  else
+    fh = tk_lua_fopen(L, luaL_checkstring(L, 2), "w");
+  tk_lua_fwrite(L, (char *) &m0->n, sizeof(size_t), 1, fh);
+  tk_lua_fwrite(L, (char *) m0->a, sizeof(tk_vec_base) * m0->n, 1, fh);
+  if (!tostr) {
+    tk_lua_fclose(L, fh);
+    return 0;
+  } else {
+    size_t len;
+    char *data = tk_lua_fslurp(L, fh, &len);
+    if (data) {
+      lua_pushlstring(L, data, len);
+      free(data);
+      tk_lua_fclose(L, fh);
+      return 1;
+    } else {
+      tk_lua_fclose(L, fh);
+      return 0;
+    }
+  }
+}
 
 static inline int tk_vec_pfx(copy_lua) (lua_State *L)
 {
@@ -1204,6 +1249,7 @@ static inline int tk_vec_pfx(fill_indices_lua) (lua_State *L)
   return 1;
 }
 
+
 static inline int tk_vec_pfx(raw_lua) (lua_State *L)
 {
   lua_settop(L, 2);
@@ -1212,6 +1258,7 @@ static inline int tk_vec_pfx(raw_lua) (lua_State *L)
   tk_vec_pfx(raw)(L, m0, fmt);
   return 1;
 }
+
 
 static inline int tk_vec_pfx(from_raw_lua) (lua_State *L)
 {
@@ -1228,6 +1275,7 @@ static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
 {
 
   { "copy", tk_vec_pfx(copy_lua) },
+  { "persist", tk_vec_pfx(persist_lua) },
   { "size", tk_vec_pfx(size_lua) },
   { "capacity", tk_vec_pfx(capacity_lua) },
   { "resize", tk_vec_pfx(resize_lua) },
@@ -1337,8 +1385,10 @@ static inline tk_vec_pfx(t) *tk_vec_pfx(create) (lua_State *L, size_t n, tk_vec_
 static luaL_Reg tk_vec_pfx(lua_fns)[] =
 {
   { "create", tk_vec_pfx(create_lua) },
+  { "load", tk_vec_pfx(load_lua) },
   { "destroy", tk_vec_pfx(destroy_lua) },
 #ifndef tk_vec_limited
+
   { "from_raw", tk_vec_pfx(from_raw_lua) },
 #endif
   { NULL, NULL }
