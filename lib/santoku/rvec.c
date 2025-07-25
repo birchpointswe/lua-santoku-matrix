@@ -19,7 +19,7 @@ static inline int tk_rvec_set_lua (lua_State *L) {
   uint64_t i = tk_lua_checkunsigned(L, 2, "idx");
   int64_t a = tk_lua_checkinteger(L, 3, "i");
   double d = tk_lua_checkdouble(L, 4, "d");
-  tk_rvec_ensure(L, P, i + 1);
+  tk_rvec_ensure(P, i + 1);
   P->a[i] = (tk_rank_t) { a, d };
   return 0;
 }

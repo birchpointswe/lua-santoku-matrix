@@ -180,7 +180,7 @@ static inline int tk_ivec_extend_bits_lua (lua_State *L)
   tk_ivec_t *ext = tk_ivec_peek(L, 2, "ext_bits");
   uint64_t n_feat = tk_lua_checkunsigned(L, 3, "features");
   uint64_t n_extfeat = tk_lua_checkunsigned(L, 4, "extended");
-  tk_ivec_extend_bits(L, base, ext, n_feat, n_extfeat);
+  tk_ivec_extend_bits(base, ext, n_feat, n_extfeat);
   return 0;
 }
 
@@ -203,7 +203,7 @@ static inline int tk_ivec_copy_pkeys_lua (lua_State *L)
     end = tk_lua_checkinteger(L, 4, "end");
     dest = tk_lua_checkinteger(L, 5, "dest");
   }
-  tk_ivec_copy_pkeys(L, m0, m1, start, end, dest);
+  tk_ivec_copy_pkeys(m0, m1, start, end, dest);
   return 0;
 }
 
@@ -226,7 +226,7 @@ static inline int tk_ivec_copy_rkeys_lua (lua_State *L)
     end = tk_lua_checkinteger(L, 4, "end");
     dest = tk_lua_checkinteger(L, 5, "dest");
   }
-  tk_ivec_copy_rkeys(L, m0, m1, start, end, dest);
+  tk_ivec_copy_rkeys(m0, m1, start, end, dest);
   return 0;
 }
 
@@ -249,7 +249,7 @@ static inline int tk_ivec_copy_pvalues_lua (lua_State *L)
     end = tk_lua_checkinteger(L, 4, "end");
     dest = tk_lua_checkinteger(L, 5, "dest");
   }
-  tk_ivec_copy_pvalues(L, m0, m1, start, end, dest);
+  tk_ivec_copy_pvalues(m0, m1, start, end, dest);
   return 0;
 }
 
@@ -272,7 +272,7 @@ static inline int tk_ivec_copy_rvalues_lua (lua_State *L)
     end = tk_lua_checkinteger(L, 4, "end");
     dest = tk_lua_checkinteger(L, 5, "dest");
   }
-  tk_ivec_copy_rvalues(L, m0, m1, start, end, dest);
+  tk_ivec_copy_rvalues(m0, m1, start, end, dest);
   return 0;
 }
 

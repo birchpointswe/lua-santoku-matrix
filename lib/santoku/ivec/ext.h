@@ -135,7 +135,6 @@ static inline void tk_ivec_worker (void *dp, int sig)
 }
 
 static inline void tk_ivec_copy_pkeys (
-  lua_State *L,
   tk_ivec_t *m0,
   tk_pvec_t *m1,
   int64_t start,
@@ -147,7 +146,7 @@ static inline void tk_ivec_copy_pkeys (
   if (end >= (int64_t) m1->n)
     end = (int64_t) m1->n;
   uint64_t m = (uint64_t) dest + (uint64_t) (end - start);
-  tk_ivec_ensure(L, m0, m);
+  tk_ivec_ensure(m0, m);
   uint64_t write = m0->n;
   for (int64_t i = start; i < end; i ++)
     m0->a[write ++] = m1->a[i].i;
@@ -156,7 +155,6 @@ static inline void tk_ivec_copy_pkeys (
 }
 
 static inline void tk_ivec_copy_pvalues (
-  lua_State *L,
   tk_ivec_t *m0,
   tk_pvec_t *m1,
   int64_t start,
@@ -168,7 +166,7 @@ static inline void tk_ivec_copy_pvalues (
   if (end >= (int64_t) m1->n)
     end = (int64_t) m1->n;
   uint64_t m = (uint64_t) dest + (uint64_t) (end - start);
-  tk_ivec_ensure(L, m0, m);
+  tk_ivec_ensure(m0, m);
   uint64_t write = m0->n;
   for (int64_t i = start; i < end; i ++)
     m0->a[write ++] = m1->a[i].p;
@@ -178,7 +176,6 @@ static inline void tk_ivec_copy_pvalues (
 
 
 static inline void tk_ivec_copy_rkeys (
-  lua_State *L,
   tk_ivec_t *m0,
   tk_rvec_t *m1,
   int64_t start,
@@ -190,7 +187,7 @@ static inline void tk_ivec_copy_rkeys (
   if (end >= (int64_t) m1->n)
     end = (int64_t) m1->n;
   uint64_t m = (uint64_t) dest + (uint64_t) (end - start);
-  tk_ivec_ensure(L, m0, m);
+  tk_ivec_ensure(m0, m);
   uint64_t write = m0->n;
   for (int64_t i = start; i < end; i ++)
     m0->a[write ++] = m1->a[i].i;
@@ -199,7 +196,6 @@ static inline void tk_ivec_copy_rkeys (
 }
 
 static inline void tk_ivec_copy_rvalues (
-  lua_State *L,
   tk_ivec_t *m0,
   tk_rvec_t *m1,
   int64_t start,
@@ -211,7 +207,7 @@ static inline void tk_ivec_copy_rvalues (
   if (end >= (int64_t) m1->n)
     end = (int64_t) m1->n;
   uint64_t m = (uint64_t) dest + (uint64_t) (end - start);
-  tk_ivec_ensure(L, m0, m);
+  tk_ivec_ensure(m0, m);
   uint64_t write = m0->n;
   for (int64_t i = start; i < end; i ++)
     m0->a[write ++] = m1->a[i].d;
@@ -287,7 +283,7 @@ static inline int tk_ivec_flip_interleave (
   tk_ivec_asc(m0, 0, m0->n);
   size_t orig_n = m0->n;
   size_t total = (size_t) (n_samples * n_features);
-  tk_ivec_ensure(L, m0, total);
+  tk_ivec_ensure(m0, total);
   int64_t *orig = tk_malloc(L, orig_n * sizeof(int64_t));
   memcpy(orig, m0->a, orig_n * sizeof(int64_t));
   size_t p = 0;
@@ -318,7 +314,7 @@ static inline tk_ivec_t *tk_ivec_top_select (
   tk_iuset_foreach(selected, sel, ({
     tk_ivec_push(top_v, sel);
   }));
-  tk_ivec_shrink(L, top_v);
+  tk_ivec_shrink(top_v);
   tk_iuset_destroy(selected);
   return top_v;
 }
@@ -462,13 +458,12 @@ static inline tk_ivec_t *tk_ivec_from_bitmap (
       if (bm[chunk] & (1 << pos))
         tk_ivec_push(out, (int64_t) bit);
     }
-  tk_ivec_shrink(L, out);
+  tk_ivec_shrink(out);
   return out;
 }
 
 
 static inline void tk_ivec_extend_bits (
-  lua_State *L,
   tk_ivec_t *base,
   tk_ivec_t *ext,
   uint64_t n_feat,
@@ -477,7 +472,7 @@ static inline void tk_ivec_extend_bits (
   tk_ivec_asc(base, 0, base->n);
   tk_ivec_asc(ext, 0, ext->n);
   size_t total = base->n + ext->n;
-  tk_ivec_ensure(L, base, total);
+  tk_ivec_ensure(base, total);
   for (size_t i = 0; i < base->n; i ++) {
     uint64_t bit = (uint64_t) base->a[i];
     uint64_t sample = bit / n_feat;

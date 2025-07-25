@@ -19,7 +19,7 @@ static inline int tk_pvec_set_lua (lua_State *L) {
   uint64_t i = tk_lua_checkunsigned(L, 2, "idx");
   int64_t a = tk_lua_checkinteger(L, 3, "i");
   int64_t b = tk_lua_checkinteger(L, 4, "p");
-  tk_pvec_ensure(L, P, i + 1);
+  tk_pvec_ensure(P, i + 1);
   P->a[i] = (tk_pair_t) { a, b };
   return 0;
 }
