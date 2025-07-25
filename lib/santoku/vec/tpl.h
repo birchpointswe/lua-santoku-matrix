@@ -1356,7 +1356,11 @@ static inline tk_vec_pfx(t) *tk_vec_pfx(create) (lua_State *L, size_t n, tk_vec_
 {
   tk_vec_pfx(t) v0;
   if (v == NULL) {
-    v = tk_lua_newuserdata(L, tk_vec_pfx(t), tk_vec_mt, tk_vec_pfx(lua_mt_fns), tk_vec_pfx(destroy_lua));
+    v = L == NULL
+      ? malloc(sizeof(tk_vec_pfx(t)))
+      : tk_lua_newuserdata(L, tk_vec_pfx(t), tk_vec_mt, tk_vec_pfx(lua_mt_fns), tk_vec_pfx(destroy_lua));
+    if (v == NULL)
+      return v;
     v0 = *v;
     kv_init(v0);
     kv_resize(tk_vec_base, v0, n);
@@ -1370,6 +1374,14 @@ static inline tk_vec_pfx(t) *tk_vec_pfx(create) (lua_State *L, size_t n, tk_vec_
   v->m = n;
   v->a = data;
   return v;
+}
+
+static inline tk_vec_pfx(t) *tk_vec_pfx(register) (lua_State *L, tk_vec_pfx(t) *v)
+{
+  tk_vec_pfx(t) *x = tk_lua_newuserdata(L, tk_vec_pfx(t), tk_vec_mt, tk_vec_pfx(lua_mt_fns), tk_vec_pfx(destroy_lua));
+  *x = *v;
+  free(v);
+  return x;
 }
 
 static luaL_Reg tk_vec_pfx(lua_fns)[] =
