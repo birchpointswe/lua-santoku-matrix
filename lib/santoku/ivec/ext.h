@@ -580,7 +580,7 @@ static inline tk_dvec_t *tk_ivec_score_chi2 (
 
   ctx.scores = tk_dvec_create(L, ctx.n_hidden * ctx.n_visible, 0, 0);
   tk_dvec_zero(ctx.scores);
-  tk_threads_signal(pool, TK_IVEC_CHI2);
+  tk_threads_signal(pool, TK_IVEC_CHI2, 0);
   tk_threads_destroy(pool);
 
   tk_ivec_destroy(ctx.active_counts);
@@ -691,7 +691,7 @@ static inline tk_dvec_t *tk_ivec_score_mi (
 
   ctx.scores = tk_dvec_create(L, ctx.n_hidden * ctx.n_visible, 0, 0);
   tk_dvec_zero(ctx.scores);
-  tk_threads_signal(pool, TK_IVEC_MI);
+  tk_threads_signal(pool, TK_IVEC_MI, 0);
   tk_threads_destroy(pool);
 
 
@@ -724,7 +724,7 @@ static inline tk_dvec_t *tk_ivec_score_entropy (
   }
 
 
-  tk_threads_signal(pool, TK_IVEC_ENTROPY);
+  tk_threads_signal(pool, TK_IVEC_ENTROPY, 0);
   tk_threads_destroy(pool);
 
 
