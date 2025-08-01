@@ -1,5 +1,3 @@
-#define _GNU_SOURCE
-
 #include <santoku/rvec.h>
 
 static inline int tk_rvec_get_lua (lua_State *L) {

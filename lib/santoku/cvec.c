@@ -1,5 +1,3 @@
-#define _GNU_SOURCE
-
 #include <santoku/cvec.h>
 #include <santoku/threads.h>
 

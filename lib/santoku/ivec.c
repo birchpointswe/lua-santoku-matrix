@@ -1,5 +1,3 @@
-#define _GNU_SOURCE
-
 #include <santoku/ivec.h>
 
 static inline int tk_ivec_flip_interleave_lua (lua_State *L) {
