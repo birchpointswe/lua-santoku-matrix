@@ -9,6 +9,22 @@
 #define tk_vec_gt(a, b) ((a) > (b))
 #endif
 
+#ifndef tk_vec_ltx
+#define tk_vec_ltx(a, b) (memcmp(&(a), &(b), sizeof(a)) < 0)
+#endif
+
+#ifndef tk_vec_gtx
+#define tk_vec_gtx(a, b) (memcmp(&(a), &(b), sizeof(a)) > 0)
+#endif
+
+#ifndef tk_vec_eqx
+#define tk_vec_eqx(a, b) (memcmp(&(a), &(b), sizeof(a)) == 0)
+#endif
+
+#ifndef tk_vec_eq
+#define tk_vec_eq(a, b) tk_vec_eqx(a, b)
+#endif
+
 #ifndef tk_vec_mt
 #define tk_vec_mt tk_pp_xstr(tk_vec_pfx(t))
 #endif
@@ -21,6 +37,8 @@ typedef kvec_t(tk_vec_base) tk_vec_pfx(t);
 #define tk_vec_ksort(...) KSORT_INIT(__VA_ARGS__)
 tk_vec_ksort(tk_vec_pfx(asc), tk_vec_base, tk_vec_lt)
 tk_vec_ksort(tk_vec_pfx(desc), tk_vec_base, tk_vec_gt)
+tk_vec_ksort(tk_vec_pfx(xasc), tk_vec_base, tk_vec_ltx)
+tk_vec_ksort(tk_vec_pfx(xdesc), tk_vec_base, tk_vec_gtx)
 
 #define tk_vec_shuffle(...) ks_shuffle(__VA_ARGS__)
 #define tk_vec_introsort(...) ks_introsort(__VA_ARGS__)
@@ -271,6 +289,50 @@ static inline void tk_vec_pfx(asc) (tk_vec_pfx(t) *v, uint64_t s, uint64_t e) {
 
 static inline void tk_vec_pfx(desc) (tk_vec_pfx(t) *v, uint64_t s, uint64_t e) {
   tk_vec_introsort(tk_vec_pfx(desc), e - s, v->a + s);
+}
+
+static inline uint64_t tk_vec_pfx(uasc) (tk_vec_pfx(t) *v, uint64_t s, uint64_t e) {
+  tk_vec_introsort(tk_vec_pfx(asc), e - s, v->a + s);
+  if (e - s == 0)
+    return e;
+  uint64_t write = s + 1;
+  for (uint64_t read = s + 1; read < e; read ++)
+    if (!tk_vec_eq(v->a[read - 1], v->a[read]))
+      v->a[write ++] = v->a[read];
+  return write;
+}
+
+static inline uint64_t tk_vec_pfx(udesc) (tk_vec_pfx(t) *v, uint64_t s, uint64_t e) {
+  tk_vec_introsort(tk_vec_pfx(desc), e - s, v->a + s);
+  if (e - s == 0)
+    return e;
+  uint64_t write = s + 1;
+  for (uint64_t read = s + 1; read < e; read ++)
+    if (!tk_vec_eq(v->a[read - 1], v->a[read]))
+      v->a[write ++] = v->a[read];
+  return write;
+}
+
+static inline uint64_t tk_vec_pfx(xasc) (tk_vec_pfx(t) *v, uint64_t s, uint64_t e) {
+  tk_vec_introsort(tk_vec_pfx(xasc), e - s, v->a + s);
+  if (e - s == 0)
+    return e;
+  uint64_t write = s + 1;
+  for (uint64_t read = s + 1; read < e; read ++)
+    if (!tk_vec_eqx(v->a[read - 1], v->a[read]))
+      v->a[write ++] = v->a[read];
+  return write;
+}
+
+static inline uint64_t tk_vec_pfx(xdesc) (tk_vec_pfx(t) *v, uint64_t s, uint64_t e) {
+  tk_vec_introsort(tk_vec_pfx(xdesc), e - s, v->a + s);
+  if (e - s == 0)
+    return e;
+  uint64_t write = s + 1;
+  for (uint64_t read = s + 1; read < e; read ++)
+    if (!tk_vec_eqx(v->a[read - 1], v->a[read]))
+      v->a[write ++] = v->a[read];
+  return write;
 }
 
 static inline void tk_vec_pfx(kasc) (tk_vec_pfx(t) *v, size_t k, uint64_t s, uint64_t e) {
@@ -877,6 +939,58 @@ static inline int tk_vec_pfx(desc_lua) (lua_State *L)
   return 1;
 }
 
+static inline int tk_vec_pfx(uasc_lua) (lua_State *L)
+{
+  lua_settop(L, 3);
+  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
+  uint64_t start = tk_lua_optunsigned(L, 2, "start", 0);
+  uint64_t end = tk_lua_optunsigned(L, 3, "end", m0->n);
+  uint64_t end0 = tk_vec_pfx(uasc)(m0, start, end);
+  if (start == 0 && end == m0->n)
+    m0->n = end0;
+  lua_pushinteger(L, (int64_t) end0);
+  return 1;
+}
+
+static inline int tk_vec_pfx(udesc_lua) (lua_State *L)
+{
+  lua_settop(L, 3);
+  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
+  uint64_t start = tk_lua_optunsigned(L, 2, "start", 0);
+  uint64_t end = tk_lua_optunsigned(L, 3, "end", m0->n);
+  uint64_t end0 = tk_vec_pfx(udesc)(m0, start, end);
+  if (start == 0 && end == m0->n)
+    m0->n = end0;
+  lua_pushinteger(L, (int64_t) end0);
+  return 1;
+}
+
+static inline int tk_vec_pfx(xasc_lua) (lua_State *L)
+{
+  lua_settop(L, 3);
+  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
+  uint64_t start = tk_lua_optunsigned(L, 2, "start", 0);
+  uint64_t end = tk_lua_optunsigned(L, 3, "end", m0->n);
+  uint64_t end0 = tk_vec_pfx(xasc)(m0, start, end);
+  if (start == 0 && end == m0->n)
+    m0->n = end0;
+  lua_pushinteger(L, (int64_t) end0);
+  return 1;
+}
+
+static inline int tk_vec_pfx(xdesc_lua) (lua_State *L)
+{
+  lua_settop(L, 3);
+  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
+  uint64_t start = tk_lua_optunsigned(L, 2, "start", 0);
+  uint64_t end = tk_lua_optunsigned(L, 3, "end", m0->n);
+  uint64_t end0 = tk_vec_pfx(xdesc)(m0, start, end);
+  if (start == 0 && end == m0->n)
+    m0->n = end0;
+  lua_pushinteger(L, (int64_t) end0);
+  return 1;
+}
+
 static inline int tk_vec_pfx(kasc_lua) (lua_State *L)
 {
   lua_settop(L, 4);
@@ -1293,6 +1407,10 @@ static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
   { "shuffle", tk_vec_pfx(shuffle_lua) },
   { "asc", tk_vec_pfx(asc_lua) },
   { "desc", tk_vec_pfx(desc_lua) },
+  { "uasc", tk_vec_pfx(uasc_lua) },
+  { "udesc", tk_vec_pfx(udesc_lua) },
+  { "xasc", tk_vec_pfx(xasc_lua) },
+  { "xdesc", tk_vec_pfx(xdesc_lua) },
   { "kasc", tk_vec_pfx(kasc_lua) },
   { "kdesc", tk_vec_pfx(kdesc_lua) },
 
