@@ -550,6 +550,50 @@ static inline void tk_vec_pfx(add) (
   }
 }
 
+static inline void tk_vec_pfx(scalev) (
+  tk_vec_pfx(t) *m0,
+  tk_vec_pfx(t) *m1,
+  uint64_t start,
+  uint64_t end
+) {
+  if (!m0->n || !m1->n)
+    return;
+  if (start >= end)
+    return;
+  if (start >= m0->n || start >= m1->n)
+    return;
+  uint64_t lim0 = m0->n;
+  uint64_t lim1 = m1->n;
+  uint64_t lim = lim0 < lim1 ? lim0 : lim1;
+  if (end > lim)
+    end = lim;
+  for (size_t i = start; i < end; i ++) {
+    m0->a[i] *= m1->a[i];
+  }
+}
+
+static inline void tk_vec_pfx(addv) (
+  tk_vec_pfx(t) *m0,
+  tk_vec_pfx(t) *m1,
+  uint64_t start,
+  uint64_t end
+) {
+  if (!m0->n || !m1->n)
+    return;
+  if (start >= end)
+    return;
+  if (start >= m0->n || start >= m1->n)
+    return;
+  uint64_t lim0 = m0->n;
+  uint64_t lim1 = m1->n;
+  uint64_t lim = lim0 < lim1 ? lim0 : lim1;
+  if (end > lim)
+    end = lim;
+  for (size_t i = start; i < end; i ++) {
+    m0->a[i] += m1->a[i];
+  }
+}
+
 #ifdef tk_vec_abs
 static inline void tk_vec_pfx(abs) (
   tk_vec_pfx(t) *m0,
@@ -610,9 +654,9 @@ static inline void tk_vec_pfx(multiply) (
   }
 }
 
-static inline void tk_vec_pfx(exp) (
+static inline void tk_vec_pfx(pow) (
   tk_vec_pfx(t) *m0,
-  double exp,
+  double e,
   uint64_t start,
   uint64_t end
 ) {
@@ -621,7 +665,33 @@ static inline void tk_vec_pfx(exp) (
   if (end > m0->n - 1)
     end = m0->n - 1;
   for (size_t i = start; i <= end; i ++)
-    m0->a[i] = pow(m0->a[i], exp);
+    m0->a[i] = pow(m0->a[i], e);
+}
+
+static inline void tk_vec_pfx(log) (
+  tk_vec_pfx(t) *m0,
+  uint64_t start,
+  uint64_t end
+) {
+  if (!m0->n || start > end || start >= m0->n)
+    return;
+  if (end > m0->n - 1)
+    end = m0->n - 1;
+  for (size_t i = start; i <= end; i ++)
+    m0->a[i] = log(m0->a[i]);
+}
+
+static inline void tk_vec_pfx(exp) (
+  tk_vec_pfx(t) *m0,
+  uint64_t start,
+  uint64_t end
+) {
+  if (!m0->n || start > end || start >= m0->n)
+    return;
+  if (end > m0->n - 1)
+    end = m0->n - 1;
+  for (size_t i = start; i <= end; i ++)
+    m0->a[i] = exp(m0->a[i]);
 }
 
 static inline const char *tk_vec_pfx(raw) (
@@ -1166,6 +1236,46 @@ static inline int tk_vec_pfx(add_lua) (lua_State *L)
   return 1;
 }
 
+static inline int tk_vec_pfx(scalev_lua) (lua_State *L)
+{
+  int t = lua_gettop(L);
+  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
+  tk_vec_pfx(t) *m1 = tk_vec_pfx(peek)(L, 2, "scale");
+  uint64_t start, end;
+  if (t == 2) {
+    start = 0;
+    end = m0->n;
+  } else if (t == 3) {
+    start = tk_lua_checkunsigned(L, 3, "start");
+    end = tk_lua_checkunsigned(L, 4, "end");
+  } else {
+    tk_vec_err(L, scalev, 1, "expected either 2 or 4 arguments (vec, scale, or vec, scale, start, end)");
+    return 0;
+  }
+  tk_vec_pfx(scalev)(m0, m1, start, end);
+  return 1;
+}
+
+static inline int tk_vec_pfx(addv_lua) (lua_State *L)
+{
+  int t = lua_gettop(L);
+  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
+  tk_vec_pfx(t) *m1 = tk_vec_pfx(peek)(L, 2, "vector");
+  uint64_t start, end;
+  if (t == 2) {
+    start = 0;
+    end = m0->n;
+  } else if (t == 4) {
+    start = tk_lua_checkunsigned(L, 3, "start");
+    end = tk_lua_checkunsigned(L, 4, "end");
+  } else {
+    tk_vec_err(L, addv, 1, "expected either 2 or 4 arguments (vec, add or vec, add, start, end)");
+    return 0;
+  }
+  tk_vec_pfx(addv)(m0, m1, start, end);
+  return 1;
+}
+
 #ifdef tk_vec_abs
 static inline int tk_vec_pfx(abs_lua) (lua_State *L)
 {
@@ -1191,21 +1301,59 @@ static inline int tk_vec_pfx(exp_lua) (lua_State *L)
 {
   int t = lua_gettop(L);
   tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
-  tk_vec_base exp;
+  uint64_t start, end;
+  if (t == 1) {
+    start = 0;
+    end = m0->n;
+  } else if (t == 2) {
+    start = tk_lua_checkunsigned(L, 2, "start");
+    end = tk_lua_checkunsigned(L, 3, "end");
+  } else {
+    tk_vec_err(L, abs, 1, "expected either 1 or 3 arguments (vec or vec, start, end)");
+    return 0;
+  }
+  tk_vec_pfx(exp)(m0, start, end);
+  return 1;
+}
+
+static inline int tk_vec_pfx(log_lua) (lua_State *L)
+{
+  int t = lua_gettop(L);
+  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
+  uint64_t start, end;
+  if (t == 1) {
+    start = 0;
+    end = m0->n;
+  } else if (t == 2) {
+    start = tk_lua_checkunsigned(L, 2, "start");
+    end = tk_lua_checkunsigned(L, 3, "end");
+  } else {
+    tk_vec_err(L, abs, 1, "expected either 1 or 3 arguments (vec or vec, start, end)");
+    return 0;
+  }
+  tk_vec_pfx(log)(m0, start, end);
+  return 1;
+}
+
+static inline int tk_vec_pfx(pow_lua) (lua_State *L)
+{
+  int t = lua_gettop(L);
+  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
+  tk_vec_base e;
   uint64_t start, end;
   if (t == 2) {
-    exp = tk_lua_checkdouble(L, 2, "exp");
+    e = tk_lua_checkdouble(L, 2, "e");
     start = 0;
     end = m0->n;
   } else if (t == 3) {
-    exp = tk_lua_checkdouble(L, 2, "exp");
+    e = tk_lua_checkdouble(L, 2, "e");
     start = tk_lua_checkunsigned(L, 3, "start");
     end = tk_lua_checkunsigned(L, 4, "end");
   } else {
-    tk_vec_err(L, exp, 1, "expected either 2 or 4 arguments (vec, exp or vec, exp, start, end)");
+    tk_vec_err(L, pow, 1, "expected either 2 or 4 arguments (vec, e or vec, e, start, end)");
     return 0;
   }
-  tk_vec_pfx(exp)(m0, exp, start, end);
+  tk_vec_pfx(pow)(m0, e, start, end);
   return 1;
 }
 
@@ -1423,7 +1571,11 @@ static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
 
   { "add", tk_vec_pfx(add_lua) },
   { "scale", tk_vec_pfx(scale_lua) },
+  { "addv", tk_vec_pfx(addv_lua) },
+  { "scalev", tk_vec_pfx(scalev_lua) },
   { "exp", tk_vec_pfx(exp_lua) },
+  { "log", tk_vec_pfx(log_lua) },
+  { "pow", tk_vec_pfx(pow_lua) },
 
 #ifdef tk_vec_abs
   { "abs", tk_vec_pfx(abs_lua) },
