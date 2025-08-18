@@ -3,9 +3,10 @@
 
 #include <santoku/klib.h>
 #include <santoku/ivec.h>
+#include <santoku/dvec.h>
 
 #define tk_dumap_hash(k) (kh_int64_hash_func((uint64_t)k))
-KHASH_INIT(tk_dumap, int64_t, int64_t, 1, tk_dumap_hash, kh_int64_hash_equal)
+KHASH_INIT(tk_dumap, int64_t, double, 1, tk_dumap_hash, kh_int64_hash_equal)
 typedef khash_t(tk_dumap) tk_dumap_t;
 
 #define tk_dumap_put(...) kh_put(tk_dumap, __VA_ARGS__)
@@ -23,18 +24,6 @@ typedef khash_t(tk_dumap) tk_dumap_t;
 #define tk_dumap_create() kh_init(tk_dumap)
 #define tk_dumap_foreach(...) kh_foreach(__VA_ARGS__)
 
-static inline tk_dumap_t *tk_dumap_from_ivec (tk_ivec_t *V)
-{
-  int kha;
-  khint_t khi;
-  tk_dumap_t *M = tk_dumap_create();
-  for (int64_t i = 0; i < (int64_t) V->n; i ++) {
-    khi = tk_dumap_put(M, V->a[i], &kha);
-    tk_dumap_value(M, khi) = i;
-  }
-  return M;
-}
-
 #define tk_dumap_foreach_keys(h, kvar, code) { khint_t __i; \
 	for (__i = kh_begin(h); __i != kh_end(h); ++__i) { \
 		if (!kh_exist(h,__i)) continue; \
@@ -49,10 +38,10 @@ static inline tk_dumap_t *tk_dumap_from_ivec (tk_ivec_t *V)
 		code;	\
 	} }
 
-static inline tk_ivec_t *tk_dumap_values (lua_State *L, tk_dumap_t *M)
+static inline tk_dvec_t *tk_dumap_values (lua_State *L, tk_dumap_t *M)
 {
-  tk_ivec_t *out = tk_ivec_create(L, tk_dumap_size(M), 0, 0);
-  int64_t v;
+  tk_dvec_t *out = tk_dvec_create(L, tk_dumap_size(M), 0, 0);
+  double v;
   out->n = 0;
   tk_dumap_foreach_values(M, v, ({
     out->a[out->n ++] = v;
