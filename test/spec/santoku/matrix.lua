@@ -115,7 +115,7 @@ local heap1 = rvec.create()
 heap0:setn(0)
 for i = 1, 100 do
   local r = math.random(100)
-  heap0:hmax(i, r)
+  heap0:hmax(i, r, 10)
   heap1:push(i, r)
 end
 heap0:asc()
