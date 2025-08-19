@@ -31,6 +31,80 @@ static inline int tk_pvec_push_lua (lua_State *L) {
   return 0;
 }
 
+static inline int tk_pvec_hmax_lua (lua_State *L) {
+  lua_settop(L, 4);
+  tk_pvec_t *P = tk_pvec_peek(L, 1, "pvec");
+  int64_t a = tk_lua_checkinteger(L, 2, "i");
+  int64_t b = tk_lua_checkinteger(L, 3, "p");
+  uint64_t m = tk_lua_checkunsigned(L, 4, "max");
+  tk_pvec_hmax(P, m, (tk_pair_t) { a, b });
+  return 0;
+}
+
+static inline int tk_pvec_hmax_init_lua (lua_State *L) {
+  lua_settop(L, 1);
+  tk_pvec_t *P = tk_pvec_peek(L, 1, "pvec");
+  tk_pvec_hmax_init(P);
+  return 0;
+}
+
+static inline int tk_pvec_hmax_push_lua (lua_State *L) {
+  lua_settop(L, 3);
+  tk_pvec_t *P = tk_pvec_peek(L, 1, "pvec");
+  int64_t a = tk_lua_checkinteger(L, 2, "i");
+  int64_t b = tk_lua_checkinteger(L, 3, "p");
+  tk_pvec_hmax_push(P, (tk_pair_t) { a, b });
+  return 0;
+}
+
+static inline int tk_pvec_hmax_pop_lua (lua_State *L) {
+  lua_settop(L, 1);
+  tk_pvec_t *P = tk_pvec_peek(L, 1, "pvec");
+  if (!P->n)
+    return 0;
+  tk_pair_t r = tk_pvec_hmax_pop(P);
+  lua_pushinteger(L, r.i);
+  lua_pushinteger(L, r.p);
+  return 2;
+}
+
+static inline int tk_pvec_hmin_lua (lua_State *L) {
+  lua_settop(L, 4);
+  tk_pvec_t *P = tk_pvec_peek(L, 1, "pvec");
+  int64_t a = tk_lua_checkinteger(L, 2, "i");
+  int64_t b = tk_lua_checkinteger(L, 3, "p");
+  uint64_t m = tk_lua_checkunsigned(L, 4, "max");
+  tk_pvec_hmin(P, m, (tk_pair_t) { a, b });
+  return 0;
+}
+
+static inline int tk_pvec_hmin_init_lua (lua_State *L) {
+  lua_settop(L, 1);
+  tk_pvec_t *P = tk_pvec_peek(L, 1, "pvec");
+  tk_pvec_hmin_init(P);
+  return 0;
+}
+
+static inline int tk_pvec_hmin_push_lua (lua_State *L) {
+  lua_settop(L, 3);
+  tk_pvec_t *P = tk_pvec_peek(L, 1, "pvec");
+  int64_t a = tk_lua_checkinteger(L, 2, "i");
+  int64_t b = tk_lua_checkinteger(L, 3, "p");
+  tk_pvec_hmin_push(P, (tk_pair_t) { a, b });
+  return 0;
+}
+
+static inline int tk_pvec_hmin_pop_lua (lua_State *L) {
+  lua_settop(L, 1);
+  tk_pvec_t *P = tk_pvec_peek(L, 1, "pvec");
+  if (!P->n)
+    return 0;
+  tk_pair_t r = tk_pvec_hmin_pop(P);
+  lua_pushinteger(L, r.i);
+  lua_pushinteger(L, r.p);
+  return 2;
+}
+
 static inline int tk_pvec_keys_lua (lua_State *L) {
   lua_settop(L, 1);
   tk_pvec_keys(L, tk_pvec_peek(L, 1, "pvec"));
@@ -52,6 +126,14 @@ static luaL_Reg tk_pvec_lua_mt_ext2_fns[] =
   { "values", tk_pvec_values_lua },
   { "each", tk_pvec_each0_lua },
   { "ieach", tk_pvec_ieach0_lua },
+  { "hmax", tk_pvec_hmax_lua },
+  { "hmax_init", tk_pvec_hmax_init_lua },
+  { "hmax_pop", tk_pvec_hmax_pop_lua },
+  { "hmax_push", tk_pvec_hmax_push_lua },
+  { "hmin", tk_pvec_hmin_lua },
+  { "hmin_init", tk_pvec_hmin_init_lua },
+  { "hmin_pop", tk_pvec_hmin_pop_lua },
+  { "hmin_push", tk_pvec_hmin_push_lua },
   { NULL, NULL }
 };
 

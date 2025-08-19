@@ -32,11 +32,12 @@ static inline int tk_rvec_push_lua (lua_State *L) {
 }
 
 static inline int tk_rvec_hmax_lua (lua_State *L) {
-  lua_settop(L, 3);
+  lua_settop(L, 4);
   tk_rvec_t *P = tk_rvec_peek(L, 1, "rvec");
   int64_t a = tk_lua_checkinteger(L, 2, "i");
   double d = tk_lua_checkdouble(L, 3, "d");
-  tk_rvec_hmax(P, (tk_rank_t) { a, d });
+  uint64_t m = tk_lua_checkunsigned(L, 4, "max");
+  tk_rvec_hmax(P, m, (tk_rank_t) { a, d });
   return 0;
 }
 
@@ -68,11 +69,12 @@ static inline int tk_rvec_hmax_pop_lua (lua_State *L) {
 }
 
 static inline int tk_rvec_hmin_lua (lua_State *L) {
-  lua_settop(L, 3);
+  lua_settop(L, 4);
   tk_rvec_t *P = tk_rvec_peek(L, 1, "rvec");
   int64_t a = tk_lua_checkinteger(L, 2, "i");
   double d = tk_lua_checkdouble(L, 3, "d");
-  tk_rvec_hmin(P, (tk_rank_t) { a, d });
+  uint64_t m = tk_lua_checkunsigned(L, 4, "max");
+  tk_rvec_hmin(P, m, (tk_rank_t) { a, d });
   return 0;
 }
 

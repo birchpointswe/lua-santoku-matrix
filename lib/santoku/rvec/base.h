@@ -14,27 +14,27 @@ typedef struct { int64_t i; double d; } tk_rank_t;
 #define tk_vec_limited
 #include <santoku/vec/tpl.h>
 
-static inline void tk_rvec_hmax (tk_rvec_t *v, tk_rank_t r)
+static inline void tk_rvec_hmax (tk_rvec_t *v, size_t k, tk_rank_t r)
 {
-  if (v->n < v->m) {
-    v->a[v->n ++] = r;
-    if (v->n == v->m)
-      ks_heapmake(tk_rvec_asc, v->m, v->a);
+  if (v->n < k) {
+    tk_rvec_push(v, r);
+    if (v->n == k)
+      ks_heapmake(tk_rvec_asc, k, v->a);
   } else if (r.d < v->a[0].d) {
     v->a[0] = r;
-    ks_heapadjust(tk_rvec_asc, 0, v->m, v->a);
+    ks_heapadjust(tk_rvec_asc, 0, k, v->a);
   }
 }
 
-static inline void tk_rvec_hmin (tk_rvec_t *v, tk_rank_t r)
+static inline void tk_rvec_hmin (tk_rvec_t *v, size_t k, tk_rank_t r)
 {
-  if (v->n < v->m) {
-    v->a[v->n ++] = r;
-    if (v->n == v->m)
-      ks_heapmake(tk_rvec_desc, v->m, v->a);
+  if (v->n < k) {
+    tk_rvec_push(v, r);
+    if (v->n == k)
+      ks_heapmake(tk_rvec_desc, k, v->a);
   } else if (r.d > v->a[0].d) {
     v->a[0] = r;
-    ks_heapadjust(tk_rvec_desc, 0, v->m, v->a);
+    ks_heapadjust(tk_rvec_desc, 0, k, v->a);
   }
 }
 
