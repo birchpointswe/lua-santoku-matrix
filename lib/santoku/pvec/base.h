@@ -19,10 +19,10 @@ static inline void tk_pvec_hmax (tk_pvec_t *v, tk_pair_t r)
   if (v->n < v->m) {
     v->a[v->n ++] = r;
     if (v->n == v->m)
-      ks_heapmake(tk_pvec_desc, v->m, v->a);
+      ks_heapmake(tk_pvec_asc, v->m, v->a);
   } else if (r.p < v->a[0].p) {
     v->a[0] = r;
-    ks_heapadjust(tk_pvec_desc, 0, v->m, v->a);
+    ks_heapadjust(tk_pvec_asc, 0, v->m, v->a);
   }
 }
 
@@ -31,10 +31,10 @@ static inline void tk_pvec_hmin (tk_pvec_t *v, tk_pair_t r)
   if (v->n < v->m) {
     v->a[v->n ++] = r;
     if (v->n == v->m)
-      ks_heapmake(tk_pvec_asc, v->m, v->a);
+      ks_heapmake(tk_pvec_desc, v->m, v->a);
   } else if (r.p > v->a[0].p) {
     v->a[0] = r;
-    ks_heapadjust(tk_pvec_asc, 0, v->m, v->a);
+    ks_heapadjust(tk_pvec_desc, 0, v->m, v->a);
   }
 }
 

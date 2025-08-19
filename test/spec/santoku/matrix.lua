@@ -1,6 +1,8 @@
 local serialize  = require("santoku.serialize") -- luacheck: ignore
 local it  = require("santoku.iter")
+local err = require("santoku.error")
 local ivec = require("santoku.ivec")
+local rvec = require("santoku.rvec")
 local dvec = require("santoku.dvec")
 local tbl = require("santoku.table")
 
@@ -106,4 +108,23 @@ for _, vec in ipairs({ ivec, dvec }) do
 
   assert(tbl.equals(m0:table(), m1:table()))
 
+end
+
+local heap0 = rvec.create(10)
+local heap1 = rvec.create()
+heap0:setn(0)
+for i = 1, 100 do
+  local r = math.random(100)
+  heap0:hmax(i, r)
+  heap1:push(i, r)
+end
+heap0:asc()
+heap1:asc()
+heap1:setn(10)
+
+for i = 1, 10 do
+  local i0, d0 = heap0:get(i - 1)
+  local i1, d1 = heap1:get(i - 1)
+  err.assert(i0 == i1)
+  err.assert(d0 == d1)
 end
