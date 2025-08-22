@@ -133,9 +133,9 @@ end
 do
   local v0 = ivec.create({ 1, 2, 3, 4 })
   local v1 = ivec.create({ 3, 4, 5, 6 })
-  print(v0:set_jaccard(v1))
-  print(v0:set_overlap(v1))
-  print(v0:set_dice(v1))
-  print(v0:set_tversky(v1, 1, 0))
-  print(v0:set_tversky(v1, 0, 1))
+  err.assert(v0:set_jaccard(v1) == 1/3)
+  err.assert(v0:set_overlap(v1) == 0.5)
+  err.assert(v0:set_dice(v1) == 0.5)
+  err.assert(v0:set_tversky(v1, 1, 0) == 0.5)
+  err.assert(v0:set_tversky(v1, 0, 1) == 0.5)
 end
