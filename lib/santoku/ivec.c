@@ -1,4 +1,5 @@
 #include <santoku/ivec.h>
+#include <string.h>
 
 static inline int tk_ivec_flip_interleave_lua (lua_State *L) {
   lua_settop(L, 3);
@@ -274,6 +275,173 @@ static inline int tk_ivec_copy_rvalues_lua (lua_State *L)
   return 0;
 }
 
+static inline int tk_ivec_set_stats_lua (lua_State *L)
+{
+  lua_settop(L, 3);
+  tk_ivec_t *a = tk_ivec_peek(L, 1, "a");
+  tk_ivec_t *b = tk_ivec_peek(L, 2, "b");
+  tk_dvec_t *weights = lua_isnil(L, 3) ? NULL : tk_dvec_peek(L, 3, "weights");
+  double inter_w, sum_a, sum_b;
+  tk_ivec_set_stats(a->a, a->n, b->a, b->n, weights, &inter_w, &sum_a, &sum_b);
+  lua_pushnumber(L, inter_w);
+  lua_pushnumber(L, sum_a);
+  lua_pushnumber(L, sum_b);
+  return 3;
+}
+
+static inline int tk_ivec_set_similarity_lua (lua_State *L)
+{
+  int nargs = lua_gettop(L);
+  tk_ivec_t *a = tk_ivec_peek(L, 1, "a");
+  tk_ivec_t *b = tk_ivec_peek(L, 2, "b");
+  tk_dvec_t *weights = (nargs >= 3 && !lua_isnil(L, 3)) ? tk_dvec_peek(L, 3, "weights") : NULL;
+  tk_ivec_sim_type_t type = TK_IVEC_JACCARD;
+  if (nargs >= 4 && lua_isstring(L, 4)) {
+    const char *type_str = lua_tostring(L, 4);
+    if (strcmp(type_str, "jaccard") == 0) {
+      type = TK_IVEC_JACCARD;
+    } else if (strcmp(type_str, "overlap") == 0) {
+      type = TK_IVEC_OVERLAP;
+    } else if (strcmp(type_str, "dice") == 0) {
+      type = TK_IVEC_DICE;
+    } else if (strcmp(type_str, "tversky") == 0) {
+      type = TK_IVEC_TVERSKY;
+    }
+  }
+  double tversky_alpha = (nargs >= 5) ? luaL_checknumber(L, 5) : 0.5;
+  double tversky_beta = (nargs >= 6) ? luaL_checknumber(L, 6) : 0.5;
+  double sim = tk_ivec_set_similarity(a->a, a->n, b->a, b->n, weights, type, tversky_alpha, tversky_beta);
+  lua_pushnumber(L, sim);
+  return 1;
+}
+
+static inline int tk_ivec_set_jaccard_lua (lua_State *L)
+{
+  int nargs = lua_gettop(L);
+  tk_ivec_t *a = tk_ivec_peek(L, 1, "a");
+  tk_ivec_t *b = tk_ivec_peek(L, 2, "b");
+  tk_dvec_t *weights = (nargs >= 3 && !lua_isnil(L, 3)) ? tk_dvec_peek(L, 3, "weights") : NULL;
+  double inter_w, sum_a, sum_b;
+  tk_ivec_set_stats(a->a, a->n, b->a, b->n, weights, &inter_w, &sum_a, &sum_b);
+  double sim = tk_ivec_set_jaccard(inter_w, sum_a, sum_b);
+  lua_pushnumber(L, sim);
+  return 1;
+}
+
+static inline int tk_ivec_set_overlap_lua (lua_State *L)
+{
+  int nargs = lua_gettop(L);
+  tk_ivec_t *a = tk_ivec_peek(L, 1, "a");
+  tk_ivec_t *b = tk_ivec_peek(L, 2, "b");
+  tk_dvec_t *weights = (nargs >= 3 && !lua_isnil(L, 3)) ? tk_dvec_peek(L, 3, "weights") : NULL;
+  double inter_w, sum_a, sum_b;
+  tk_ivec_set_stats(a->a, a->n, b->a, b->n, weights, &inter_w, &sum_a, &sum_b);
+  double sim = tk_ivec_set_overlap(inter_w, sum_a, sum_b);
+  lua_pushnumber(L, sim);
+  return 1;
+}
+
+static inline int tk_ivec_set_dice_lua (lua_State *L)
+{
+  int nargs = lua_gettop(L);
+  tk_ivec_t *a = tk_ivec_peek(L, 1, "a");
+  tk_ivec_t *b = tk_ivec_peek(L, 2, "b");
+  tk_dvec_t *weights = (nargs >= 3 && !lua_isnil(L, 3)) ? tk_dvec_peek(L, 3, "weights") : NULL;
+  double inter_w, sum_a, sum_b;
+  tk_ivec_set_stats(a->a, a->n, b->a, b->n, weights, &inter_w, &sum_a, &sum_b);
+  double sim = tk_ivec_set_dice(inter_w, sum_a, sum_b);
+  lua_pushnumber(L, sim);
+  return 1;
+}
+
+static inline int tk_ivec_set_tversky_lua (lua_State *L)
+{
+  int nargs = lua_gettop(L);
+  tk_ivec_t *a = tk_ivec_peek(L, 1, "a");
+  tk_ivec_t *b = tk_ivec_peek(L, 2, "b");
+  
+
+
+
+
+
+  
+  tk_dvec_t *weights = NULL;
+  double alpha = 0.5;
+  double beta = 0.5;
+  
+  if (nargs >= 3) {
+
+    if (lua_isnumber(L, 3)) {
+
+      alpha = luaL_checknumber(L, 3);
+      beta = (nargs >= 4) ? luaL_checknumber(L, 4) : 0.5;
+    } else if (!lua_isnil(L, 3)) {
+
+      weights = tk_dvec_peek(L, 3, "weights");
+      alpha = (nargs >= 4) ? luaL_checknumber(L, 4) : 0.5;
+      beta = (nargs >= 5) ? luaL_checknumber(L, 5) : 0.5;
+    }
+  }
+  
+  double inter_w, sum_a, sum_b;
+  tk_ivec_set_stats(a->a, a->n, b->a, b->n, weights, &inter_w, &sum_a, &sum_b);
+  double sim = tk_ivec_set_tversky(inter_w, sum_a, sum_b, alpha, beta);
+  lua_pushnumber(L, sim);
+  return 1;
+}
+
+static inline int tk_ivec_set_weights_by_rank_lua (lua_State *L)
+{
+  int nargs = lua_gettop(L);
+  tk_ivec_t *features = tk_ivec_peek(L, 1, "features");
+  tk_dvec_t *weights = (nargs >= 2 && !lua_isnil(L, 2)) ? tk_dvec_peek(L, 2, "weights") : NULL;
+  tk_ivec_t *ranks = (nargs >= 3 && !lua_isnil(L, 3)) ? tk_ivec_peek(L, 3, "ranks") : NULL;
+  uint64_t n_ranks = (nargs >= 4) ? tk_lua_checkunsigned(L, 4, "n_ranks") : 1;
+  tk_dvec_t *weights_by_rank = tk_dvec_create(L, n_ranks, 0, 0);
+  tk_ivec_set_weights_by_rank(features->a, features->n, weights, ranks, n_ranks, weights_by_rank->a);
+  weights_by_rank->n = n_ranks;
+  return 1;
+}
+
+static inline int tk_ivec_set_similarity_by_rank_lua (lua_State *L)
+{
+  int nargs = lua_gettop(L);
+  tk_dvec_t *wacc = tk_dvec_peek(L, 1, "wacc");
+  int64_t vsid = tk_lua_checkinteger(L, 2, "vsid");
+  tk_dvec_t *q_weights_by_rank = tk_dvec_peek(L, 3, "q_weights_by_rank");
+  tk_dvec_t *e_weights_by_rank = tk_dvec_peek(L, 4, "e_weights_by_rank");
+  uint64_t n_ranks = tk_lua_checkunsigned(L, 5, "n_ranks");
+  int64_t rank_decay_window = (nargs >= 6) ? tk_lua_checkinteger(L, 6, "rank_decay_window") : -1;
+  double rank_decay_sigma = (nargs >= 7) ? luaL_checknumber(L, 7) : 10.0;
+  double rank_decay_floor = (nargs >= 8) ? luaL_checknumber(L, 8) : 0.01;
+  tk_ivec_sim_type_t type = TK_IVEC_JACCARD;
+  if (nargs >= 9 && lua_isstring(L, 9)) {
+    const char *type_str = lua_tostring(L, 9);
+    if (strcmp(type_str, "jaccard") == 0) {
+      type = TK_IVEC_JACCARD;
+    } else if (strcmp(type_str, "overlap") == 0) {
+      type = TK_IVEC_OVERLAP;
+    } else if (strcmp(type_str, "dice") == 0) {
+      type = TK_IVEC_DICE;
+    } else if (strcmp(type_str, "tversky") == 0) {
+      type = TK_IVEC_TVERSKY;
+    }
+  }
+  double tversky_alpha = (nargs >= 10) ? luaL_checknumber(L, 10) : 0.5;
+  double tversky_beta = (nargs >= 11) ? luaL_checknumber(L, 11) : 0.5;
+  double sim = tk_ivec_set_similarity_by_rank(
+    wacc, vsid, q_weights_by_rank->a,
+    e_weights_by_rank->a, n_ranks,
+    rank_decay_window,
+    rank_decay_sigma,
+    rank_decay_floor, type,
+    tversky_alpha,
+    tversky_beta);
+  lua_pushnumber(L, sim);
+  return 1;
+}
+
 static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
 {
   { "copy_pkeys", tk_ivec_copy_pkeys_lua },
@@ -292,6 +460,14 @@ static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
   { "from_bitmap", tk_ivec_from_bitmap_lua },
   { "extend_bits", tk_ivec_extend_bits_lua },
   { "bits_rearrange", tk_ivec_bits_rearrange_lua },
+  { "set_stats", tk_ivec_set_stats_lua },
+  { "set_similarity", tk_ivec_set_similarity_lua },
+  { "set_jaccard", tk_ivec_set_jaccard_lua },
+  { "set_overlap", tk_ivec_set_overlap_lua },
+  { "set_dice", tk_ivec_set_dice_lua },
+  { "set_tversky", tk_ivec_set_tversky_lua },
+  { "set_weights_by_rank", tk_ivec_set_weights_by_rank_lua },
+  { "set_similarity_by_rank", tk_ivec_set_similarity_by_rank_lua },
   { NULL, NULL }
 };
 

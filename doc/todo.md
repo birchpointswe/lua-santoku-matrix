@@ -4,7 +4,7 @@
 - Usage of Lua state in the C api should be limited strictly to create, and
   there should be no destroy function (users must use the implied stack)
 
-- Merge into base santoku
+- Fix standardize naming convention (ivec bits all using bits_ prefix)
 - Standard peek/test: tk_xvec_check, tk_xvec_test, tk_xvec_fcheck, tk_xvec_ftest
 - templatize ordered/unordered map/set under a single map.template.h
 - Update iuset/ioset/iumap/iomap to have a lua API and to use lua state for cleanup

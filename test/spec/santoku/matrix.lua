@@ -110,21 +110,32 @@ for _, vec in ipairs({ ivec, dvec }) do
 
 end
 
-local heap0 = rvec.create(10)
-local heap1 = rvec.create()
-heap0:setn(0)
-for i = 1, 100 do
-  local r = math.random(100)
-  heap0:hmax(i, r, 10)
-  heap1:push(i, r)
+do
+  local heap0 = rvec.create(10)
+  local heap1 = rvec.create()
+  heap0:setn(0)
+  for i = 1, 100 do
+    local r = math.random(100)
+    heap0:hmax(i, r, 10)
+    heap1:push(i, r)
+  end
+  heap0:asc()
+  heap1:asc()
+  heap1:setn(10)
+  for i = 1, 10 do
+    local i0, d0 = heap0:get(i - 1)
+    local i1, d1 = heap1:get(i - 1)
+    err.assert(i0 == i1)
+    err.assert(d0 == d1)
+  end
 end
-heap0:asc()
-heap1:asc()
-heap1:setn(10)
 
-for i = 1, 10 do
-  local i0, d0 = heap0:get(i - 1)
-  local i1, d1 = heap1:get(i - 1)
-  err.assert(i0 == i1)
-  err.assert(d0 == d1)
+do
+  local v0 = ivec.create({ 1, 2, 3, 4 })
+  local v1 = ivec.create({ 3, 4, 5, 6 })
+  print(v0:set_jaccard(v1))
+  print(v0:set_overlap(v1))
+  print(v0:set_dice(v1))
+  print(v0:set_tversky(v1, 1, 0))
+  print(v0:set_tversky(v1, 0, 1))
 end

@@ -5,7 +5,9 @@
 #include <santoku/iuset.h>
 #include <santoku/iumap.h>
 #include <santoku/threads.h>
+#include <santoku/dvec.h>
 #include <stdatomic.h>
+#include <math.h>
 
 static inline tk_ivec_t *tk_iuset_keys (lua_State *L, tk_iuset_t *S)
 {
@@ -796,6 +798,220 @@ static inline tk_ivec_t *tk_ivec_top_chi2 (
   tk_ivec_t *out = tk_ivec_top_generic(L, scores, n_visible, n_hidden, top_k, 0);
   lua_pushvalue(L, iscores);
   return out;
+}
+
+typedef enum {
+  TK_IVEC_JACCARD,
+  TK_IVEC_OVERLAP,
+  TK_IVEC_DICE,
+  TK_IVEC_TVERSKY
+} tk_ivec_sim_type_t;
+
+static inline double tk_ivec_set_jaccard (double inter_w, double sum_a, double sum_b)
+{
+  double union_w = sum_a + sum_b - inter_w;
+  return (union_w == 0.0) ? 0.0 : inter_w / union_w;
+}
+
+static inline double tk_ivec_set_overlap (double inter_w, double sum_a, double sum_b)
+{
+  double min_w = (sum_a < sum_b) ? sum_a : sum_b;
+  return (min_w == 0.0) ? 0.0 : inter_w / min_w;
+}
+
+static inline double tk_ivec_set_dice (double inter_w, double sum_a, double sum_b)
+{
+  double denom = sum_a + sum_b;
+  return (denom == 0.0) ? 0.0 : (2.0 * inter_w) / denom;
+}
+
+static inline double tk_ivec_set_tversky (double inter_w, double sum_a, double sum_b, double alpha, double beta)
+{
+  double a_only = sum_a - inter_w;
+  double b_only = sum_b - inter_w;
+  if (a_only < 0.0)
+    a_only = 0.0;
+  if (b_only < 0.0)
+    b_only = 0.0;
+  double denom = inter_w + alpha * a_only + beta * b_only;
+  return (denom == 0.0) ? 0.0 : inter_w / denom;
+}
+
+static inline void tk_ivec_set_stats (
+  int64_t *a, size_t alen,
+  int64_t *b, size_t blen,
+  tk_dvec_t *weights,
+  double *inter_w,
+  double *sum_a,
+  double *sum_b
+) {
+  size_t i = 0, j = 0;
+  double inter = 0.0, sa = 0.0, sb = 0.0;
+  while (i < alen && j < blen) {
+    int64_t ai = a[i], bj = b[j];
+    if (ai == bj) {
+      double w = (weights && ai >= 0 && ai < (int64_t)weights->n) ? weights->a[ai] : 1.0;
+      inter += w;
+      sa += w;
+      sb += w;
+      i++;
+      j++;
+    } else if (ai < bj) {
+      double w = (weights && ai >= 0 && ai < (int64_t)weights->n) ? weights->a[ai] : 1.0;
+      sa += w;
+      i++;
+    } else {
+      double w = (weights && bj >= 0 && bj < (int64_t)weights->n) ? weights->a[bj] : 1.0;
+      sb += w;
+      j++;
+    }
+  }
+  while (i < alen) {
+    int64_t ai = a[i++];
+    double w = (weights && ai >= 0 && ai < (int64_t)weights->n) ? weights->a[ai] : 1.0;
+    sa += w;
+  }
+  while (j < blen) {
+    int64_t bj = b[j++];
+    double w = (weights && bj >= 0 && bj < (int64_t)weights->n) ? weights->a[bj] : 1.0;
+    sb += w;
+  }
+  *inter_w = inter;
+  *sum_a = sa;
+  *sum_b = sb;
+}
+
+static inline double tk_ivec_set_similarity (
+  int64_t *a, size_t alen,
+  int64_t *b, size_t blen,
+  tk_dvec_t *weights,
+  tk_ivec_sim_type_t type,
+  double tversky_alpha,
+  double tversky_beta
+) {
+  double inter_w = 0.0, sum_a = 0.0, sum_b = 0.0;
+  tk_ivec_set_stats(a, alen, b, blen, weights, &inter_w, &sum_a, &sum_b);
+  switch (type) {
+    case TK_IVEC_JACCARD:
+      return tk_ivec_set_jaccard(inter_w, sum_a, sum_b);
+    case TK_IVEC_OVERLAP:
+      return tk_ivec_set_overlap(inter_w, sum_a, sum_b);
+    case TK_IVEC_DICE:
+      return tk_ivec_set_dice(inter_w, sum_a, sum_b);
+    case TK_IVEC_TVERSKY:
+      return tk_ivec_set_tversky(inter_w, sum_a, sum_b, tversky_alpha, tversky_beta);
+    default:
+      return tk_ivec_set_jaccard(inter_w, sum_a, sum_b);
+  }
+}
+
+static inline double tk_ivec_set_similarity_from_partial (
+  double inter_w,
+  double q_w,
+  double e_w,
+  tk_ivec_sim_type_t type,
+  double tversky_alpha,
+  double tversky_beta
+) {
+  switch (type) {
+    case TK_IVEC_JACCARD: {
+      double uni_w = q_w + e_w - inter_w;
+      return (uni_w == 0.0) ? 0.0 : inter_w / uni_w;
+    }
+    case TK_IVEC_OVERLAP: {
+      double min_w = (q_w < e_w) ? q_w : e_w;
+      return (min_w == 0.0) ? 0.0 : inter_w / min_w;
+    }
+    case TK_IVEC_TVERSKY: {
+      double a_only = q_w - inter_w;
+      double b_only = e_w - inter_w;
+      if (a_only < 0.0) a_only = 0.0;
+      if (b_only < 0.0) b_only = 0.0;
+      double denom = inter_w + tversky_alpha * a_only + tversky_beta * b_only;
+      return (denom == 0.0) ? 0.0 : inter_w / denom;
+    }
+    case TK_IVEC_DICE: {
+      double denom = q_w + e_w;
+      return (denom == 0.0) ? 0.0 : (2.0 * inter_w) / denom;
+    }
+    default: {
+      double uni_w = q_w + e_w - inter_w;
+      return (uni_w == 0.0) ? 0.0 : inter_w / uni_w;
+    }
+  }
+}
+
+static inline void tk_ivec_set_weights_by_rank (
+  int64_t *features,
+  size_t n_features,
+  tk_dvec_t *weights,
+  tk_ivec_t *ranks,
+  uint64_t n_ranks,
+  double *weights_by_rank
+) {
+  for (uint64_t r = 0; r < n_ranks; r ++)
+    weights_by_rank[r] = 0.0;
+  for (size_t i = 0; i < n_features; i ++) {
+    int64_t fid = features[i];
+    if (fid >= 0) {
+      double w = (weights && fid < (int64_t)weights->n) ? weights->a[fid] : 1.0;
+      int64_t rank = (ranks && fid < (int64_t)ranks->n) ? ranks->a[fid] : 0;
+      if (rank >= 0 && rank < (int64_t)n_ranks) {
+        weights_by_rank[rank] += w;
+      }
+    }
+  }
+}
+
+static inline double tk_ivec_set_similarity_by_rank (
+  tk_dvec_t *wacc,
+  int64_t vsid,
+  double *q_weights_by_rank,
+  double *e_weights_by_rank,
+  uint64_t n_ranks,
+  int64_t rank_decay_window,
+  double rank_decay_sigma,
+  double rank_decay_floor,
+  tk_ivec_sim_type_t type,
+  double tversky_alpha,
+  double tversky_beta
+) {
+  double q_total = 0.0, e_total = 0.0;
+  for (uint64_t r = 0; r < n_ranks; r ++) {
+    q_total += q_weights_by_rank[r];
+    e_total += e_weights_by_rank[r];
+  }
+  if (q_total == 0.0 && e_total == 0.0)
+    return 0.0;
+  double total_weighted_sim = 0.0;
+  double total_rank_weight = 0.0;
+  for (uint64_t rank = 0; rank < n_ranks; rank ++) {
+    double rank_weight = 1.0;
+    if (rank_decay_window >= 0) {
+      if (rank == 0) {
+        rank_weight = 1.0;
+      } else if (rank >= (uint64_t)rank_decay_window) {
+        rank_weight = rank_decay_floor;
+      } else {
+        double t = (double)rank / (double)rank_decay_window;
+        double sigmoid_arg = rank_decay_sigma * (t - 0.5);
+        double sigmoid_val = 1.0 / (1.0 + exp(sigmoid_arg));
+        rank_weight = rank_decay_floor + (1.0 - rank_decay_floor) * sigmoid_val;
+      }
+    }
+    double inter_w = wacc->a[(int64_t)n_ranks * vsid + (int64_t)rank];
+    double q_w = q_weights_by_rank[rank];
+    double e_w = e_weights_by_rank[rank];
+    double rank_sim;
+    if (q_w > 0.0 || e_w > 0.0) {
+      rank_sim = tk_ivec_set_similarity_from_partial(inter_w, q_w, e_w, type, tversky_alpha, tversky_beta);
+    } else {
+      rank_sim = 0.0;
+    }
+    total_weighted_sim += rank_sim * rank_weight;
+    total_rank_weight += rank_weight;
+  }
+  return (total_rank_weight > 0.0) ? total_weighted_sim / total_rank_weight : 0.0;
 }
 
 #endif
