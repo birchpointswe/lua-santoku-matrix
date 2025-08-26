@@ -1,4 +1,4 @@
-# Lua Santoku Matrix API Reference
+# Santoku Matrix (templated vectors, ordered/unordered maps/sets)
 
 High-performance templated array-like containers (vectors), hash maps, and sets with type-specific implementations.
 
