@@ -1,6 +1,6 @@
-# Santoku Matrix (templated vectors, ordered/unordered maps/sets)
+# Santoku Matrix
 
-High-performance templated array-like containers (vectors), hash maps, and sets with type-specific implementations.
+Templated array-like containers (vectors), hash maps, and sets with type-specific implementations.
 
 ## Common Vector Operations
 
