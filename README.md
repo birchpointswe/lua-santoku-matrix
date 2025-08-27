@@ -21,8 +21,8 @@ All vector types (ivec, dvec, cvec, rvec, pvec) share these core operations unle
 |----------|-----------|---------|-------------|
 | `copy` | `dest, source, [start], [end], [dest_idx]` | `-` | Copies elements between vectors |
 | `persist` | `[filename]` | `[string]` | Saves vector to file or returns binary string |
-| `size` | | `integer` | Returns number of elements |
-| `capacity` | | `integer` | Returns allocated capacity |
+| `size` | `-` | `integer` | Returns number of elements |
+| `capacity` | `-` | `integer` | Returns allocated capacity |
 | `resize` | `size` | `-` | Resizes vector to exact size |
 | `setn` | `n` | `-` | Sets number of active elements |
 | `ensure` | `size` | `-` | Ensures minimum capacity |
@@ -68,12 +68,12 @@ All vector types (ivec, dvec, cvec, rvec, pvec) share these core operations unle
 | `pow` | `exponent, [start], [end]` | `-` | Raises elements to power |
 | `dot` | `vector_b` | `number` | Computes dot product |
 | `multiply` | `a, b, c, k, [transpose_a], [transpose_b]` | `-` | Matrix multiplication |
-| `magnitude` | | `number` | Computes Euclidean magnitude |
-| `sum` | | `number` | Sums all elements |
+| `magnitude` | `-` | `number` | Computes Euclidean magnitude |
+| `sum` | `-` | `number` | Sums all elements |
 | `csums` | `cols` | `vector` | Column-wise sums |
 | `rsums` | `cols` | `vector` | Row-wise sums |
-| `min` | | `value, index` | Finds minimum value and index |
-| `max` | | `value, index` | Finds maximum value and index |
+| `min` | `-` | `value, index` | Finds minimum value and index |
+| `max` | `-` | `value, index` | Finds maximum value and index |
 | `cmins` | `cols` | `vector` | Column-wise minimums |
 | `rmins` | `cols` | `vector` | Row-wise minimums |
 | `cmaxs` | `cols` | `vector` | Column-wise maximums |
@@ -84,8 +84,8 @@ All vector types (ivec, dvec, cvec, rvec, pvec) share these core operations unle
 
 | Method | Arguments | Returns | Description |
 |----------|-----------|---------|-------------|
-| `each` | | `iterator` | Returns iterator over values |
-| `ieach` | | `iterator` | Returns iterator over index-value pairs |
+| `each` | `-` | `iterator` | Returns iterator over values |
+| `ieach` | `-` | `iterator` | Returns iterator over index-value pairs |
 
 ### Conversion and Utility
 *Not available for cvec*
@@ -138,7 +138,7 @@ Integer vector module providing dynamic arrays of 64-bit integers.
 | `flip_interleave` | `samples, features` | | Flips and interleaves bit patterns |
 | `bits_rearrange` | `ids, features` | | Rearranges bits by feature IDs |
 | `extend_bits` | `samples, features` | | Extends bit representation |
-| `raw_bitmap` | | `string` | Returns bitmap representation |
+| `raw_bitmap` | `-` | `string` | Returns bitmap representation |
 | `from_bitmap` | `bitmap` | `ivec` | Creates vector from bitmap |
 | `filter` | `mask` | `ivec` | Filters elements by mask |
 
@@ -211,10 +211,10 @@ Rank vector module for storing pairs of (integer, double).
 | `get` | `idx` | `integer, double` | Gets rank pair at index |
 | `set` | `idx, integer, double` | `-` | Sets rank pair at index |
 | `push` | `integer, double` | `-` | Appends rank pair |
-| `keys` | | `ivec` | Extracts integer keys as ivec |
-| `values` | | `dvec` | Extracts double values as dvec |
-| `each` | | `iterator` | Returns iterator over pairs |
-| `ieach` | | `iterator` | Returns iterator over indexed pairs |
+| `keys` | `-` | `ivec` | Extracts integer keys as ivec |
+| `values` | `-` | `dvec` | Extracts double values as dvec |
+| `each` | `-` | `iterator` | Returns iterator over pairs |
+| `ieach` | `-` | `iterator` | Returns iterator over indexed pairs |
 
 ##### Heap Operations
 
@@ -223,11 +223,11 @@ Rank vector module for storing pairs of (integer, double).
 | `hmax` | `integer, double, max_size` | `-` | Maintains top-k maximum heap |
 | `hmax_init` | `-` | `-` | Initializes as max heap |
 | `hmax_push` | `integer, double` | `-` | Pushes to max heap |
-| `hmax_pop` | | `integer, double` | Pops from max heap |
+| `hmax_pop` | `-` | `integer, double` | Pops from max heap |
 | `hmin` | `integer, double, max_size` | `-` | Maintains top-k minimum heap |
 | `hmin_init` | `-` | `-` | Initializes as min heap |
 | `hmin_push` | `integer, double` | `-` | Pushes to min heap |
-| `hmin_pop` | | `integer, double` | Pops from min heap |
+| `hmin_pop` | `-` | `integer, double` | Pops from min heap |
 
 ### `santoku.pvec`
 Pair vector module for storing pairs of (integer, integer).
@@ -243,10 +243,10 @@ Pair vector module for storing pairs of (integer, integer).
 | `get` | `idx` | `integer, integer` | Gets pair at index |
 | `set` | `idx, integer, integer` | `-` | Sets pair at index |
 | `push` | `integer, integer` | `-` | Appends pair |
-| `keys` | | `ivec` | Extracts first integers as ivec |
-| `values` | | `ivec` | Extracts second integers as ivec |
-| `each` | | `iterator` | Returns iterator over pairs |
-| `ieach` | | `iterator` | Returns iterator over indexed pairs |
+| `keys` | `-` | `ivec` | Extracts first integers as ivec |
+| `values` | `-` | `ivec` | Extracts second integers as ivec |
+| `each` | `-` | `iterator` | Returns iterator over pairs |
+| `ieach` | `-` | `iterator` | Returns iterator over indexed pairs |
 
 ##### Heap Operations
 
@@ -255,11 +255,11 @@ Pair vector module for storing pairs of (integer, integer).
 | `hmax` | `integer, integer, max_size` | `-` | Maintains top-k maximum heap |
 | `hmax_init` | `-` | `-` | Initializes as max heap |
 | `hmax_push` | `integer, integer` | `-` | Pushes to max heap |
-| `hmax_pop` | | `integer, integer` | Pops from max heap |
+| `hmax_pop` | `-` | `integer, integer` | Pops from max heap |
 | `hmin` | `integer, integer, max_size` | `-` | Maintains top-k minimum heap |
 | `hmin_init` | `-` | `-` | Initializes as min heap |
 | `hmin_push` | `integer, integer` | `-` | Pushes to min heap |
-| `hmin_pop` | | `integer, integer` | Pops from min heap |
+| `hmin_pop` | `-` | `integer, integer` | Pops from min heap |
 
 ## Template System
 
