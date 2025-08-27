@@ -276,36 +276,6 @@ static inline int tk_ivec_bits_rearrange (
   return 0;
 }
 
-static inline int tk_ivec_flip_interleave (
-  lua_State *L,
-  tk_ivec_t *m0,
-  uint64_t n_samples,
-  uint64_t n_features
-) {
-  tk_ivec_asc(m0, 0, m0->n);
-  size_t orig_n = m0->n;
-  size_t total = (size_t) (n_samples * n_features);
-  tk_ivec_ensure(m0, total);
-  int64_t *orig = tk_malloc(L, orig_n * sizeof(int64_t));
-  memcpy(orig, m0->a, orig_n * sizeof(int64_t));
-  size_t p = 0;
-  size_t idx = 0;
-  for (uint64_t y = 0; y < total; y ++) {
-    uint64_t s = y / n_features;
-    uint64_t k = y % n_features;
-    if (p < orig_n && orig[p] == (int64_t) y) {
-      m0->a[idx ++] = (int64_t) (s * 2 * n_features + k);
-      p ++;
-    } else {
-      m0->a[idx ++] = (int64_t) (s * 2 * n_features + n_features + k);
-    }
-  }
-  free(orig);
-  m0->n = idx;
-  tk_ivec_asc(m0, 0, m0->n);
-  return 0;
-}
-
 static inline tk_ivec_t *tk_ivec_top_select (
   lua_State *L,
   tk_iuset_t *selected
@@ -420,28 +390,60 @@ static inline int tk_ivec_filter (
   return 0;
 }
 
-static inline char *tk_ivec_raw_bitmap (
+static inline tk_cvec_t *tk_ivec_raw_bitmap (
   lua_State *L,
   tk_ivec_t *set_bits,
   uint64_t n_samples,
   uint64_t n_features,
-  size_t *lenp
+  bool flip_interleave
 ) {
-  uint64_t bytes_per_sample = (n_features + CHAR_BIT - 1) / CHAR_BIT;
+
+  uint64_t output_features = flip_interleave ? (n_features * 2) : n_features;
+  uint64_t bytes_per_sample = (output_features + CHAR_BIT - 1) / CHAR_BIT;
   size_t len = n_samples * bytes_per_sample;
-  uint8_t *out = tk_malloc(L, len);
+
+
+  tk_cvec_t *out_cvec = tk_cvec_create(L, len, NULL, NULL);
+  uint8_t *out = (uint8_t *)out_cvec->a;
   memset(out, 0, len);
-  for (uint64_t idx = 0; idx < set_bits->n; idx++) {
-    int64_t v = set_bits->a[idx];
-    if (v < 0) continue;
-    uint64_t s = (uint64_t) v / n_features;
-    uint64_t f = (uint64_t) v % n_features;
-    uint64_t byte_off = s * bytes_per_sample + (f / CHAR_BIT);
-    uint8_t bit_off = f & (CHAR_BIT - 1);
-    out[byte_off] |= (uint8_t) (1u << bit_off);
+
+  if (flip_interleave) {
+
+    tk_ivec_asc(set_bits, 0, set_bits->n);
+    size_t p = 0;
+    for (uint64_t y = 0; y < n_samples * n_features; y++) {
+      uint64_t s = y / n_features;
+      uint64_t k = y % n_features;
+      uint64_t new_bit_pos;
+
+      if (p < set_bits->n && set_bits->a[p] == (int64_t)y) {
+
+        new_bit_pos = s * output_features + k;
+        p++;
+      } else {
+
+        new_bit_pos = s * output_features + n_features + k;
+      }
+
+
+      uint64_t byte_off = new_bit_pos / CHAR_BIT;
+      uint8_t bit_off = new_bit_pos & (CHAR_BIT - 1);
+      out[byte_off] |= (uint8_t)(1u << bit_off);
+    }
+  } else {
+
+    for (uint64_t idx = 0; idx < set_bits->n; idx++) {
+      int64_t v = set_bits->a[idx];
+      if (v < 0) continue;
+      uint64_t s = (uint64_t) v / n_features;
+      uint64_t f = (uint64_t) v % n_features;
+      uint64_t byte_off = s * bytes_per_sample + (f / CHAR_BIT);
+      uint8_t bit_off = f & (CHAR_BIT - 1);
+      out[byte_off] |= (uint8_t) (1u << bit_off);
+    }
   }
-  *lenp = len;
-  return (char *) out;
+
+  return out_cvec;
 }
 
 

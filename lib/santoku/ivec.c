@@ -2,15 +2,6 @@
 #include <santoku/cvec.h>
 #include <string.h>
 
-static inline int tk_ivec_flip_interleave_lua (lua_State *L) {
-  lua_settop(L, 3);
-  tk_ivec_t *m0 = tk_ivec_peek(L, 1, "set_bits");
-  uint64_t n_samples = tk_lua_checkunsigned(L, 2, "samples");
-  uint64_t n_features = tk_lua_checkunsigned(L, 3, "features");
-  tk_ivec_flip_interleave(L, m0, n_samples, n_features);
-  return 0;
-}
-
 static inline int tk_ivec_bits_rearrange_lua (lua_State *L) {
   lua_settop(L, 3);
   tk_ivec_t *m0 = tk_ivec_peek(L, 1, "set_bits");
@@ -192,14 +183,13 @@ static inline int tk_ivec_filter_lua (lua_State *L)
 
 static inline int tk_ivec_raw_bitmap_lua (lua_State *L)
 {
-  lua_settop(L, 3);
+  lua_settop(L, 4);
   tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
   uint64_t n_samples = tk_lua_checkunsigned(L, 2, "samples");
   uint64_t n_features = tk_lua_checkunsigned(L, 3, "features");
-  size_t l;
-  char *r = tk_ivec_raw_bitmap(L, set_bits, n_samples, n_features, &l);
-  lua_pushlstring(L, r, l);
-  free(r);
+  bool flip_interleave = lua_toboolean(L, 4);
+  tk_ivec_raw_bitmap(L, set_bits, n_samples, n_features, flip_interleave);
+
   return 1;
 }
 
@@ -531,7 +521,6 @@ static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
   { "score_chi2", tk_ivec_score_chi2_lua },
   { "score_mi", tk_ivec_score_mi_lua },
   { "score_entropy", tk_ivec_score_entropy_lua },
-  { "flip_interleave", tk_ivec_flip_interleave_lua },
   { "filter", tk_ivec_filter_lua },
   { "raw_bitmap", tk_ivec_raw_bitmap_lua },
   { "from_bitmap", tk_ivec_from_bitmap_lua },

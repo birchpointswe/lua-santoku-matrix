@@ -77,11 +77,6 @@ for _, vec in ipairs({ ivec, dvec }) do
   m0:asc()
   assert(tbl.equals(m0:table(), { 1, 1, 2, 2, 3, 3, 4, 5, 6, 6 }))
 
-  if m0.flip_interleave then
-    m0 = vec.create({ 0, 3 })
-    m0:flip_interleave(2, 2)
-  end
-
   m0 = vec.create({ 1, 2, 3, 4 })
   local g = m0:each()
   assert(g() == 1)
@@ -94,14 +89,6 @@ for _, vec in ipairs({ ivec, dvec }) do
   assert(g() == 1)
   assert(g() == 2)
   assert(g() == nil)
-
-  if m0.flip_interleave then
-    m0 = vec.create({ 0 })
-    m1 = vec.create({ 1 })
-    m1:add(2)
-    m0:copy(m1)
-    m0:flip_interleave(2, 2)
-  end
 
   m0:persist(".vec.bin")
   m1 = vec.load(".vec.bin")
