@@ -410,37 +410,44 @@ static inline tk_cvec_t *tk_ivec_raw_bitmap (
   if (flip_interleave) {
 
     tk_ivec_asc(set_bits, 0, set_bits->n);
+    for (uint64_t idx = 0; idx < set_bits->n; idx ++) {
+      int64_t v = set_bits->a[idx];
+      if (v < 0)
+        continue;
+      uint64_t s = (uint64_t) v / n_features;
+      uint64_t k = (uint64_t) v % n_features;
+      uint64_t new_bit_pos = s * output_features + k;
+      uint64_t byte_off = new_bit_pos / CHAR_BIT;
+      uint8_t bit_off = new_bit_pos & (CHAR_BIT - 1);
+      out[byte_off] |= (uint8_t) (1u << bit_off);
+    }
     size_t p = 0;
-    for (uint64_t y = 0; y < n_samples * n_features; y++) {
+    for (uint64_t y = 0; y < n_samples * n_features; y ++) {
+      if (p < set_bits->n && set_bits->a[p] == (int64_t) y) {
+        p ++;
+        continue;
+      }
       uint64_t s = y / n_features;
       uint64_t k = y % n_features;
-      uint64_t new_bit_pos;
-
-      if (p < set_bits->n && set_bits->a[p] == (int64_t)y) {
-
-        new_bit_pos = s * output_features + k;
-        p++;
-      } else {
-
-        new_bit_pos = s * output_features + n_features + k;
-      }
-
-
+      uint64_t new_bit_pos = s * output_features + n_features + k;
       uint64_t byte_off = new_bit_pos / CHAR_BIT;
       uint8_t bit_off = new_bit_pos & (CHAR_BIT - 1);
       out[byte_off] |= (uint8_t)(1u << bit_off);
     }
+
   } else {
 
-    for (uint64_t idx = 0; idx < set_bits->n; idx++) {
+    for (uint64_t idx = 0; idx < set_bits->n; idx ++) {
       int64_t v = set_bits->a[idx];
-      if (v < 0) continue;
+      if (v < 0)
+        continue;
       uint64_t s = (uint64_t) v / n_features;
       uint64_t f = (uint64_t) v % n_features;
       uint64_t byte_off = s * bytes_per_sample + (f / CHAR_BIT);
       uint8_t bit_off = f & (CHAR_BIT - 1);
       out[byte_off] |= (uint8_t) (1u << bit_off);
     }
+
   }
 
   return out_cvec;
