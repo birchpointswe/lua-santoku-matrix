@@ -13,61 +13,61 @@ All vector types (ivec, dvec, cvec, rvec, pvec) share these core operations unle
 | `create` | `[size_or_table]` | `vector` | Creates new vector from size or Lua table |
 | `load` | `filename, [is_string]` | `vector` | Loads vector from file or string |
 | `from_raw` | `raw_data, size` | `vector` | Creates vector from raw binary data |
-| `destroy` | `vector` | | Destroys vector and frees memory |
+| `destroy` | `vector` | `-` | Destroys vector and frees memory |
 
 ### Core Methods
 
 | Method | Arguments | Returns | Description |
 |----------|-----------|---------|-------------|
-| `copy` | `dest, source, [start], [end], [dest_idx]` | | Copies elements between vectors |
+| `copy` | `dest, source, [start], [end], [dest_idx]` | `-` | Copies elements between vectors |
 | `persist` | `[filename]` | `[string]` | Saves vector to file or returns binary string |
 | `size` | | `integer` | Returns number of elements |
 | `capacity` | | `integer` | Returns allocated capacity |
-| `resize` | `size` | | Resizes vector to exact size |
-| `setn` | `n` | | Sets number of active elements |
-| `ensure` | `size` | | Ensures minimum capacity |
-| `shrink` | | | Shrinks capacity to match size |
-| `clear` | | | Sets size to 0 (keeps capacity) |
-| `zero` | | | Sets all elements to 0 |
-| `transpose` | `dest, source, cols` | | Transposes matrix representation |
+| `resize` | `size` | `-` | Resizes vector to exact size |
+| `setn` | `n` | `-` | Sets number of active elements |
+| `ensure` | `size` | `-` | Ensures minimum capacity |
+| `shrink` | `-` | `-` | Shrinks capacity to match size |
+| `clear` | `-` | `-` | Sets size to 0 (keeps capacity) |
+| `zero` | `-` | `-` | Sets all elements to 0 |
+| `transpose` | `dest, source, cols` | `-` | Transposes matrix representation |
 
 ### Element Access
 
 | Method | Arguments | Returns | Description |
 |----------|-----------|---------|-------------|
 | `get` | `idx` | `value` | Gets element at index |
-| `set` | `idx, value` | | Sets element at index |
-| `push` | `value` | | Appends value to end |
+| `set` | `idx, value` | `-` | Sets element at index |
+| `push` | `value` | `-` | Appends value to end |
 
 ### Sorting Operations
 
 | Method | Arguments | Returns | Description |
 |----------|-----------|---------|-------------|
-| `shuffle` | | | Randomly shuffles elements |
-| `asc` | `[start], [end]` | | Sorts in ascending order |
-| `desc` | `[start], [end]` | | Sorts in descending order |
+| `shuffle` | `-` | `-` | Randomly shuffles elements |
+| `asc` | `[start], [end]` | `-` | Sorts in ascending order |
+| `desc` | `[start], [end]` | `-` | Sorts in descending order |
 | `uasc` | `[start], [end]` | `new_end` | Sorts ascending and removes duplicates |
 | `udesc` | `[start], [end]` | `new_end` | Sorts descending and removes duplicates |
 | `xasc` | `[start], [end]` | `new_end` | Binary sorts ascending with unique |
 | `xdesc` | `[start], [end]` | `new_end` | Binary sorts descending with unique |
-| `kasc` | `k, [start], [end]` | | Partial sort to find k smallest |
-| `kdesc` | `k, [start], [end]` | | Partial sort to find k largest |
+| `kasc` | `k, [start], [end]` | `-` | Partial sort to find k smallest |
+| `kdesc` | `k, [start], [end]` | `-` | Partial sort to find k largest |
 
 ### Mathematical Operations
 *Available for ivec and dvec only*
 
 | Method | Arguments | Returns | Description |
 |----------|-----------|---------|-------------|
-| `add` | `scalar, [start], [end]` | | Adds scalar to elements |
-| `scale` | `scalar, [start], [end]` | | Multiplies elements by scalar |
-| `addv` | `vector, [start], [end]` | | Element-wise addition |
-| `scalev` | `vector, [start], [end]` | | Element-wise multiplication |
-| `abs` | `[start], [end]` | | Takes absolute value of elements |
-| `exp` | `[start], [end]` | | Applies exponential function |
-| `log` | `[start], [end]` | | Applies natural logarithm |
-| `pow` | `exponent, [start], [end]` | | Raises elements to power |
+| `add` | `scalar, [start], [end]` | `-` | Adds scalar to elements |
+| `scale` | `scalar, [start], [end]` | `-` | Multiplies elements by scalar |
+| `addv` | `vector, [start], [end]` | `-` | Element-wise addition |
+| `scalev` | `vector, [start], [end]` | `-` | Element-wise multiplication |
+| `abs` | `[start], [end]` | `-` | Takes absolute value of elements |
+| `exp` | `[start], [end]` | `-` | Applies exponential function |
+| `log` | `[start], [end]` | `-` | Applies natural logarithm |
+| `pow` | `exponent, [start], [end]` | `-` | Raises elements to power |
 | `dot` | `vector_b` | `number` | Computes dot product |
-| `multiply` | `a, b, c, k, [transpose_a], [transpose_b]` | | Matrix multiplication |
+| `multiply` | `a, b, c, k, [transpose_a], [transpose_b]` | `-` | Matrix multiplication |
 | `magnitude` | | `number` | Computes Euclidean magnitude |
 | `sum` | | `number` | Sums all elements |
 | `csums` | `cols` | `vector` | Column-wise sums |
@@ -95,13 +95,13 @@ All vector types (ivec, dvec, cvec, rvec, pvec) share these core operations unle
 | `table` | `[start], [end]` | `table` | Converts to Lua table |
 | `rtable` | `cols, [start], [end]` | `table` | Converts to row-major table of tables |
 | `ctable` | `cols, [start], [end]` | `table` | Converts to column-major table of tables |
-| `fill` | `value` | | Fills all elements with value |
-| `fill_indices` | | | Fills with sequential indices |
+| `fill` | `value` | `-` | Fills all elements with value |
+| `fill_indices` | `-` | `-` | Fills with sequential indices |
 | `raw` | `[format]` | `string` | Returns raw binary representation |
 
 ## Vector Type Instances
 
-### santoku.ivec
+### `santoku.ivec`
 Integer vector module providing dynamic arrays of 64-bit integers.
 
 **Inherits:** All common vector operations including mathematical operations
@@ -142,30 +142,62 @@ Integer vector module providing dynamic arrays of 64-bit integers.
 | `from_bitmap` | `bitmap` | `ivec` | Creates vector from bitmap |
 | `filter` | `mask` | `ivec` | Filters elements by mask |
 
+##### Matrix Sorting Operations
+
+| Function | Arguments | Returns | Description |
+|----------|-----------|---------|-------------|
+| `rasc` | `cols` | `ivec` | Row-wise ascending sort indices |
+| `rdesc` | `cols` | `ivec` | Row-wise descending sort indices |
+| `casc` | `cols` | `ivec` | Column-wise ascending sort indices |
+| `cdesc` | `cols` | `ivec` | Column-wise descending sort indices |
+| `rmaxargs` | `cols` | `ivec` | Row-wise maximum argument indices |
+| `cmaxargs` | `cols` | `ivec` | Column-wise maximum argument indices |
+| `rminargs` | `cols` | `ivec` | Row-wise minimum argument indices |
+| `cminargs` | `cols` | `ivec` | Column-wise minimum argument indices |
+| `rmagnitudes` | `cols` | `dvec` | Row-wise magnitude calculation |
+| `cmagnitudes` | `cols` | `dvec` | Column-wise magnitude calculation |
+
 ##### Cross-type Operations
 
 | Function | Arguments | Returns | Description |
 |----------|-----------|---------|-------------|
-| `copy_pkeys` | `pvec, [start], [end], [dest]` | | Copies keys from pair vector |
-| `copy_pvalues` | `pvec, [start], [end], [dest]` | | Copies values from pair vector |
-| `copy_rkeys` | `rvec, [start], [end], [dest]` | | Copies keys from rank vector |
-| `copy_rvalues` | `rvec, [start], [end], [dest]` | | Copies values from rank vector |
+| `copy_pkeys` | `pvec, [start], [end], [dest]` | `-` | Copies keys from pair vector |
+| `copy_pvalues` | `pvec, [start], [end], [dest]` | `-` | Copies values from pair vector |
+| `copy_rkeys` | `rvec, [start], [end], [dest]` | `-` | Copies keys from rank vector |
+| `copy_rvalues` | `rvec, [start], [end], [dest]` | `-` | Copies values from rank vector |
 
-### santoku.dvec
+### `santoku.dvec`
 Double-precision floating-point vector module.
 
 **Inherits:** All common vector operations including mathematical operations
 **Base type:** `double`
 **Excluded:** Bit operations, cross-type operations, set operations, feature selection
 
-### santoku.cvec
+#### Additional Operations (dvec-specific)
+
+##### Matrix Sorting Operations
+
+| Function | Arguments | Returns | Description |
+|----------|-----------|---------|-------------|
+| `rasc` | `cols` | `ivec` | Row-wise ascending sort indices |
+| `rdesc` | `cols` | `ivec` | Row-wise descending sort indices |
+| `casc` | `cols` | `ivec` | Column-wise ascending sort indices |
+| `cdesc` | `cols` | `ivec` | Column-wise descending sort indices |
+| `rmaxargs` | `cols` | `ivec` | Row-wise maximum argument indices |
+| `cmaxargs` | `cols` | `ivec` | Column-wise maximum argument indices |
+| `rminargs` | `cols` | `ivec` | Row-wise minimum argument indices |
+| `cminargs` | `cols` | `ivec` | Column-wise minimum argument indices |
+| `rmagnitudes` | `cols` | `dvec` | Row-wise magnitude calculation |
+| `cmagnitudes` | `cols` | `dvec` | Column-wise magnitude calculation |
+
+### `santoku.cvec`
 Character vector module providing byte arrays.
 
 **Inherits:** Core vector operations and sorting operations only
 **Base type:** `unsigned char`
 **Excluded:** Mathematical operations, iteration methods, table conversion methods, fill operations
 
-### santoku.rvec
+### `santoku.rvec`
 Rank vector module for storing pairs of (integer, double).
 
 **Inherits:** Core vector operations and sorting operations
@@ -177,8 +209,8 @@ Rank vector module for storing pairs of (integer, double).
 | Method | Arguments | Returns | Description |
 |----------|-----------|---------|-------------|
 | `get` | `idx` | `integer, double` | Gets rank pair at index |
-| `set` | `idx, integer, double` | | Sets rank pair at index |
-| `push` | `integer, double` | | Appends rank pair |
+| `set` | `idx, integer, double` | `-` | Sets rank pair at index |
+| `push` | `integer, double` | `-` | Appends rank pair |
 | `keys` | | `ivec` | Extracts integer keys as ivec |
 | `values` | | `dvec` | Extracts double values as dvec |
 | `each` | | `iterator` | Returns iterator over pairs |
@@ -188,16 +220,16 @@ Rank vector module for storing pairs of (integer, double).
 
 | Method | Arguments | Returns | Description |
 |----------|-----------|---------|-------------|
-| `hmax` | `integer, double, max_size` | | Maintains top-k maximum heap |
-| `hmax_init` | | | Initializes as max heap |
-| `hmax_push` | `integer, double` | | Pushes to max heap |
+| `hmax` | `integer, double, max_size` | `-` | Maintains top-k maximum heap |
+| `hmax_init` | `-` | `-` | Initializes as max heap |
+| `hmax_push` | `integer, double` | `-` | Pushes to max heap |
 | `hmax_pop` | | `integer, double` | Pops from max heap |
-| `hmin` | `integer, double, max_size` | | Maintains top-k minimum heap |
-| `hmin_init` | | | Initializes as min heap |
-| `hmin_push` | `integer, double` | | Pushes to min heap |
+| `hmin` | `integer, double, max_size` | `-` | Maintains top-k minimum heap |
+| `hmin_init` | `-` | `-` | Initializes as min heap |
+| `hmin_push` | `integer, double` | `-` | Pushes to min heap |
 | `hmin_pop` | | `integer, double` | Pops from min heap |
 
-### santoku.pvec
+### `santoku.pvec`
 Pair vector module for storing pairs of (integer, integer).
 
 **Inherits:** Core vector operations and sorting operations
@@ -209,8 +241,8 @@ Pair vector module for storing pairs of (integer, integer).
 | Method | Arguments | Returns | Description |
 |----------|-----------|---------|-------------|
 | `get` | `idx` | `integer, integer` | Gets pair at index |
-| `set` | `idx, integer, integer` | | Sets pair at index |
-| `push` | `integer, integer` | | Appends pair |
+| `set` | `idx, integer, integer` | `-` | Sets pair at index |
+| `push` | `integer, integer` | `-` | Appends pair |
 | `keys` | | `ivec` | Extracts first integers as ivec |
 | `values` | | `ivec` | Extracts second integers as ivec |
 | `each` | | `iterator` | Returns iterator over pairs |
@@ -220,13 +252,13 @@ Pair vector module for storing pairs of (integer, integer).
 
 | Method | Arguments | Returns | Description |
 |----------|-----------|---------|-------------|
-| `hmax` | `integer, integer, max_size` | | Maintains top-k maximum heap |
-| `hmax_init` | | | Initializes as max heap |
-| `hmax_push` | `integer, integer` | | Pushes to max heap |
+| `hmax` | `integer, integer, max_size` | `-` | Maintains top-k maximum heap |
+| `hmax_init` | `-` | `-` | Initializes as max heap |
+| `hmax_push` | `integer, integer` | `-` | Pushes to max heap |
 | `hmax_pop` | | `integer, integer` | Pops from max heap |
-| `hmin` | `integer, integer, max_size` | | Maintains top-k minimum heap |
-| `hmin_init` | | | Initializes as min heap |
-| `hmin_push` | `integer, integer` | | Pushes to min heap |
+| `hmin` | `integer, integer, max_size` | `-` | Maintains top-k minimum heap |
+| `hmin_init` | `-` | `-` | Initializes as min heap |
+| `hmin_push` | `integer, integer` | `-` | Pushes to min heap |
 | `hmin_pop` | | `integer, integer` | Pops from min heap |
 
 ## Template System
