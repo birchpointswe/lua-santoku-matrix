@@ -38,6 +38,7 @@ All vector types (ivec, dvec, cvec, rvec, pvec) share these core operations unle
 | `get` | `idx` | `value` | Gets element at index |
 | `set` | `idx, value` | `-` | Sets element at index |
 | `push` | `value` | `-` | Appends value to end |
+| `insert` | `idx, value` | `-` | Inserts value at index |
 
 ### Sorting Operations
 
@@ -119,6 +120,9 @@ Integer vector module providing dynamic arrays of 64-bit integers.
 | `set_tversky` | `vector_b, alpha, beta, [weights]` | `number` | Computes Tversky index |
 | `set_similarity` | `vector_b, type, [alpha], [beta], [weights]` | `number` | Computes specified similarity measure |
 | `set_stats` | `vector_b, [weights]` | `inter, sum_a, sum_b` | Computes set statistics |
+| `set_intersect` | `vector_b, [output]` | `ivec` | Computes set intersection (assumes sorted) |
+| `set_union` | `vector_b, [output]` | `ivec` | Computes set union (assumes sorted) |
+| `set_find` | `value` | `index, insert_pos` | Binary search, returns index or -1 and insertion position |
 
 ##### Feature Selection
 

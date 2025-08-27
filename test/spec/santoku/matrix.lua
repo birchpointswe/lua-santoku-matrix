@@ -138,4 +138,8 @@ do
   err.assert(v0:set_dice(v1) == 0.5)
   err.assert(v0:set_tversky(v1, 1, 0) == 0.5)
   err.assert(v0:set_tversky(v1, 0, 1) == 0.5)
+  local v2 = v0:set_union(v1)
+  local v3 = v0:set_intersect(v1)
+  err.assert(tbl.equals({ 1, 2, 3, 4, 5, 6 }, v2:table()))
+  err.assert(tbl.equals({ 3, 4 }, v3:table()))
 end

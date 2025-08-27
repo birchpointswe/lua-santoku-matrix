@@ -359,17 +359,17 @@ static inline int tk_ivec_set_tversky_lua (lua_State *L)
   int nargs = lua_gettop(L);
   tk_ivec_t *a = tk_ivec_peek(L, 1, "a");
   tk_ivec_t *b = tk_ivec_peek(L, 2, "b");
-  
 
 
 
 
 
-  
+
+
   tk_dvec_t *weights = NULL;
   double alpha = 0.5;
   double beta = 0.5;
-  
+
   if (nargs >= 3) {
 
     if (lua_isnumber(L, 3)) {
@@ -383,7 +383,7 @@ static inline int tk_ivec_set_tversky_lua (lua_State *L)
       beta = (nargs >= 5) ? luaL_checknumber(L, 5) : 0.5;
     }
   }
-  
+
   double inter_w, sum_a, sum_b;
   tk_ivec_set_stats(a->a, a->n, b->a, b->n, weights, &inter_w, &sum_a, &sum_b);
   double sim = tk_ivec_set_tversky(inter_w, sum_a, sum_b, alpha, beta);
@@ -442,6 +442,42 @@ static inline int tk_ivec_set_similarity_by_rank_lua (lua_State *L)
   return 1;
 }
 
+static inline int tk_ivec_set_find_lua (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_ivec_t *vec = tk_ivec_peek(L, 1, "vector");
+  int64_t value = luaL_checkinteger(L, 2);
+  int64_t insert_idx = -1;
+  int64_t found_idx = tk_ivec_set_find(vec, value, &insert_idx);
+  lua_pushinteger(L, found_idx);
+  lua_pushinteger(L, insert_idx);
+  return 2;
+}
+
+static inline int tk_ivec_set_intersect_lua (lua_State *L)
+{
+  lua_settop(L, 3);
+  tk_ivec_t *a = tk_ivec_peek(L, 1, "a");
+  tk_ivec_t *b = tk_ivec_peek(L, 2, "b");
+  tk_ivec_t *out = NULL;
+  if (!lua_isnil(L, 3))
+    out = tk_ivec_peek(L, 3, "output");
+  tk_ivec_set_intersect(L, a, b, out);
+  return out == NULL ? 1 : 0;
+}
+
+static inline int tk_ivec_set_union_lua (lua_State *L)
+{
+  lua_settop(L, 3);
+  tk_ivec_t *a = tk_ivec_peek(L, 1, "a");
+  tk_ivec_t *b = tk_ivec_peek(L, 2, "b");
+  tk_ivec_t *out = NULL;
+  if (!lua_isnil(L, 3))
+    out = tk_ivec_peek(L, 3, "output");
+  tk_ivec_set_union(L, a, b, out);
+  return out == NULL ? 1 : 0;
+}
+
 static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
 {
   { "copy_pkeys", tk_ivec_copy_pkeys_lua },
@@ -468,6 +504,9 @@ static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
   { "set_tversky", tk_ivec_set_tversky_lua },
   { "set_weights_by_rank", tk_ivec_set_weights_by_rank_lua },
   { "set_similarity_by_rank", tk_ivec_set_similarity_by_rank_lua },
+  { "set_find", tk_ivec_set_find_lua },
+  { "set_intersect", tk_ivec_set_intersect_lua },
+  { "set_union", tk_ivec_set_union_lua },
   { NULL, NULL }
 };
 

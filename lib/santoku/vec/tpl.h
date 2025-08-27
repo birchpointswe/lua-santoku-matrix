@@ -201,6 +201,20 @@ static inline void tk_vec_pfx(push) (
   *v = v0;
 }
 
+static inline void tk_vec_pfx(insert) (
+  tk_vec_pfx(t) *v,
+  uint64_t idx,
+  tk_vec_base x
+) {
+  if (idx > v->n) idx = v->n;
+  tk_vec_pfx(ensure)(v, v->n + 1);
+  if (idx < v->n) {
+    memmove(v->a + idx + 1, v->a + idx, (v->n - idx) * sizeof(tk_vec_base));
+  }
+  v->a[idx] = x;
+  v->n++;
+}
+
 static inline void tk_vec_pfx(set) (
   tk_vec_pfx(t) *v,
   uint64_t i,
@@ -1184,6 +1198,16 @@ static inline int tk_vec_pfx(push_lua) (lua_State *L)
   return 0;
 }
 
+static inline int tk_vec_pfx(insert_lua) (lua_State *L)
+{
+  lua_settop(L, 3);
+  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
+  uint64_t idx = tk_lua_checkunsigned(L, 2, "idx");
+  tk_vec_base x = tk_vec_peekbase(L, 3);
+  tk_vec_pfx(insert)(m0, idx, x);
+  return 0;
+}
+
 static inline int tk_vec_pfx(magnitude_lua) (lua_State *L)
 {
   lua_settop(L, 1);
@@ -1567,6 +1591,7 @@ static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
 
 
   { "push", tk_vec_pfx(push_lua) },
+  { "insert", tk_vec_pfx(insert_lua) },
 
 
   { "add", tk_vec_pfx(add_lua) },

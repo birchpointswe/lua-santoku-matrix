@@ -1014,4 +1014,99 @@ static inline double tk_ivec_set_similarity_by_rank (
   return (total_rank_weight > 0.0) ? total_weighted_sim / total_rank_weight : 0.0;
 }
 
+static inline int64_t tk_ivec_set_find (
+  tk_ivec_t *vec,
+  int64_t value,
+  int64_t *insert_idx
+) {
+  int64_t left = 0;
+  int64_t right = (int64_t)vec->n - 1;
+  int64_t mid;
+  while (left <= right) {
+    mid = left + (right - left) / 2;
+    if (vec->a[mid] == value)
+      return mid;
+    if (vec->a[mid] < value)
+      left = mid + 1;
+    else
+      right = mid - 1;
+  }
+  if (insert_idx != NULL)
+    *insert_idx = left;
+  return -1;
+}
+
+static inline tk_ivec_t *tk_ivec_set_intersect (
+  lua_State *L,
+  tk_ivec_t *a,
+  tk_ivec_t *b,
+  tk_ivec_t *out
+) {
+  if (out == NULL) {
+    size_t min_size = a->n < b->n ? a->n : b->n;
+    out = tk_ivec_create(L, min_size, 0, 0);
+  } else {
+    tk_ivec_clear(out);
+    size_t min_size = a->n < b->n ? a->n : b->n;
+    tk_ivec_ensure(out, min_size);
+  }
+  size_t i = 0, j = 0;
+  out->n = 0;
+  while (i < a->n && j < b->n) {
+    if (a->a[i] == b->a[j]) {
+      out->a[out->n ++] = a->a[i];
+      i ++;
+      j ++;
+    } else if (a->a[i] < b->a[j]) {
+      i ++;
+    } else {
+      j ++;
+    }
+  }
+  tk_ivec_shrink(out);
+  return out;
+}
+
+static inline tk_ivec_t *tk_ivec_set_union (
+  lua_State *L,
+  tk_ivec_t *a,
+  tk_ivec_t *b,
+  tk_ivec_t *out
+) {
+
+  if (out == NULL) {
+    out = tk_ivec_create(L, a->n + b->n, 0, 0);
+  } else {
+    tk_ivec_clear(out);
+    tk_ivec_ensure(out, a->n + b->n);
+  }
+  size_t i = 0, j = 0;
+  out->n = 0;
+  while (i < a->n && j < b->n) {
+    if (a->a[i] == b->a[j]) {
+      out->a[out->n ++] = a->a[i];
+      i ++;
+      j ++;
+    } else if (a->a[i] < b->a[j]) {
+      out->a[out->n ++] = a->a[i];
+      i ++;
+    } else {
+      out->a[out->n ++] = b->a[j];
+      j ++;
+    }
+  }
+
+  while (i < a->n) {
+    out->a[out->n ++] = a->a[i];
+    i ++;
+  }
+
+  while (j < b->n) {
+    out->a[out->n ++] = b->a[j];
+    j ++;
+  }
+  tk_ivec_shrink(out);
+  return out;
+}
+
 #endif
