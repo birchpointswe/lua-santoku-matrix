@@ -263,7 +263,7 @@ Pair vector module for storing pairs of (integer, integer).
 
 ## Template System
 
-### santoku/vec/tpl.h
+### `santoku/vec/tpl.h`
 Template header for generating type-specific vector implementations.
 
 #### Template Configuration Macros
@@ -285,14 +285,111 @@ Template header for generating type-specific vector implementations.
 | `tk_vec_mt` | Metatable name for Lua |
 
 #### Generated Functions
-The template generates all vector operations with the configured prefix and type. Functions follow the pattern `prefix_operation`, for example with `tk_vec_name=tk_ivec`:
-- `tk_ivec_create()` - Creates vector
-- `tk_ivec_destroy()` - Destroys vector
-- `tk_ivec_push()` - Pushes element
-- `tk_ivec_get()` - Gets element
-- `tk_ivec_set()` - Sets element
-- `tk_ivec_asc()` - Sorts ascending
-- And all other operations listed in vector modules
+
+##### Core Operations
+| Function | Arguments | Returns | Description |
+|----------|-----------|---------|-------------|
+| `tk_vec_name##_create` | `L, size, data*, existing*` | `tk_vec_name##_t*` | Create vector |
+| `tk_vec_name##_destroy` | `vec*` | `-` | Destroy vector |
+| `tk_vec_name##_peek` | `L, index, name` | `tk_vec_name##_t*` | Get vector from stack |
+| `tk_vec_name##_peekopt` | `L, index` | `tk_vec_name##_t*` | Optionally get vector |
+| `tk_vec_name##_load` | `L` | `tk_vec_name##_t*` | Load vector from string |
+| `tk_vec_name##_persist` | `vec*` | `string` | Serialize vector |
+| `tk_vec_name##_raw` | `vec*` | `const char*` | Get raw data pointer |
+
+##### Size Management
+| Function | Arguments | Returns | Description |
+|----------|-----------|---------|-------------|
+| `tk_vec_name##_size` | `vec*` | `uint64_t` | Get element count |
+| `tk_vec_name##_capacity` | `vec*` | `uint64_t` | Get capacity |
+| `tk_vec_name##_resize` | `vec*, new_size` | `-` | Resize vector |
+| `tk_vec_name##_setn` | `vec*, new_size` | `-` | Set element count |
+| `tk_vec_name##_ensure` | `vec*, min_capacity` | `-` | Ensure capacity |
+| `tk_vec_name##_shrink` | `vec*` | `-` | Shrink to fit |
+| `tk_vec_name##_clear` | `vec*` | `-` | Clear elements |
+| `tk_vec_name##_zero` | `vec*` | `-` | Zero all elements |
+
+##### Element Access
+| Function | Arguments | Returns | Description |
+|----------|-----------|---------|-------------|
+| `tk_vec_name##_get` | `vec*, index` | `tk_vec_base` | Get element |
+| `tk_vec_name##_set` | `vec*, index, value` | `-` | Set element |
+| `tk_vec_name##_push` | `vec*, value` | `-` | Append element |
+| `tk_vec_name##_fill` | `vec*, value` | `-` | Fill with value |
+| `tk_vec_name##_fill_indices` | `vec*` | `-` | Fill with indices |
+
+##### Data Manipulation
+| Function | Arguments | Returns | Description |
+|----------|-----------|---------|-------------|
+| `tk_vec_name##_copy` | `dest*, src*, start, end` | `-` | Copy elements |
+| `tk_vec_name##_transpose` | `vec*, cols` | `-` | Transpose as matrix |
+| `tk_vec_name##_shuffle` | `vec*` | `-` | Random shuffle |
+| `tk_vec_name##_table` | `vec*, L` | `-` | Convert to Lua table |
+| `tk_vec_name##_ctable` | `vec*, cols, L` | `-` | To column tables |
+| `tk_vec_name##_rtable` | `vec*, cols, L` | `-` | To row tables |
+
+##### Sorting Operations
+| Function | Arguments | Returns | Description |
+|----------|-----------|---------|-------------|
+| `tk_vec_name##_asc` | `vec*, start, end` | `-` | Sort ascending |
+| `tk_vec_name##_desc` | `vec*, start, end` | `-` | Sort descending |
+| `tk_vec_name##_uasc` | `vec*, start, end` | `uint64_t` | Sort unique ascending |
+| `tk_vec_name##_udesc` | `vec*, start, end` | `uint64_t` | Sort unique descending |
+| `tk_vec_name##_xasc` | `vec*, start, end` | `uint64_t` | Binary sort ascending |
+| `tk_vec_name##_xdesc` | `vec*, start, end` | `uint64_t` | Binary sort descending |
+| `tk_vec_name##_kasc` | `vec*, k, start, end` | `-` | Partial sort ascending |
+| `tk_vec_name##_kdesc` | `vec*, k, start, end` | `-` | Partial sort descending |
+
+##### Mathematical Operations (unless tk_vec_limited defined)
+| Function | Arguments | Returns | Description |
+|----------|-----------|---------|-------------|
+| `tk_vec_name##_magnitude` | `vec*` | `double` | Vector magnitude |
+| `tk_vec_name##_sum` | `vec*` | `tk_vec_base` | Sum of elements |
+| `tk_vec_name##_csums` | `vec*, cols` | `tk_vec_name##_t*` | Column sums |
+| `tk_vec_name##_rsums` | `vec*, cols` | `tk_vec_name##_t*` | Row sums |
+| `tk_vec_name##_max` | `vec*` | `tk_vec_base` | Maximum element |
+| `tk_vec_name##_cmaxs` | `vec*, cols` | `tk_vec_name##_t*` | Column maxima |
+| `tk_vec_name##_rmaxs` | `vec*, cols` | `tk_vec_name##_t*` | Row maxima |
+| `tk_vec_name##_min` | `vec*` | `tk_vec_base` | Minimum element |
+| `tk_vec_name##_cmins` | `vec*, cols` | `tk_vec_name##_t*` | Column minima |
+| `tk_vec_name##_rmins` | `vec*, cols` | `tk_vec_name##_t*` | Row minima |
+| `tk_vec_name##_scale` | `vec*, scalar` | `-` | Scale by scalar |
+| `tk_vec_name##_add` | `vec*, scalar` | `-` | Add scalar |
+| `tk_vec_name##_scalev` | `vec*, vec2*` | `-` | Element-wise scale |
+| `tk_vec_name##_addv` | `vec*, vec2*` | `-` | Element-wise add |
+| `tk_vec_name##_abs` | `vec*` | `-` | Absolute values |
+| `tk_vec_name##_exp` | `vec*` | `-` | Exponential |
+| `tk_vec_name##_log` | `vec*` | `-` | Natural logarithm |
+| `tk_vec_name##_pow` | `vec*, exponent` | `-` | Power operation |
+| `tk_vec_name##_dot` | `vec1*, vec2*` | `double` | Dot product |
+| `tk_vec_name##_multiply` | `result*, m1*, m2*, r1, c1, c2` | `-` | Matrix multiply |
+
+### `santoku/vec/ext/tpl.h`
+
+Template header for matrix-specific operations on vectors (treating vector as row-major matrix).
+
+#### Generated Matrix Operations (unless tk_vec_limited defined)
+
+| Function | Arguments | Returns | Description |
+|----------|-----------|---------|-------------|
+| `tk_vec_name##_rasc` | `L, vec*, cols` | `tk_ivec_t*` | Row-wise ascending sort indices |
+| `tk_vec_name##_rdesc` | `L, vec*, cols` | `tk_ivec_t*` | Row-wise descending sort indices |
+| `tk_vec_name##_casc` | `L, vec*, cols` | `tk_ivec_t*` | Column-wise ascending sort indices |
+| `tk_vec_name##_cdesc` | `L, vec*, cols` | `tk_ivec_t*` | Column-wise descending sort indices |
+| `tk_vec_name##_rmagnitudes` | `L, vec*, cols` | `tk_dvec_t*` | Row-wise L2 norms |
+| `tk_vec_name##_cmagnitudes` | `L, vec*, cols` | `tk_dvec_t*` | Column-wise L2 norms |
+| `tk_vec_name##_rmaxargs` | `L, vec*, cols` | `tk_ivec_t*` | Row-wise argmax indices |
+| `tk_vec_name##_cmaxargs` | `L, vec*, cols` | `tk_ivec_t*` | Column-wise argmax indices |
+| `tk_vec_name##_rminargs` | `L, vec*, cols` | `tk_ivec_t*` | Row-wise argmin indices |
+| `tk_vec_name##_cminargs` | `L, vec*, cols` | `tk_ivec_t*` | Column-wise argmin indices |
+
+#### Lua Bindings
+All functions above have corresponding `_lua` suffixed versions for Lua registration:
+- `tk_vec_name##_rasc_lua`, `tk_vec_name##_rdesc_lua` - Row sorting
+- `tk_vec_name##_casc_lua`, `tk_vec_name##_cdesc_lua` - Column sorting  
+- `tk_vec_name##_rmagnitudes_lua`, `tk_vec_name##_cmagnitudes_lua` - Magnitudes
+- `tk_vec_name##_rmaxargs_lua`, `tk_vec_name##_cmaxargs_lua` - Argmax
+- `tk_vec_name##_rminargs_lua`, `tk_vec_name##_cminargs_lua` - Argmin
 
 ### Type Definitions
 
