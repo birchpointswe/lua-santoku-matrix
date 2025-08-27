@@ -393,7 +393,7 @@ All functions above have corresponding `_lua` suffixed versions for Lua registra
 
 ### Type Definitions
 
-#### santoku/vec/base.h
+#### `santoku/vec/base.h`
 Base header aggregating all vector type definitions:
 - `tk_ivec_t` - Integer vector type
 - `tk_dvec_t` - Double vector type
@@ -405,7 +405,7 @@ Base header aggregating all vector type definitions:
 
 ## Hash Maps and Sets
 
-### santoku/iuset.h
+### `santoku/iuset.h`
 Integer set implementation using hash tables.
 
 | Function | Description |
@@ -425,7 +425,7 @@ Integer set implementation using hash tables.
 | `tk_iuset_union(set_a, set_b)` | Unions set_b into set_a |
 | `tk_iuset_jaccard(set_a, set_b)` | Computes Jaccard similarity |
 
-### santoku/duset.h
+### `santoku/duset.h`
 Double set implementation using hash tables.
 
 | Macro/Function | Description |
@@ -443,7 +443,7 @@ Double set implementation using hash tables.
 | `tk_duset_contains(set, key)` | Checks if key exists |
 | `tk_duset_foreach(set, var, code)` | Iterates over all keys |
 
-### santoku/cuset.h
+### `santoku/cuset.h`
 Character set implementation using hash tables.
 
 | Macro/Function | Description |
@@ -461,7 +461,7 @@ Character set implementation using hash tables.
 | `tk_cuset_contains(set, key)` | Checks if key exists |
 | `tk_cuset_foreach(set, var, code)` | Iterates over all keys |
 
-### santoku/iumap.h
+### `santoku/iumap.h`
 Integer-to-integer hash map implementation.
 
 | Macro/Function | Description |
@@ -479,7 +479,7 @@ Integer-to-integer hash map implementation.
 | `tk_iumap_clear(map)` | Removes all pairs |
 | `tk_iumap_foreach(map, kvar, vvar, code)` | Iterates over all pairs |
 
-### santoku/dumap.h
+### `santoku/dumap.h`
 Double-to-double hash map implementation.
 
 | Macro/Function | Description |
@@ -497,7 +497,7 @@ Double-to-double hash map implementation.
 | `tk_dumap_clear(map)` | Removes all pairs |
 | `tk_dumap_foreach(map, kvar, vvar, code)` | Iterates over all pairs |
 
-### santoku/pumap.h
+### `santoku/pumap.h`
 Pair-to-pair hash map implementation for tk_pair_t types.
 
 | Macro/Function | Description |
@@ -515,7 +515,7 @@ Pair-to-pair hash map implementation for tk_pair_t types.
 | `tk_pumap_clear(map)` | Removes all pairs |
 | `tk_pumap_foreach(map, kvar, vvar, code)` | Iterates over all pairs |
 
-### santoku/zumap.h
+### `santoku/zumap.h`
 Size_t-to-size_t hash map implementation.
 
 | Macro/Function | Description |
