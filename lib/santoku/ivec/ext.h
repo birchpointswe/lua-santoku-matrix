@@ -409,30 +409,47 @@ static inline tk_cvec_t *tk_ivec_raw_bitmap (
 
   if (flip_interleave) {
 
-    tk_ivec_asc(set_bits, 0, set_bits->n);
-    for (uint64_t idx = 0; idx < set_bits->n; idx ++) {
+
+
+
+    
+
+    for (uint64_t idx = 0; idx < set_bits->n; idx++) {
       int64_t v = set_bits->a[idx];
       if (v < 0)
         continue;
       uint64_t s = (uint64_t) v / n_features;
       uint64_t k = (uint64_t) v % n_features;
-      uint64_t new_bit_pos = s * output_features + k;
-      uint64_t byte_off = new_bit_pos / CHAR_BIT;
-      uint8_t bit_off = new_bit_pos & (CHAR_BIT - 1);
+      
+
+
+      uint64_t sample_byte_offset = s * bytes_per_sample;
+      uint64_t bit_within_sample = k;
+      uint64_t byte_off = sample_byte_offset + (bit_within_sample / CHAR_BIT);
+      uint8_t bit_off = bit_within_sample & (CHAR_BIT - 1);
       out[byte_off] |= (uint8_t) (1u << bit_off);
     }
-    size_t p = 0;
-    for (uint64_t y = 0; y < n_samples * n_features; y ++) {
-      if (p < set_bits->n && set_bits->a[p] == (int64_t) y) {
-        p ++;
-        continue;
+    
+
+
+    for (uint64_t s = 0; s < n_samples; s++) {
+      uint64_t sample_byte_offset = s * bytes_per_sample;
+      
+      for (uint64_t k = 0; k < n_features; k++) {
+
+        uint64_t bit_within_sample_first = k;
+        uint64_t byte_off_first = sample_byte_offset + (bit_within_sample_first / CHAR_BIT);
+        uint8_t bit_off_first = bit_within_sample_first & (CHAR_BIT - 1);
+        bool is_set_first = (out[byte_off_first] & (1u << bit_off_first)) != 0;
+        
+
+        if (!is_set_first) {
+          uint64_t bit_within_sample_second = n_features + k;
+          uint64_t byte_off_second = sample_byte_offset + (bit_within_sample_second / CHAR_BIT);
+          uint8_t bit_off_second = bit_within_sample_second & (CHAR_BIT - 1);
+          out[byte_off_second] |= (uint8_t) (1u << bit_off_second);
+        }
       }
-      uint64_t s = y / n_features;
-      uint64_t k = y % n_features;
-      uint64_t new_bit_pos = s * output_features + n_features + k;
-      uint64_t byte_off = new_bit_pos / CHAR_BIT;
-      uint8_t bit_off = new_bit_pos & (CHAR_BIT - 1);
-      out[byte_off] |= (uint8_t)(1u << bit_off);
     }
 
   } else {
