@@ -128,12 +128,12 @@ Integer vector module providing dynamic arrays of 64-bit integers.
 
 | Function | Arguments | Returns | Description |
 |----------|-----------|---------|-------------|
-| `score_chi2` | `set_bits, codes/labels, samples, visible, hidden, [threads]` | `dvec` | Chi-squared feature scores |
-| `score_mi` | `set_bits, codes/labels, samples, visible, hidden, [threads]` | `dvec` | Mutual information scores |
-| `score_entropy` | `codes, samples, hidden, [threads]` | `dvec` | Entropy scores |
-| `top_chi2` | `set_bits, codes/labels, samples, visible, hidden, k, [threads]` | `ivec` | Top k features by chi-squared |
-| `top_mi` | `set_bits, codes/labels, samples, visible, hidden, k, [threads]` | `ivec` | Top k features by mutual information |
-| `top_entropy` | `codes, samples, hidden, k, [threads]` | `ivec` | Top k features by entropy |
+| `score_chi2` | `set_bits, codes/labels, samples, visible, hidden, [threads]` | `dvec` | Chi-squared feature scores. `codes` can be string, light userdata, or cvec; `labels` can be ivec |
+| `score_mi` | `set_bits, codes/labels, samples, visible, hidden, [threads]` | `dvec` | Mutual information scores. `codes` can be string, light userdata, or cvec; `labels` can be ivec |
+| `score_entropy` | `codes, samples, hidden, [threads]` | `dvec` | Entropy scores. `codes` can be string, light userdata, or cvec |
+| `top_chi2` | `set_bits, codes/labels, samples, visible, hidden, k, [threads]` | `ivec` | Top k features by chi-squared. `codes` can be string, light userdata, or cvec; `labels` can be ivec |
+| `top_mi` | `set_bits, codes/labels, samples, visible, hidden, k, [threads]` | `ivec` | Top k features by mutual information. `codes` can be string, light userdata, or cvec; `labels` can be ivec |
+| `top_entropy` | `codes, samples, hidden, k, [threads]` | `ivec` | Top k features by entropy. `codes` can be string, light userdata, or cvec |
 
 ##### Bit Operations
 
