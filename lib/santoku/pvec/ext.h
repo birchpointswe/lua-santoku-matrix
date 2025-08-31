@@ -13,25 +13,35 @@ static inline tk_pvec_t *tk_pvec_from_ivec (
 
 static inline tk_ivec_t *tk_pvec_keys (
   lua_State *L,
-  tk_pvec_t *P
+  tk_pvec_t *P,
+  tk_ivec_t *out
 ) {
-  tk_ivec_t *I = tk_ivec_create(L, P->n, 0, 0);
+  tk_ivec_t *I = out ? out : tk_ivec_create(L, P->n, 0, 0);
+  if (out)
+    tk_ivec_ensure(I, P->n);
   for (uint64_t i = 0; i < P->n; i ++)
     I->a[i] = P->a[i].i;
+  if (out)
+    I->n = P->n;
   return I;
 }
 
 static inline tk_ivec_t *tk_pvec_values (
   lua_State *L,
-  tk_pvec_t *P
+  tk_pvec_t *P,
+  tk_ivec_t *out
 ) {
-  tk_ivec_t *I = tk_ivec_create(L, P->n, 0, 0);
+  tk_ivec_t *I = out ? out : tk_ivec_create(L, P->n, 0, 0);
+  if (out)
+    tk_ivec_ensure(I, P->n);
   for (uint64_t i = 0; i < P->n; i ++)
     I->a[i] = P->a[i].p;
+  if (out)
+    I->n = P->n;
   return I;
 }
 
-static inline int tk_pvec_each0_lua_iter (lua_State *L)
+static inline int tk_pvec_each_lua_iter (lua_State *L)
 {
   lua_settop(L, 0);
   tk_pvec_t *m0 = tk_pvec_peek(L, lua_upvalueindex(1), "vector");
@@ -46,7 +56,7 @@ static inline int tk_pvec_each0_lua_iter (lua_State *L)
   return 2;
 }
 
-static inline int tk_pvec_ieach0_lua_iter (lua_State *L)
+static inline int tk_pvec_ieach_lua_iter (lua_State *L)
 {
   lua_settop(L, 0);
   tk_pvec_t *m0 = tk_pvec_peek(L, lua_upvalueindex(1), "vector");
@@ -62,19 +72,19 @@ static inline int tk_pvec_ieach0_lua_iter (lua_State *L)
   return 3;
 }
 
-static inline int tk_pvec_each0_lua (lua_State *L)
+static inline int tk_pvec_each_lua (lua_State *L)
 {
   lua_settop(L, 1);
   lua_pushinteger(L, 0);
-  lua_pushcclosure(L, tk_pvec_each0_lua_iter, 2);
+  lua_pushcclosure(L, tk_pvec_each_lua_iter, 2);
   return 1;
 }
 
-static inline int tk_pvec_ieach0_lua (lua_State *L)
+static inline int tk_pvec_ieach_lua (lua_State *L)
 {
   lua_settop(L, 1);
   lua_pushinteger(L, 0);
-  lua_pushcclosure(L, tk_pvec_ieach0_lua_iter, 2);
+  lua_pushcclosure(L, tk_pvec_ieach_lua_iter, 2);
   return 1;
 }
 

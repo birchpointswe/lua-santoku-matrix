@@ -106,14 +106,22 @@ static inline int tk_rvec_hmin_pop_lua (lua_State *L) {
 }
 
 static inline int tk_rvec_keys_lua (lua_State *L) {
-  lua_settop(L, 1);
-  tk_rvec_keys(L, tk_rvec_peek(L, 1, "rvec"));
+  lua_settop(L, 2);
+  tk_rvec_t *P = tk_rvec_peek(L, 1, "rvec");
+  tk_ivec_t *out = lua_isnil(L, 2) ? NULL : tk_ivec_peek(L, 2, "out");
+  tk_rvec_keys(L, P, out);
+  if (out)
+    return 0;
   return 1;
 }
 
 static inline int tk_rvec_values_lua (lua_State *L) {
-  lua_settop(L, 1);
-  tk_rvec_values(L, tk_rvec_peek(L, 1, "rvec"));
+  lua_settop(L, 2);
+  tk_rvec_t *P = tk_rvec_peek(L, 1, "rvec");
+  tk_dvec_t *out = lua_isnil(L, 2) ? NULL : tk_dvec_peek(L, 2, "out");
+  tk_rvec_values(L, P, out);
+  if (out)
+    return 0;
   return 1;
 }
 
@@ -124,8 +132,8 @@ static luaL_Reg tk_rvec_lua_mt_ext2_fns[] =
   { "push", tk_rvec_push_lua },
   { "keys", tk_rvec_keys_lua },
   { "values", tk_rvec_values_lua },
-  { "each", tk_rvec_each0_lua },
-  { "ieach", tk_rvec_ieach0_lua },
+  { "each", tk_rvec_each_lua },
+  { "ieach", tk_rvec_ieach_lua },
   { "hmax", tk_rvec_hmax_lua },
   { "hmax_init", tk_rvec_hmax_init_lua },
   { "hmax_pop", tk_rvec_hmax_pop_lua },

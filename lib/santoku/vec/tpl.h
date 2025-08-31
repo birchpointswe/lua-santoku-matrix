@@ -291,6 +291,51 @@ static inline void tk_vec_pfx(rtable) (
   }
 }
 
+static inline int tk_vec_pfx(each_lua_iter) (lua_State *L)
+{
+  lua_settop(L, 0);
+  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, lua_upvalueindex(1), "vector");
+  uint64_t n = tk_lua_checkunsigned(L, lua_upvalueindex(2), "idx");
+  if (n >= m0->n)
+    return 0;
+  tk_vec_base v = m0->a[n];
+  lua_pushinteger(L, (int64_t) n + 1);
+  lua_replace(L, lua_upvalueindex(2));
+  tk_vec_pushbase(L, v);
+  return 1;
+}
+
+static inline int tk_vec_pfx(ieach_lua_iter) (lua_State *L)
+{
+  lua_settop(L, 0);
+  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, lua_upvalueindex(1), "vector");
+  uint64_t n = tk_lua_checkunsigned(L, lua_upvalueindex(2), "idx");
+  if (n >= m0->n)
+    return 0;
+  tk_vec_base v = m0->a[n];
+  lua_pushinteger(L, (int64_t) n + 1);
+  lua_replace(L, lua_upvalueindex(2));
+  lua_pushinteger(L, (int64_t) n);
+  tk_vec_pushbase(L, v);
+  return 2;
+}
+
+static inline int tk_vec_pfx(each_lua) (lua_State *L)
+{
+  lua_settop(L, 1);
+  lua_pushinteger(L, 0);
+  lua_pushcclosure(L, tk_vec_pfx(each_lua_iter), 2);
+  return 1;
+}
+
+static inline int tk_vec_pfx(ieach_lua) (lua_State *L)
+{
+  lua_settop(L, 1);
+  lua_pushinteger(L, 0);
+  lua_pushcclosure(L, tk_vec_pfx(ieach_lua_iter), 2);
+  return 1;
+}
+
 #endif
 
 static inline void tk_vec_pfx(shuffle) (tk_vec_pfx(t) *v) {
@@ -1463,51 +1508,6 @@ static inline int tk_vec_pfx(rsums_lua) (lua_State *L) {
   return 1;
 }
 
-static inline int tk_vec_pfx(each_lua_iter) (lua_State *L)
-{
-  lua_settop(L, 0);
-  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, lua_upvalueindex(1), "vector");
-  uint64_t n = tk_lua_checkunsigned(L, lua_upvalueindex(2), "idx");
-  if (n >= m0->n)
-    return 0;
-  tk_vec_base v = m0->a[n];
-  lua_pushinteger(L, (int64_t) n + 1);
-  lua_replace(L, lua_upvalueindex(2));
-  tk_vec_pushbase(L, v);
-  return 1;
-}
-
-static inline int tk_vec_pfx(ieach_lua_iter) (lua_State *L)
-{
-  lua_settop(L, 0);
-  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, lua_upvalueindex(1), "vector");
-  uint64_t n = tk_lua_checkunsigned(L, lua_upvalueindex(2), "idx");
-  if (n >= m0->n)
-    return 0;
-  tk_vec_base v = m0->a[n];
-  lua_pushinteger(L, (int64_t) n + 1);
-  lua_replace(L, lua_upvalueindex(2));
-  lua_pushinteger(L, (int64_t) n);
-  tk_vec_pushbase(L, v);
-  return 2;
-}
-
-static inline int tk_vec_pfx(each_lua) (lua_State *L)
-{
-  lua_settop(L, 1);
-  lua_pushinteger(L, 0);
-  lua_pushcclosure(L, tk_vec_pfx(each_lua_iter), 2);
-  return 1;
-}
-
-static inline int tk_vec_pfx(ieach_lua) (lua_State *L)
-{
-  lua_settop(L, 1);
-  lua_pushinteger(L, 0);
-  lua_pushcclosure(L, tk_vec_pfx(ieach_lua_iter), 2);
-  return 1;
-}
-
 static inline int tk_vec_pfx(fill_lua) (lua_State *L)
 {
   lua_settop(L, 2);
@@ -1573,6 +1573,11 @@ static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
   { "table", tk_vec_pfx(table_lua) },
   { "ctable", tk_vec_pfx(ctable_lua) },
   { "rtable", tk_vec_pfx(rtable_lua) },
+
+
+  { "each", tk_vec_pfx(each_lua) },
+  { "ieach", tk_vec_pfx(ieach_lua) },
+
 #endif
 
 
@@ -1585,7 +1590,6 @@ static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
   { "xdesc", tk_vec_pfx(xdesc_lua) },
   { "kasc", tk_vec_pfx(kasc_lua) },
   { "kdesc", tk_vec_pfx(kdesc_lua) },
-
 
 #ifndef tk_vec_limited
 
@@ -1627,10 +1631,6 @@ static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
   { "min", tk_vec_pfx(min_lua) },
   { "cmins", tk_vec_pfx(rmins_lua) },
   { "rmins", tk_vec_pfx(cmins_lua) },
-
-
-  { "each", tk_vec_pfx(each_lua) },
-  { "ieach", tk_vec_pfx(ieach_lua) },
 
 
   { "fill", tk_vec_pfx(fill_lua) },

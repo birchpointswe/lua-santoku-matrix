@@ -11,7 +11,7 @@ static inline int tk_ivec_bits_rearrange_lua (lua_State *L) {
   return 0;
 }
 
-static inline int tk_ivec_score_entropy_lua (
+static inline int tk_ivec_bits_score_entropy_lua (
   lua_State *L
 ) {
   lua_settop(L, 4);
@@ -27,11 +27,11 @@ static inline int tk_ivec_score_entropy_lua (
   uint64_t n_samples = tk_lua_checkunsigned(L, 2, "samples");
   uint64_t n_hidden = tk_lua_checkunsigned(L, 3, "hidden");
   unsigned int n_threads = tk_threads_getn(L, 4, "threads", NULL);
-  tk_ivec_score_entropy(L, codes, n_samples, n_hidden, n_threads);
+  tk_ivec_bits_score_entropy(L, codes, n_samples, n_hidden, n_threads);
   return 1;
 }
 
-static inline int tk_ivec_score_chi2_lua (
+static inline int tk_ivec_bits_score_chi2_lua (
   lua_State *L
 ) {
   lua_settop(L, 6);
@@ -57,11 +57,11 @@ static inline int tk_ivec_score_chi2_lua (
       labels = m1;
     }
   }
-  tk_ivec_score_chi2(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, n_threads);
+  tk_ivec_bits_score_chi2(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, n_threads);
   return 1;
 }
 
-static inline int tk_ivec_score_mi_lua (
+static inline int tk_ivec_bits_score_mi_lua (
   lua_State *L
 ) {
   lua_settop(L, 6);
@@ -87,11 +87,11 @@ static inline int tk_ivec_score_mi_lua (
       labels = m1;
     }
   }
-  tk_ivec_score_mi(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, n_threads);
+  tk_ivec_bits_score_mi(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, n_threads);
   return 1;
 }
 
-static inline int tk_ivec_top_mi_lua (lua_State *L)
+static inline int tk_ivec_bits_top_mi_lua (lua_State *L)
 {
   lua_settop(L, 7);
   tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
@@ -117,11 +117,11 @@ static inline int tk_ivec_top_mi_lua (lua_State *L)
       labels = m1;
     }
   }
-  tk_ivec_top_mi(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, top_k, n_threads);
+  tk_ivec_bits_top_mi(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, top_k, n_threads);
   return 2;
 }
 
-static inline int tk_ivec_top_entropy_lua (lua_State *L)
+static inline int tk_ivec_bits_top_entropy_lua (lua_State *L)
 {
   lua_settop(L, 5);
   char *codes = NULL;
@@ -137,11 +137,11 @@ static inline int tk_ivec_top_entropy_lua (lua_State *L)
   uint64_t n_hidden = tk_lua_checkunsigned(L, 3, "hidden");
   uint64_t top_k = tk_lua_checkunsigned(L, 4, "top_k");
   unsigned int n_threads = tk_threads_getn(L, 5, "threads", NULL);
-  tk_ivec_top_entropy(L, codes, n_samples, n_hidden, top_k, n_threads);
+  tk_ivec_bits_top_entropy(L, codes, n_samples, n_hidden, top_k, n_threads);
   return 1;
 }
 
-static inline int tk_ivec_top_chi2_lua (lua_State *L)
+static inline int tk_ivec_bits_top_chi2_lua (lua_State *L)
 {
   lua_settop(L, 7);
   tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
@@ -167,50 +167,50 @@ static inline int tk_ivec_top_chi2_lua (lua_State *L)
       labels = m1;
     }
   }
-  tk_ivec_top_chi2(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, top_k, n_threads);
+  tk_ivec_bits_top_chi2(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, top_k, n_threads);
   return 2;
 }
 
-static inline int tk_ivec_filter_lua (lua_State *L)
+static inline int tk_ivec_bits_filter_lua (lua_State *L)
 {
   lua_settop(L, 3);
   tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
   tk_ivec_t *top_v = tk_ivec_peek(L, 2, "top_v");
   uint64_t n_visible = tk_lua_checkunsigned(L, 3, "visible");
-  tk_ivec_filter(L, set_bits, top_v, n_visible);
+  tk_ivec_bits_filter(L, set_bits, top_v, n_visible);
   return 0;
 }
 
-static inline int tk_ivec_raw_bitmap_lua (lua_State *L)
+static inline int tk_ivec_bits_to_cvec_lua (lua_State *L)
 {
   lua_settop(L, 4);
   tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
   uint64_t n_samples = tk_lua_checkunsigned(L, 2, "samples");
   uint64_t n_features = tk_lua_checkunsigned(L, 3, "features");
   bool flip_interleave = lua_toboolean(L, 4);
-  tk_ivec_raw_bitmap(L, set_bits, n_samples, n_features, flip_interleave);
+  tk_ivec_bits_to_cvec(L, set_bits, n_samples, n_features, flip_interleave);
 
   return 1;
 }
 
-static inline int tk_ivec_from_bitmap_lua (lua_State *L)
+static inline int tk_ivec_bits_from_cvec_lua (lua_State *L)
 {
   lua_settop(L, 3);
   const char *bm = tk_lua_checkustring(L, 1, "bitmap");
   uint64_t n_samples = tk_lua_checkunsigned(L, 2, "samples");
   uint64_t n_features = tk_lua_checkunsigned(L, 3, "features");
-  tk_ivec_from_bitmap(L, bm, n_samples, n_features);
+  tk_ivec_bits_from_cvec(L, bm, n_samples, n_features);
   return 1;
 }
 
-static inline int tk_ivec_extend_bits_lua (lua_State *L)
+static inline int tk_ivec_bits_extend_lua (lua_State *L)
 {
   lua_settop(L, 4);
   tk_ivec_t *base = tk_ivec_peek(L, 1, "base_bits");
   tk_ivec_t *ext = tk_ivec_peek(L, 2, "ext_bits");
   uint64_t n_feat = tk_lua_checkunsigned(L, 3, "features");
   uint64_t n_extfeat = tk_lua_checkunsigned(L, 4, "extended");
-  tk_ivec_extend_bits(base, ext, n_feat, n_extfeat);
+  tk_ivec_bits_extend(base, ext, n_feat, n_extfeat);
   return 0;
 }
 
@@ -509,22 +509,30 @@ static inline int tk_ivec_set_union_lua (lua_State *L)
   return out == NULL ? 1 : 0;
 }
 
+static inline int tk_ivec_lookup_lua (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_ivec_t *indices = tk_ivec_peek(L, 1, "indices");
+  tk_ivec_t *source = tk_ivec_peek(L, 2, "source");
+  tk_ivec_lookup(indices, source);
+  return 0;
+}
+
 static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
 {
   { "copy_pkeys", tk_ivec_copy_pkeys_lua },
   { "copy_rkeys", tk_ivec_copy_rkeys_lua },
   { "copy_pvalues", tk_ivec_copy_pvalues_lua },
   { "copy_rvalues", tk_ivec_copy_rvalues_lua },
-  { "top_chi2", tk_ivec_top_chi2_lua },
-  { "top_mi", tk_ivec_top_mi_lua },
-  { "top_entropy", tk_ivec_top_entropy_lua },
-  { "score_chi2", tk_ivec_score_chi2_lua },
-  { "score_mi", tk_ivec_score_mi_lua },
-  { "score_entropy", tk_ivec_score_entropy_lua },
-  { "filter", tk_ivec_filter_lua },
-  { "raw_bitmap", tk_ivec_raw_bitmap_lua },
-  { "from_bitmap", tk_ivec_from_bitmap_lua },
-  { "extend_bits", tk_ivec_extend_bits_lua },
+  { "bits_top_chi2", tk_ivec_bits_top_chi2_lua },
+  { "bits_top_mi", tk_ivec_bits_top_mi_lua },
+  { "bits_top_entropy", tk_ivec_bits_top_entropy_lua },
+  { "bits_score_chi2", tk_ivec_bits_score_chi2_lua },
+  { "bits_score_mi", tk_ivec_bits_score_mi_lua },
+  { "bits_score_entropy", tk_ivec_bits_score_entropy_lua },
+  { "bits_filter", tk_ivec_bits_filter_lua },
+  { "bits_to_cvec", tk_ivec_bits_to_cvec_lua },
+  { "bits_extend", tk_ivec_bits_extend_lua },
   { "bits_rearrange", tk_ivec_bits_rearrange_lua },
   { "set_stats", tk_ivec_set_stats_lua },
   { "set_similarity", tk_ivec_set_similarity_lua },
@@ -537,6 +545,13 @@ static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
   { "set_find", tk_ivec_set_find_lua },
   { "set_intersect", tk_ivec_set_intersect_lua },
   { "set_union", tk_ivec_set_union_lua },
+  { "lookup", tk_ivec_lookup_lua },
+  { NULL, NULL }
+};
+
+static luaL_Reg tk_ivec_lua_ext_fns[] =
+{
+  { "bits_from_cvec", tk_ivec_bits_from_cvec_lua },
   { NULL, NULL }
 };
 
@@ -544,6 +559,7 @@ int luaopen_santoku_ivec (lua_State *L)
 {
   lua_newtable(L);
   luaL_register(L, NULL, tk_ivec_lua_fns);
+  luaL_register(L, NULL, tk_ivec_lua_ext_fns);
   tk_ivec_create(L, 0, 0, 0);
   luaL_getmetafield(L, -1, "__index");
   luaL_register(L, NULL, tk_ivec_lua_mt_fns);

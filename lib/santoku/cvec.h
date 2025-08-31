@@ -8,4 +8,6 @@
 #define tk_vec_limited
 #include <santoku/vec/ext/tpl.h>
 
+#include <santoku/cvec/ext.h>
+
 #endif

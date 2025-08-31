@@ -6,7 +6,7 @@
 #include <santoku/dvec.h>
 
 #define tk_duset_double_equal(a, b) ((a) == (b))
-KHASH_INIT(tk_duset, double, char, 0, tk_lua_hash_double, tk_duset_double_equal)
+KHASH_INIT(tk_duset, double, char, 0, tk_hash_double, tk_duset_double_equal)
 typedef khash_t(tk_duset) tk_duset_t;
 
 #define tk_duset_put(...) kh_put(tk_duset, __VA_ARGS__)

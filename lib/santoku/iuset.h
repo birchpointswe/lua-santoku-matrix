@@ -73,6 +73,42 @@ static inline void tk_iuset_difference (tk_iuset_t *a, tk_iuset_t *b)
 }
 
 
+#include <santoku/iumap.h>
+
+static inline void tk_iuset_union_iumap (tk_iuset_t *a, tk_iumap_t *b)
+{
+  int kha;
+  for (khint_t i = tk_iumap_begin(b); i < tk_iumap_end(b); i++) {
+    if (tk_iumap_exist(b, i)) {
+      int64_t key = tk_iumap_key(b, i);
+      tk_iuset_put(a, key, &kha);
+    }
+  }
+}
+
+static inline void tk_iuset_intersect_iumap (tk_iuset_t *a, tk_iumap_t *b)
+{
+  khint_t i = 0;
+  int64_t x;
+  tk_iuset_foreach(a, x, ({
+    khint_t khi = tk_iumap_get(b, x);
+    if (khi == tk_iumap_end(b))
+      kh_del(tk_iuset, a, i);
+  }))
+}
+
+static inline void tk_iuset_difference_iumap (tk_iuset_t *a, tk_iumap_t *b)
+{
+  khint_t i = 0;
+  int64_t x;
+  tk_iuset_foreach(a, x, ({
+    khint_t khi = tk_iumap_get(b, x);
+    if (khi != tk_iumap_end(b))
+      kh_del(tk_iuset, a, i);
+  }))
+}
+
+
 
 
 

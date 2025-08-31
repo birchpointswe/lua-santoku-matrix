@@ -3,7 +3,6 @@
 
 #include <santoku/rvec.h>
 #include <santoku/iuset.h>
-#include <santoku/iumap.h>
 #include <santoku/threads.h>
 #include <santoku/dvec.h>
 #include <stdatomic.h>
@@ -246,34 +245,24 @@ static inline tk_ivec_t *tk_ivec_from_rvec (
   return I;
 }
 
-static inline int tk_ivec_bits_rearrange (
-  tk_ivec_t *m0,
-  tk_ivec_t *ids,
-  uint64_t n_features
+
+
+static inline void tk_ivec_lookup (
+  tk_ivec_t *indices,
+  tk_ivec_t *source
 ) {
-  tk_ivec_asc(m0, 0, m0->n);
-  tk_iumap_t *remap = tk_iumap_create();
-  int kha;
-  khint_t khi;
-  for (int64_t i = 0; i < (int64_t) ids->n; i ++) {
-    khi = tk_iumap_put(remap, ids->a[i], &kha);
-    tk_iumap_value(remap, khi) = i;
+  int64_t write_pos = 0;
+  for (uint64_t i = 0; i < indices->n; i++) {
+    int64_t idx = indices->a[i];
+
+    if (idx >= 0 && idx < (int64_t) source->n) {
+
+      indices->a[write_pos++] = source->a[idx];
+    }
+
   }
-  size_t write = 0;
-  for (int64_t i = 0; i < (int64_t) m0->n; i ++) {
-    int64_t b = m0->a[i];
-    int64_t s0 = b / (int64_t) n_features;
-    khi = tk_iumap_get(remap, s0);
-    if (khi == tk_iumap_end(remap))
-      continue;
-    int64_t s1 = tk_iumap_value(remap, khi);
-    int64_t f = b % (int64_t) n_features;
-    m0->a[write ++] = s1 * (int64_t) n_features + f;
-  }
-  m0->n = write;
-  tk_iumap_destroy(remap);
-  tk_ivec_asc(m0, 0, m0->n);
-  return 0;
+
+  indices->n = (uint64_t) write_pos;
 }
 
 static inline tk_ivec_t *tk_ivec_top_select (
@@ -362,7 +351,7 @@ static inline tk_ivec_t *tk_ivec_top_generic (
   return tk_ivec_top_select(L, selected);
 }
 
-static inline int tk_ivec_filter (
+static inline int tk_ivec_bits_filter (
   lua_State *L,
   tk_ivec_t *set_bits,
   tk_ivec_t *top_v,
@@ -390,7 +379,7 @@ static inline int tk_ivec_filter (
   return 0;
 }
 
-static inline tk_cvec_t *tk_ivec_raw_bitmap (
+static inline tk_cvec_t *tk_ivec_bits_to_cvec (
   lua_State *L,
   tk_ivec_t *set_bits,
   uint64_t n_samples,
@@ -405,54 +394,68 @@ static inline tk_cvec_t *tk_ivec_raw_bitmap (
 
   tk_cvec_t *out_cvec = tk_cvec_create(L, len, NULL, NULL);
   uint8_t *out = (uint8_t *)out_cvec->a;
-  memset(out, 0, len);
 
   if (flip_interleave) {
 
 
 
+    uint64_t second_half_bit_offset = n_features;
+    uint64_t second_half_byte_offset = second_half_bit_offset / CHAR_BIT;
+    uint8_t second_half_bit_shift = second_half_bit_offset & (CHAR_BIT - 1);
+    uint64_t remaining_bits = n_features % CHAR_BIT;
 
-    
+
+    for (uint64_t s = 0; s < n_samples; s++) {
+      uint64_t sample_offset = s * bytes_per_sample;
+
+
+      memset(out + sample_offset, 0, bytes_per_sample);
+
+
+      if (second_half_bit_shift == 0) {
+
+        uint64_t full_bytes = n_features / CHAR_BIT;
+        memset(out + sample_offset + second_half_byte_offset, 0xFF, full_bytes);
+        if (remaining_bits > 0) {
+          uint8_t mask = (1u << remaining_bits) - 1;
+          out[sample_offset + second_half_byte_offset + full_bytes] = mask;
+        }
+      } else {
+
+        for (uint64_t k = 0; k < n_features; k++) {
+          uint64_t bit_pos = n_features + k;
+          uint64_t byte_off = sample_offset + (bit_pos / CHAR_BIT);
+          uint8_t bit_off = bit_pos & (CHAR_BIT - 1);
+          out[byte_off] |= (1u << bit_off);
+        }
+      }
+    }
+
 
     for (uint64_t idx = 0; idx < set_bits->n; idx++) {
       int64_t v = set_bits->a[idx];
       if (v < 0)
         continue;
+
       uint64_t s = (uint64_t) v / n_features;
       uint64_t k = (uint64_t) v % n_features;
-      
+      uint64_t sample_offset = s * bytes_per_sample;
 
 
-      uint64_t sample_byte_offset = s * bytes_per_sample;
-      uint64_t bit_within_sample = k;
-      uint64_t byte_off = sample_byte_offset + (bit_within_sample / CHAR_BIT);
-      uint8_t bit_off = bit_within_sample & (CHAR_BIT - 1);
-      out[byte_off] |= (uint8_t) (1u << bit_off);
-    }
-    
+      uint64_t first_byte_off = sample_offset + (k / CHAR_BIT);
+      uint8_t first_bit_off = k & (CHAR_BIT - 1);
+      out[first_byte_off] |= (1u << first_bit_off);
 
 
-    for (uint64_t s = 0; s < n_samples; s++) {
-      uint64_t sample_byte_offset = s * bytes_per_sample;
-      
-      for (uint64_t k = 0; k < n_features; k++) {
-
-        uint64_t bit_within_sample_first = k;
-        uint64_t byte_off_first = sample_byte_offset + (bit_within_sample_first / CHAR_BIT);
-        uint8_t bit_off_first = bit_within_sample_first & (CHAR_BIT - 1);
-        bool is_set_first = (out[byte_off_first] & (1u << bit_off_first)) != 0;
-        
-
-        if (!is_set_first) {
-          uint64_t bit_within_sample_second = n_features + k;
-          uint64_t byte_off_second = sample_byte_offset + (bit_within_sample_second / CHAR_BIT);
-          uint8_t bit_off_second = bit_within_sample_second & (CHAR_BIT - 1);
-          out[byte_off_second] |= (uint8_t) (1u << bit_off_second);
-        }
-      }
+      uint64_t second_bit_pos = n_features + k;
+      uint64_t second_byte_off = sample_offset + (second_bit_pos / CHAR_BIT);
+      uint8_t second_bit_off = second_bit_pos & (CHAR_BIT - 1);
+      out[second_byte_off] &= ~(1u << second_bit_off);
     }
 
   } else {
+
+    memset(out, 0, len);
 
     for (uint64_t idx = 0; idx < set_bits->n; idx ++) {
       int64_t v = set_bits->a[idx];
@@ -464,14 +467,13 @@ static inline tk_cvec_t *tk_ivec_raw_bitmap (
       uint8_t bit_off = f & (CHAR_BIT - 1);
       out[byte_off] |= (uint8_t) (1u << bit_off);
     }
-
   }
 
   return out_cvec;
 }
 
 
-static inline tk_ivec_t *tk_ivec_from_bitmap (
+static inline tk_ivec_t *tk_ivec_bits_from_cvec (
   lua_State *L,
   const char *bm,
   uint64_t n_samples,
@@ -491,7 +493,7 @@ static inline tk_ivec_t *tk_ivec_from_bitmap (
 }
 
 
-static inline void tk_ivec_extend_bits (
+static inline void tk_ivec_bits_extend (
   tk_ivec_t *base,
   tk_ivec_t *ext,
   uint64_t n_feat,
@@ -519,7 +521,7 @@ static inline void tk_ivec_extend_bits (
   tk_ivec_asc(base, 0, base->n);
 }
 
-static inline tk_dvec_t *tk_ivec_score_chi2 (
+static inline tk_dvec_t *tk_ivec_bits_score_chi2 (
   lua_State *L,
   tk_ivec_t *set_bits,
   char *codes,
@@ -618,7 +620,7 @@ static inline tk_dvec_t *tk_ivec_score_chi2 (
   return ctx.scores;
 }
 
-static inline tk_dvec_t *tk_ivec_score_mi (
+static inline tk_dvec_t *tk_ivec_bits_score_mi (
   lua_State *L,
   tk_ivec_t *set_bits,
   char *codes,
@@ -728,7 +730,7 @@ static inline tk_dvec_t *tk_ivec_score_mi (
   return ctx.scores;
 }
 
-static inline tk_dvec_t *tk_ivec_score_entropy (
+static inline tk_dvec_t *tk_ivec_bits_score_entropy (
   lua_State *L,
   char *codes,
   unsigned int n_samples,
@@ -771,7 +773,7 @@ static inline tk_dvec_t *tk_ivec_score_entropy (
   return scores;
 }
 
-static inline tk_ivec_t *tk_ivec_top_mi (
+static inline tk_ivec_t *tk_ivec_bits_top_mi (
   lua_State *L,
   tk_ivec_t *set_bits,
   char *codes,
@@ -783,14 +785,14 @@ static inline tk_ivec_t *tk_ivec_top_mi (
   unsigned int n_threads
 ) {
   tk_ivec_asc(set_bits, 0, set_bits->n);
-  tk_dvec_t *scores = tk_ivec_score_mi(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, n_threads);
+  tk_dvec_t *scores = tk_ivec_bits_score_mi(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, n_threads);
   int iscores = tk_lua_absindex(L, -1);
   tk_ivec_t *out = tk_ivec_top_generic(L, scores, n_visible, n_hidden, top_k, 0);
   lua_pushvalue(L, iscores);
   return out;
 }
 
-static inline tk_ivec_t *tk_ivec_top_entropy (
+static inline tk_ivec_t *tk_ivec_bits_top_entropy (
   lua_State *L,
   char *codes,
   uint64_t n_samples,
@@ -798,7 +800,7 @@ static inline tk_ivec_t *tk_ivec_top_entropy (
   uint64_t top_k,
   unsigned int n_threads
 ) {
-  tk_dvec_t *scores = tk_ivec_score_entropy(L, codes, n_samples, n_hidden, n_threads);
+  tk_dvec_t *scores = tk_ivec_bits_score_entropy(L, codes, n_samples, n_hidden, n_threads);
   tk_rvec_t *rankings = tk_rvec_from_dvec(L, scores);
   lua_remove(L, -2);
   tk_rvec_kdesc(rankings, top_k, 0, rankings->n);
@@ -807,7 +809,7 @@ static inline tk_ivec_t *tk_ivec_top_entropy (
   return out;
 }
 
-static inline tk_ivec_t *tk_ivec_top_chi2 (
+static inline tk_ivec_t *tk_ivec_bits_top_chi2 (
   lua_State *L,
   tk_ivec_t *set_bits,
   char *codes,
@@ -819,7 +821,7 @@ static inline tk_ivec_t *tk_ivec_top_chi2 (
   unsigned int n_threads
 ) {
   tk_ivec_asc(set_bits, 0, set_bits->n);
-  tk_dvec_t *scores = tk_ivec_score_chi2(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, n_threads);
+  tk_dvec_t *scores = tk_ivec_bits_score_chi2(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, n_threads);
   int iscores = tk_lua_absindex(L, -1);
   tk_ivec_t *out = tk_ivec_top_generic(L, scores, n_visible, n_hidden, top_k, 0);
   lua_pushvalue(L, iscores);

@@ -108,6 +108,12 @@ Integer vector module providing dynamic arrays of 64-bit integers.
 **Inherits:** All common vector operations including mathematical operations
 **Base type:** `int64_t`
 
+#### Module-level Functions (ivec)
+
+| Function | Arguments | Returns | Description |
+|----------|-----------|---------|-------------|
+| `bits_from_cvec` | `bitmap, samples, features` | `ivec` | Creates ivec from packed bitmap (cvec) |
+
 #### Additional Operations (ivec-specific)
 
 ##### Set Operations
@@ -128,23 +134,22 @@ Integer vector module providing dynamic arrays of 64-bit integers.
 
 | Function | Arguments | Returns | Description |
 |----------|-----------|---------|-------------|
-| `score_chi2` | `set_bits, codes/labels, samples, visible, hidden, [threads]` | `dvec` | Chi-squared feature scores. `codes` can be string, light userdata, or cvec; `labels` can be ivec |
-| `score_mi` | `set_bits, codes/labels, samples, visible, hidden, [threads]` | `dvec` | Mutual information scores. `codes` can be string, light userdata, or cvec; `labels` can be ivec |
-| `score_entropy` | `codes, samples, hidden, [threads]` | `dvec` | Entropy scores. `codes` can be string, light userdata, or cvec |
-| `top_chi2` | `set_bits, codes/labels, samples, visible, hidden, k, [threads]` | `ivec` | Top k features by chi-squared. `codes` can be string, light userdata, or cvec; `labels` can be ivec |
-| `top_mi` | `set_bits, codes/labels, samples, visible, hidden, k, [threads]` | `ivec` | Top k features by mutual information. `codes` can be string, light userdata, or cvec; `labels` can be ivec |
-| `top_entropy` | `codes, samples, hidden, k, [threads]` | `ivec` | Top k features by entropy. `codes` can be string, light userdata, or cvec |
+| `bits_score_chi2` | `set_bits, codes/labels, samples, visible, hidden, [threads]` | `dvec` | Chi-squared feature scores. `codes` can be string, light userdata, or cvec; `labels` can be ivec |
+| `bits_score_mi` | `set_bits, codes/labels, samples, visible, hidden, [threads]` | `dvec` | Mutual information scores. `codes` can be string, light userdata, or cvec; `labels` can be ivec |
+| `bits_score_entropy` | `codes, samples, hidden, [threads]` | `dvec` | Entropy scores. `codes` can be string, light userdata, or cvec |
+| `bits_top_chi2` | `set_bits, codes/labels, samples, visible, hidden, k, [threads]` | `ivec` | Top k features by chi-squared. `codes` can be string, light userdata, or cvec; `labels` can be ivec |
+| `bits_top_mi` | `set_bits, codes/labels, samples, visible, hidden, k, [threads]` | `ivec` | Top k features by mutual information. `codes` can be string, light userdata, or cvec; `labels` can be ivec |
+| `bits_top_entropy` | `codes, samples, hidden, k, [threads]` | `ivec` | Top k features by entropy. `codes` can be string, light userdata, or cvec |
 
 ##### Bit Operations
 
 | Function | Arguments | Returns | Description |
 |----------|-----------|---------|-------------|
-| `flip_interleave` | `samples, features` | | Flips and interleaves bit patterns |
-| `bits_rearrange` | `ids, features` | | Rearranges bits by feature IDs |
-| `extend_bits` | `samples, features` | | Extends bit representation |
-| `raw_bitmap` | `-` | `string` | Returns bitmap representation |
-| `from_bitmap` | `bitmap` | `ivec` | Creates vector from bitmap |
-| `filter` | `mask` | `ivec` | Filters elements by mask |
+| `bits_flip_interleave` | `samples, features` | `-` | Flips and interleaves bit patterns |
+| `bits_rearrange` | `ids, features` | `-` | Rearranges bits by feature IDs |
+| `bits_extend` | `base_bits, ext_bits, features, extended` | `-` | Extends bit representation |
+| `bits_to_cvec` | `set_bits, samples, features, [flip_interleave]` | `cvec` | Converts sparse bit indices to packed bitmap |
+| `bits_filter` | `set_bits, top_v, visible` | `-` | Filters elements by selected features |
 
 ##### Matrix Sorting Operations
 
@@ -195,11 +200,35 @@ Double-precision floating-point vector module.
 | `cmagnitudes` | `cols` | `dvec` | Column-wise magnitude calculation |
 
 ### `santoku.cvec`
-Character vector module providing byte arrays.
+Character vector module providing byte arrays and bitmap operations.
 
 **Inherits:** Core vector operations and sorting operations only
 **Base type:** `unsigned char`
 **Excluded:** Mathematical operations, iteration methods, table conversion methods, fill operations
+
+#### Module-level Functions (cvec)
+
+| Function | Arguments | Returns | Description |
+|----------|-----------|---------|-------------|
+| `bits_from_ivec` | `set_bits, samples, features` | `cvec` | Creates packed bitmap from sparse bit indices |
+
+#### Additional Operations (cvec-specific)
+
+##### Bitmap Operations
+
+| Method | Arguments | Returns | Description |
+|----------|-----------|---------|-------------|
+| `bits_flip_interleave` | `samples, features` | `-` | Flips and interleaves bit patterns in place |
+| `bits_to_ivec` | `samples, features` | `ivec` | Converts packed bitmap to sparse bit indices |
+| `bits_rearrange` | `ids, features` | `-` | Rearranges bitmap samples by IDs |
+| `bits_extend` | `ext, samples, base_features, ext_features` | `-` | Extends bitmap with additional features |
+| `bits_filter` | `selected_features, samples, features` | `-` | Filters bitmap to selected features |
+| `bits_popcount` | `n_bits` | `integer` | Counts set bits in bitmap |
+| `bits_hamming` | `other, n_bits` | `integer` | Hamming distance between bitmaps |
+| `bits_hamming_mask` | `other, mask, n_bits` | `integer` | Masked Hamming distance |
+| `bits_and` | `out, other, n_bits` | `-` | Bitwise AND operation |
+| `bits_or` | `out, other, n_bits` | `-` | Bitwise OR operation |
+| `bits_xor` | `out, other, n_bits` | `-` | Bitwise XOR operation |
 
 ### `santoku.rvec`
 Rank vector module for storing pairs of (integer, double).
@@ -215,8 +244,8 @@ Rank vector module for storing pairs of (integer, double).
 | `get` | `idx` | `integer, double` | Gets rank pair at index |
 | `set` | `idx, integer, double` | `-` | Sets rank pair at index |
 | `push` | `integer, double` | `-` | Appends rank pair |
-| `keys` | `-` | `ivec` | Extracts integer keys as ivec |
-| `values` | `-` | `dvec` | Extracts double values as dvec |
+| `keys` | `[out_ivec]` | `ivec` | Extracts integer keys as ivec. If out_ivec provided, writes to it instead of creating new |
+| `values` | `[out_dvec]` | `dvec` | Extracts double values as dvec. If out_dvec provided, writes to it instead of creating new |
 | `each` | `-` | `iterator` | Returns iterator over pairs |
 | `ieach` | `-` | `iterator` | Returns iterator over indexed pairs |
 
@@ -247,8 +276,8 @@ Pair vector module for storing pairs of (integer, integer).
 | `get` | `idx` | `integer, integer` | Gets pair at index |
 | `set` | `idx, integer, integer` | `-` | Sets pair at index |
 | `push` | `integer, integer` | `-` | Appends pair |
-| `keys` | `-` | `ivec` | Extracts first integers as ivec |
-| `values` | `-` | `ivec` | Extracts second integers as ivec |
+| `keys` | `[out_ivec]` | `ivec` | Extracts first integers as ivec. If out_ivec provided, writes to it instead of creating new |
+| `values` | `[out_ivec]` | `ivec` | Extracts second integers as ivec. If out_ivec provided, writes to it instead of creating new |
 | `each` | `-` | `iterator` | Returns iterator over pairs |
 | `ieach` | `-` | `iterator` | Returns iterator over indexed pairs |
 
