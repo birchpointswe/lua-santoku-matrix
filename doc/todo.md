@@ -1,29 +1,10 @@
 # Now
 
 - Templatized hash and btree
-- Usage of Lua state in the C api should be limited strictly to create, and
-  there should be no destroy function (users must use the implied stack)
-
-- Fix standardize naming convention (ivec bits all using bits_ prefix)
+- Ensure all APIs exposed (heap, iuset/map extensions)
 - Standard peek/test: tk_xvec_check, tk_xvec_test, tk_xvec_fcheck, tk_xvec_ftest
 - templatize ordered/unordered map/set under a single map.template.h
 - Update iuset/ioset/iumap/iomap to have a lua API and to use lua state for cleanup
-
-# Later
-
-- Use these structures across all libraries where possibe
-
-- cvec: tests, to/from string
-- rvec, pvec: lua api for heap fns, get/set item/rank, keys, values,
-- ivec: bitmap functions
-
-# Next
-
-- Tests for containers
-
-- Intelligent handling of pthread availability. When threads == 0 or 1,
-  completely avoid threads (don't just use one spawned thread).
-
 - Heap for top_chi2 and top_mi instead of keeping full list
 
 # Consider

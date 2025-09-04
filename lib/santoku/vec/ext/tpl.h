@@ -1,5 +1,37 @@
 #define tk_vec_pfx(name) tk_pp_strcat(tk_vec_name, name)
 
+static inline void tk_vec_pfx(copy_indexed) (
+  tk_vec_pfx(t) *m0,
+  tk_vec_pfx(t) *m1,
+  tk_ivec_t *indices
+) {
+  tk_vec_pfx(ensure)(m0, indices->n);
+  for (uint64_t i = 0; i < indices->n; i++) {
+    int64_t idx = indices->a[i];
+    if (idx >= 0 && idx < (int64_t)m1->n) {
+      m0->a[i] = m1->a[idx];
+    }
+  }
+  if (m0->n < indices->n)
+    m0->n = indices->n;
+}
+
+static inline int tk_vec_pfx(copy_indexed_lua) (lua_State *L)
+{
+  int t = lua_gettop(L);
+
+  if (t >= 3 && lua_type(L, 3) == LUA_TUSERDATA) {
+    tk_ivec_t *indices = tk_ivec_peekopt(L, 3);
+    if (indices != NULL) {
+      tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "dest");
+      tk_vec_pfx(t) *m1 = tk_vec_pfx(peek)(L, 2, "source");
+      tk_vec_pfx(copy_indexed)(m0, m1, indices);
+      return 0;
+    }
+  }
+  return tk_vec_pfx(copy_lua)(L);
+}
+
 #ifndef tk_vec_limited
 
 static inline tk_ivec_t *tk_vec_pfx(rasc) (
@@ -298,6 +330,7 @@ static inline int tk_vec_pfx(cdesc_lua) (lua_State *L)
 
 static luaL_Reg tk_vec_pfx(lua_mt_ext_fns)[] =
 {
+  { "copy", tk_vec_pfx(copy_indexed_lua) },
 #ifndef tk_vec_limited
   { "cmagnitudes", tk_vec_pfx(cmagnitudes_lua) },
   { "rmagnitudes", tk_vec_pfx(rmagnitudes_lua) },

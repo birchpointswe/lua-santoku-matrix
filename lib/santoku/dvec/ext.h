@@ -4,6 +4,19 @@
 #include <santoku/dvec/base.h>
 #include <santoku/ivec.h>
 
+static inline void tk_dvec_center (
+  double *M,
+  size_t N,
+  size_t K
+) {
+  for (size_t j = 0; j < K; j ++) {
+    double mu = 0.0;
+    for (size_t i = 0; i < N; i ++) mu += M[i * K + j];
+    mu /= (double)N;
+    for (size_t i = 0; i < N; i ++) M[i * K + j] -= mu;
+  }
+}
+
 static inline tk_dvec_t *tk_dvec_multiply_bits (
   lua_State *L,
   tk_dvec_t *P,

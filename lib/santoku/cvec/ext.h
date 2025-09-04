@@ -3,9 +3,14 @@
 
 #include <santoku/cvec/base.h>
 #include <santoku/ivec.h>
+#include <santoku/dvec.h>
+#include <santoku/rvec.h>
+#include <santoku/threads.h>
 #include <string.h>
 #include <limits.h>
 #include <stdlib.h>
+#include <stdatomic.h>
+#include <math.h>
 
 
 #ifndef TK_CVEC_BITS_BYTES
@@ -37,17 +42,138 @@ static inline int tk_cvec_byte_popcount (unsigned int x) {
 #endif
 #endif
 
+
+typedef enum {
+  TK_CVEC_ENTROPY,
+  TK_CVEC_CHI2,
+  TK_CVEC_MI,
+} tk_cvec_stage_t;
+
+typedef struct {
+  uint64_t n_samples, n_features, n_hidden;
+  tk_cvec_t *bitmap;
+  tk_dvec_t *scores;
+  tk_ivec_t *counts, *feat_counts;
+  tk_ivec_t *active_counts, *global_counts;
+  tk_ivec_t *labels;
+  char *codes;
+  atomic_ulong *bit_counts;
+} tk_cvec_ctx_t;
+
+typedef struct {
+  tk_cvec_ctx_t *state;
+  uint64_t hfirst, hlast;
+  uint64_t sfirst, slast;
+  uint64_t ffirst, flast;
+} tk_cvec_thread_t;
+
+static inline void tk_cvec_worker (void *dp, int sig)
+{
+  tk_cvec_thread_t *data = (tk_cvec_thread_t *) dp;
+  tk_cvec_ctx_t *state = data->state;
+  uint64_t n_samples = state->n_samples;
+  uint64_t n_features = state->n_features;
+  uint64_t n_hidden = state->n_hidden;
+  tk_dvec_t *scores = state->scores;
+  tk_ivec_t *counts = state->counts;
+  tk_ivec_t *active_counts = state->active_counts;
+  tk_ivec_t *global_counts = state->global_counts;
+  tk_ivec_t *feat_counts = state->feat_counts;
+  atomic_ulong *bit_counts = state->bit_counts;
+  char *codes = state->codes;
+  uint64_t chunks = TK_CVEC_BITS_BYTES(n_hidden);
+
+  switch ((tk_cvec_stage_t) sig) {
+
+    case TK_CVEC_CHI2:
+      for (uint64_t b = data->hfirst; b <= data->hlast; b++) {
+        double *scores_b = scores->a + b * n_features;
+        for (uint64_t f = 0; f < n_features; f++) {
+          int64_t A = active_counts->a[f * n_hidden + b];
+          int64_t G = global_counts->a[b];
+          int64_t C = feat_counts->a[f];
+          if (C == 0 || G == 0 || C == (int64_t) n_samples || G == (int64_t) n_samples) {
+            scores_b[f] = 0.0;
+            continue;
+          }
+          int64_t B = G - A;
+          int64_t C_ = C - A;
+          int64_t D = (int64_t) n_samples - C - B;
+          double n = (double) n_samples;
+          double E_A = ((double) C * (double) G) / n;
+          double E_B = ((double)(n - C) * (double) G) / n;
+          double E_C = ((double) C * (double)(n - G)) / n;
+          double E_D = ((double)(n - C) * (double)(n - G)) / n;
+          double chi2 = 0.0;
+          if (E_A > 0)
+            chi2 += ((A - E_A)*(A - E_A)) / E_A;
+          if (E_B > 0)
+            chi2 += ((B - E_B)*(B - E_B)) / E_B;
+          if (E_C > 0)
+            chi2 += ((C_ - E_C)*(C_ - E_C)) / E_C;
+          if (E_D > 0)
+            chi2 += ((D - E_D)*(D - E_D)) / E_D;
+          scores_b[f] = chi2;
+        }
+      }
+      break;
+
+    case TK_CVEC_MI:
+      for (int64_t j = (int64_t) data->hfirst; j <= (int64_t) data->hlast; j++) {
+        double *scores_h = scores->a + j * (int64_t) n_features;
+        for (int64_t i = 0; i < (int64_t) n_features; i++) {
+          int64_t *c = counts->a + i * (int64_t) n_hidden * 4 + j * 4;
+          for (int k = 0; k < 4; k++)
+            c[k] += 1;
+          double total = c[0] + c[1] + c[2] + c[3];
+          double mi = 0.0;
+          if (total == 0.0)
+            continue;
+          for (unsigned int o = 0; o < 4; o++) {
+            if (c[o] == 0)
+              continue;
+            double p_fb = c[o] / total;
+            unsigned int f = o >> 1;
+            unsigned int b = o & 1;
+            double pf = (c[2] + c[3]) / total;
+            if (f == 0) pf = 1.0 - pf;
+            double pb = (c[1] + c[3]) / total;
+            if (b == 0) pb = 1.0 - pb;
+            double d = pf * pb;
+            if (d > 0) mi += p_fb * log2(p_fb / d);
+          }
+          scores_h[i] = mi;
+        }
+      }
+      break;
+
+    case TK_CVEC_ENTROPY:
+      for (uint64_t i = data->sfirst; i <= data->slast; i++) {
+        for (uint64_t j = 0; j < n_hidden; j++) {
+          uint64_t word = j / CHAR_BIT;
+          uint64_t bit = j % CHAR_BIT;
+          if (codes[i * chunks + word] & (1 << bit))
+            atomic_fetch_add(bit_counts + j, 1);
+        }
+      }
+      break;
+  }
+}
+
 static inline void tk_cvec_bits_flip_interleave (
   tk_cvec_t *v,
-  uint64_t n_samples,
   uint64_t n_features
 ) {
-  if (n_samples == 0 || n_features == 0)
+  if (n_features == 0)
+    return;
+  
+  uint64_t n_samples = v->n / TK_CVEC_BITS_BYTES(n_features);
+  if (n_samples == 0)
     return;
 
-  uint64_t input_bytes_per_sample = (n_features + CHAR_BIT - 1) / CHAR_BIT;
+  uint64_t input_bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
   uint64_t output_features = n_features * 2;
-  uint64_t output_bytes_per_sample = (output_features + CHAR_BIT - 1) / CHAR_BIT;
+  uint64_t output_bytes_per_sample = TK_CVEC_BITS_BYTES(output_features);
   uint64_t output_size = n_samples * output_bytes_per_sample;
 
 
@@ -248,11 +374,11 @@ static inline void tk_cvec_bits_xor (
 static inline tk_ivec_t *tk_cvec_bits_to_ivec (
   lua_State *L,
   tk_cvec_t *bitmap,
-  uint64_t n_samples,
   uint64_t n_features
 ) {
   uint8_t *data = (uint8_t *)bitmap->a;
-  uint64_t bytes_per_sample = (n_features + CHAR_BIT - 1) / CHAR_BIT;
+  uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
+  uint64_t n_samples = bitmap->n / bytes_per_sample;
 
 
   uint64_t total_bits = 0;
@@ -285,7 +411,7 @@ static inline tk_cvec_t *tk_cvec_bits_from_ivec (
   uint64_t n_samples,
   uint64_t n_features
 ) {
-  uint64_t bytes_per_sample = (n_features + CHAR_BIT - 1) / CHAR_BIT;
+  uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
   uint64_t total_bytes = n_samples * bytes_per_sample;
 
   tk_cvec_t *out = tk_cvec_create(L, total_bytes, 0, 0);
@@ -314,7 +440,7 @@ static inline void tk_cvec_bits_rearrange (
   tk_ivec_t *ids,
   uint64_t n_features
 ) {
-  uint64_t bytes_per_sample = (n_features + CHAR_BIT - 1) / CHAR_BIT;
+  uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
   uint64_t n_samples = ids->n;
   uint8_t *data = (uint8_t *)bitmap->a;
 
@@ -341,14 +467,14 @@ static inline void tk_cvec_bits_rearrange (
 static inline void tk_cvec_bits_extend (
   tk_cvec_t *base,
   tk_cvec_t *ext,
-  uint64_t n_samples,
   uint64_t n_base_features,
   uint64_t n_ext_features
 ) {
+  uint64_t n_samples = base->n / TK_CVEC_BITS_BYTES(n_base_features);
   uint64_t n_total_features = n_base_features + n_ext_features;
-  uint64_t base_bytes_per_sample = (n_base_features + CHAR_BIT - 1) / CHAR_BIT;
-  uint64_t ext_bytes_per_sample = (n_ext_features + CHAR_BIT - 1) / CHAR_BIT;
-  uint64_t total_bytes_per_sample = (n_total_features + CHAR_BIT - 1) / CHAR_BIT;
+  uint64_t base_bytes_per_sample = TK_CVEC_BITS_BYTES(n_base_features);
+  uint64_t ext_bytes_per_sample = TK_CVEC_BITS_BYTES(n_ext_features);
+  uint64_t total_bytes_per_sample = TK_CVEC_BITS_BYTES(n_total_features);
 
 
   tk_cvec_ensure(base, n_samples * total_bytes_per_sample);
@@ -396,47 +522,237 @@ static inline void tk_cvec_bits_extend (
   base->n = n_samples * total_bytes_per_sample;
 }
 
-static inline void tk_cvec_bits_filter (
+
+static inline tk_dvec_t *tk_cvec_bits_score_chi2 (
+  lua_State *L,
   tk_cvec_t *bitmap,
-  tk_ivec_t *selected_features,
+  tk_cvec_t *codes,
+  tk_ivec_t *labels,
   uint64_t n_samples,
-  uint64_t n_features
+  uint64_t n_features,
+  uint64_t n_hidden,
+  unsigned int n_threads
 ) {
-  uint64_t n_selected = selected_features->n;
-  uint64_t in_bytes_per_sample = (n_features + CHAR_BIT - 1) / CHAR_BIT;
-  uint64_t out_bytes_per_sample = (n_selected + CHAR_BIT - 1) / CHAR_BIT;
-  uint8_t *data = (uint8_t *)bitmap->a;
+  tk_cvec_ctx_t ctx;
+  tk_cvec_thread_t threads[n_threads];
+  tk_threadpool_t *pool = tk_threads_create(L, n_threads, tk_cvec_worker);
+  ctx.bitmap = bitmap;
+  ctx.codes = codes ? codes->a : NULL;
+  ctx.labels = labels;
+  ctx.n_features = n_features;
+  ctx.n_hidden = n_hidden;
+  ctx.n_samples = n_samples;
+  ctx.active_counts = tk_ivec_create(L, ctx.n_features * ctx.n_hidden, 0, 0);
+  ctx.global_counts = tk_ivec_create(L, ctx.n_hidden, 0, 0);
+  ctx.feat_counts = tk_ivec_create(L, ctx.n_features, 0, 0);
+  tk_ivec_zero(ctx.active_counts);
+  tk_ivec_zero(ctx.global_counts);
+  tk_ivec_zero(ctx.feat_counts);
+
+  for (unsigned int i = 0; i < n_threads; i++) {
+    tk_cvec_thread_t *data = threads + i;
+    pool->threads[i].data = data;
+    data->state = &ctx;
+    tk_thread_range(i, n_threads, ctx.n_hidden, &data->hfirst, &data->hlast);
+  }
 
 
-  for (uint64_t s = 0; s < n_samples; s++) {
-    uint8_t *temp = malloc(out_bytes_per_sample);
-    if (!temp) return;
-    memset(temp, 0, out_bytes_per_sample);
+  uint8_t *bitmap_data = (uint8_t *)bitmap->a;
 
-    uint64_t in_offset = s * in_bytes_per_sample;
+  if (ctx.codes != NULL) {
 
-
-    for (uint64_t i = 0; i < n_selected; i++) {
-      int64_t src_bit = selected_features->a[i];
-      if (src_bit >= 0 && (uint64_t) src_bit < n_features) {
-        uint64_t src_byte = (uint64_t) src_bit / CHAR_BIT;
-        uint8_t src_bit_pos = (uint64_t) src_bit % CHAR_BIT;
-
-        if (data[in_offset + src_byte] & (1u << src_bit_pos)) {
-          uint64_t dst_byte = i / CHAR_BIT;
-          uint8_t dst_bit_pos = i % CHAR_BIT;
-          temp[dst_byte] |= (1u << dst_bit_pos);
+    for (uint64_t s = 0; s < ctx.n_samples; s++) {
+      const unsigned char *sample_bitmap =
+        (const unsigned char *)(ctx.codes + s * (ctx.n_hidden / CHAR_BIT));
+      for (uint64_t chunk = 0; chunk < (ctx.n_hidden / CHAR_BIT); chunk++) {
+        unsigned char byte = sample_bitmap[chunk];
+        while (byte) {
+          int bit = __builtin_ctz(byte);
+          uint64_t b = chunk * CHAR_BIT + (unsigned) bit;
+          if (b < ctx.n_hidden)
+            ctx.global_counts->a[b]++;
+          byte &= byte - 1;
         }
       }
     }
 
 
-    uint64_t out_offset = s * out_bytes_per_sample;
-    memcpy(data + out_offset, temp, out_bytes_per_sample);
-    free(temp);
+    for (uint64_t s = 0; s < n_samples; s++) {
+      for (uint64_t f = 0; f < n_features; f++) {
+        uint64_t bit_idx = s * n_features + f;
+        uint64_t byte_idx = bit_idx / CHAR_BIT;
+        uint64_t bit_pos = bit_idx % CHAR_BIT;
+
+        if (bitmap_data[byte_idx] & (1 << bit_pos)) {
+          ctx.feat_counts->a[f]++;
+          const unsigned char *sample_codes =
+            (unsigned char *)(ctx.codes + s * (ctx.n_hidden / CHAR_BIT));
+          for (uint64_t b = 0; b < ctx.n_hidden; b++) {
+            uint64_t chunk = b / CHAR_BIT, bit = b % CHAR_BIT;
+            if (sample_codes[chunk] & (1u << bit)) {
+              ctx.active_counts->a[f * ctx.n_hidden + b]++;
+            }
+          }
+        }
+      }
+    }
+  } else if (labels != NULL) {
+
+    for (uint64_t s = 0; s < n_samples; s++) {
+      for (uint64_t f = 0; f < n_features; f++) {
+        uint64_t bit_idx = s * n_features + f;
+        uint64_t byte_idx = bit_idx / CHAR_BIT;
+        uint64_t bit_pos = bit_idx % CHAR_BIT;
+
+        if (bitmap_data[byte_idx] & (1 << bit_pos)) {
+          ctx.feat_counts->a[f]++;
+          int64_t label = ctx.labels->a[s];
+          if (label >= 0 && (size_t) label < ctx.n_hidden)
+            ctx.active_counts->a[f * ctx.n_hidden + (uint64_t) label]++;
+        }
+      }
+    }
+
+
+    tk_ivec_zero(ctx.global_counts);
+    for (uint64_t s = 0; s < ctx.n_samples; s++) {
+      int64_t label = ctx.labels->a[s];
+      if (label >= 0 && (size_t) label < ctx.n_hidden)
+        ctx.global_counts->a[label]++;
+    }
   }
 
-  bitmap->n = n_samples * out_bytes_per_sample;
+
+  ctx.scores = tk_dvec_create(L, ctx.n_hidden * ctx.n_features, 0, 0);
+  tk_dvec_zero(ctx.scores);
+  tk_threads_signal(pool, TK_CVEC_CHI2, 0);
+  tk_threads_destroy(pool);
+
+  tk_ivec_destroy(ctx.active_counts);
+  tk_ivec_destroy(ctx.global_counts);
+  tk_ivec_destroy(ctx.feat_counts);
+
+  return ctx.scores;
 }
+
+static inline tk_dvec_t *tk_cvec_bits_score_mi (
+  lua_State *L,
+  tk_cvec_t *bitmap,
+  tk_cvec_t *codes,
+  tk_ivec_t *labels,
+  uint64_t n_samples,
+  uint64_t n_features,
+  uint64_t n_hidden,
+  unsigned int n_threads
+) {
+  tk_cvec_ctx_t ctx;
+  tk_cvec_thread_t threads[n_threads];
+  tk_threadpool_t *pool = tk_threads_create(L, n_threads, tk_cvec_worker);
+  ctx.bitmap = bitmap;
+  ctx.codes = codes ? codes->a : NULL;
+  ctx.labels = labels;
+  ctx.n_features = n_features;
+  ctx.n_hidden = n_hidden;
+  ctx.n_samples = n_samples;
+  ctx.counts = tk_ivec_create(L, ctx.n_features * ctx.n_hidden * 4, 0, 0);
+  tk_ivec_zero(ctx.counts);
+
+  for (unsigned int i = 0; i < n_threads; i++) {
+    tk_cvec_thread_t *data = threads + i;
+    pool->threads[i].data = data;
+    data->state = &ctx;
+    tk_thread_range(i, n_threads, ctx.n_hidden, &data->hfirst, &data->hlast);
+  }
+
+
+  uint8_t *bitmap_data = (uint8_t *)bitmap->a;
+
+  if (ctx.codes != NULL) {
+    for (uint64_t s = 0; s < n_samples; s++) {
+      for (uint64_t f = 0; f < n_features; f++) {
+        uint64_t bit_idx = s * n_features + f;
+        uint64_t byte_idx = bit_idx / CHAR_BIT;
+        uint64_t bit_pos = bit_idx % CHAR_BIT;
+        bool visible = (bitmap_data[byte_idx] & (1 << bit_pos)) != 0;
+
+        for (uint64_t j = 0; j < ctx.n_hidden; j++) {
+          uint64_t chunk = j / CHAR_BIT;
+          uint64_t bit = j % CHAR_BIT;
+          bool hidden = (ctx.codes[s * (ctx.n_hidden / CHAR_BIT) + chunk] & (1 << bit)) > 0;
+          ctx.counts->a[f * ctx.n_hidden * 4 + j * 4 + (visible ? 2 : 0) + (hidden ? 1 : 0)]++;
+        }
+      }
+    }
+  } else if (ctx.labels != NULL) {
+    for (uint64_t s = 0; s < n_samples; s++) {
+      for (uint64_t f = 0; f < n_features; f++) {
+        uint64_t bit_idx = s * n_features + f;
+        uint64_t byte_idx = bit_idx / CHAR_BIT;
+        uint64_t bit_pos = bit_idx % CHAR_BIT;
+        bool visible = (bitmap_data[byte_idx] & (1 << bit_pos)) != 0;
+
+        int64_t label = ctx.labels->a[s];
+        for (uint64_t j = 0; j < ctx.n_hidden; j++) {
+          bool hidden = ((size_t)j == (size_t)label);
+          ctx.counts->a[f * ctx.n_hidden * 4 + j * 4 + (visible ? 2 : 0) + (hidden ? 1 : 0)]++;
+        }
+      }
+    }
+  }
+
+
+  ctx.scores = tk_dvec_create(L, ctx.n_hidden * ctx.n_features, 0, 0);
+  tk_dvec_zero(ctx.scores);
+  tk_threads_signal(pool, TK_CVEC_MI, 0);
+  tk_threads_destroy(pool);
+
+  tk_ivec_destroy(ctx.counts);
+
+  return ctx.scores;
+}
+
+static inline tk_dvec_t *tk_cvec_bits_score_entropy (
+  lua_State *L,
+  tk_cvec_t *codes,
+  unsigned int n_samples,
+  unsigned int n_hidden,
+  unsigned int n_threads
+) {
+  tk_cvec_ctx_t ctx;
+  tk_cvec_thread_t threads[n_threads];
+  tk_threadpool_t *pool = tk_threads_create(L, n_threads, tk_cvec_worker);
+  ctx.codes = codes ? codes->a : NULL;
+  ctx.n_samples = n_samples;
+  ctx.n_hidden = n_hidden;
+  ctx.bit_counts = tk_malloc(L, n_hidden * sizeof(atomic_ulong));
+  for (uint64_t i = 0; i < n_hidden; i++)
+    atomic_init(ctx.bit_counts + i, 0);
+
+  for (unsigned int i = 0; i < n_threads; i++) {
+    tk_cvec_thread_t *data = threads + i;
+    pool->threads[i].data = data;
+    data->state = &ctx;
+    tk_thread_range(i, n_threads, ctx.n_samples, &data->sfirst, &data->slast);
+  }
+
+
+  tk_threads_signal(pool, TK_CVEC_ENTROPY, 0);
+  tk_threads_destroy(pool);
+
+
+  tk_dvec_t *scores = tk_dvec_create(L, ctx.n_hidden, 0, 0);
+  for (uint64_t j = 0; j < ctx.n_hidden; j++) {
+    double p = (double) ctx.bit_counts[j] / (double) ctx.n_samples;
+    double entropy = 0.0;
+    if (p > 0.0 && p < 1.0)
+      entropy = -(p * log2(p) + (1.0 - p) * log2(1.0 - p));
+    scores->a[j] = entropy;
+  }
+
+  free(ctx.bit_counts);
+
+  return scores;
+}
+
 
 #endif

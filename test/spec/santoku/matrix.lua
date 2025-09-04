@@ -130,3 +130,22 @@ do
   err.assert(tbl.equals({ 1, 2, 3, 4, 5, 6 }, v2:table()))
   err.assert(tbl.equals({ 3, 4 }, v3:table()))
 end
+
+do
+  local v = dvec.create({1, 2, 3, 4, 5, 6})
+  v:center(2, 3)
+  local centered = v:table()
+  err.assert(math.abs(centered[1] - (-1.5)) < 1e-10, "Column 1 not centered")
+  err.assert(math.abs(centered[4] - 1.5) < 1e-10, "Column 1 not centered")
+  err.assert(math.abs(centered[2] - (-1.5)) < 1e-10, "Column 2 not centered")
+  err.assert(math.abs(centered[5] - 1.5) < 1e-10, "Column 2 not centered")
+  err.assert(math.abs(centered[3] - (-1.5)) < 1e-10, "Column 3 not centered")
+  err.assert(math.abs(centered[6] - 1.5) < 1e-10, "Column 3 not centered")
+end
+
+do
+  local corpus = ivec.create({ 0, 4, 8, 12 })
+  local subcorpus = ivec.create()
+  subcorpus:bits_copy(corpus, nil, ivec.create({ 0, 3 }), 4)
+  err.assert(tbl.equals({ 0, 4 }, subcorpus:table()))
+end
