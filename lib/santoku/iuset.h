@@ -317,10 +317,13 @@ static inline void tk_ivec_bits_copy (
   tk_ivec_t *src_bits,
   tk_ivec_t *selected_features,
   tk_ivec_t *sample_ids,
-  uint64_t n_visible
+  uint64_t n_visible,
+  uint64_t dest_sample
 ) {
 
-  tk_ivec_clear(dest);
+  if (dest_sample == 0) {
+    tk_ivec_clear(dest);
+  }
 
 
   if (src_bits == NULL || src_bits->n == 0)
@@ -349,15 +352,16 @@ static inline void tk_ivec_bits_copy (
   uint64_t max_sample = 0;
   if (sample_ids != NULL && sample_ids->n > 0) {
 
+    sample_set = tk_iuset_from_ivec(sample_ids);
+    
+
+
     for (uint64_t i = 0; i < src_bits->n; i ++) {
       if (src_bits->a[i] >= 0) {
         uint64_t s = (uint64_t) src_bits->a[i] / n_visible;
         if (s > max_sample) max_sample = s;
       }
     }
-
-
-    sample_set = tk_iuset_from_ivec(sample_ids);
 
 
     sample_map = malloc((max_sample + 1) * sizeof(int64_t));
@@ -391,10 +395,14 @@ static inline void tk_ivec_bits_copy (
     if (sample_set != NULL) {
       if (!tk_iuset_contains(sample_set, (int64_t) sample))
         continue;
-      if (sample <= max_sample)
+
+      if (sample <= max_sample) {
         new_sample = sample_map[sample];
-      if (new_sample < 0)
+        if (new_sample < 0)
+          continue;
+      } else {
         continue;
+      }
     }
 
 
@@ -404,6 +412,9 @@ static inline void tk_ivec_bits_copy (
       if (new_feature < 0)
         continue;
     }
+
+
+    new_sample += (int64_t) dest_sample;
 
 
     int64_t new_val = new_sample * (int64_t) n_new_features + new_feature;
@@ -425,7 +436,9 @@ static inline void tk_cvec_bits_copy (
   tk_cvec_t *src_bitmap,
   tk_ivec_t *selected_features,
   tk_ivec_t *sample_ids,
-  uint64_t n_features
+  uint64_t n_features,
+  uint64_t dest_sample,
+  uint64_t dest_stride
 ) {
   uint64_t n_samples = src_bitmap->n / TK_CVEC_BITS_BYTES(n_features);
 
@@ -452,13 +465,63 @@ static inline void tk_cvec_bits_copy (
   }
 
 
-  uint64_t total_bytes = n_output_samples * out_bytes_per_sample;
+  uint64_t row_stride_bits;
+  bool use_packed;
+  
+  if (dest_stride > 0) {
+
+
+    use_packed = true;
+    row_stride_bits = TK_CVEC_BITS_BYTES(dest_stride) * CHAR_BIT;
+  } else {
+
+    use_packed = false;
+    row_stride_bits = out_bytes_per_sample * CHAR_BIT;
+  }
+  
+
+  uint64_t final_samples = dest_sample + n_output_samples;
+  uint64_t total_bytes;
+  
+  if (use_packed) {
+
+    uint64_t total_bits = dest_sample * row_stride_bits + n_output_samples * n_selected_features;
+
+    if (dest_stride > 0) {
+      total_bits = (dest_sample + 1) * row_stride_bits;
+    }
+    total_bytes = TK_CVEC_BITS_BYTES(total_bits);
+  } else {
+
+    total_bytes = final_samples * out_bytes_per_sample;
+  }
+  
+
   tk_cvec_ensure(dest, total_bytes);
-  dest->n = total_bytes;
   uint8_t *dest_data = (uint8_t *)dest->a;
+  
+  if (dest_sample == 0) {
+
+    dest->n = total_bytes;
+    memset(dest_data, 0, total_bytes);
+  } else {
+
+    uint64_t old_size = dest->n;
+    dest->n = total_bytes;
+    if (total_bytes > old_size) {
+      memset(dest_data + old_size, 0, total_bytes - old_size);
+    }
+  }
 
 
-  uint64_t write_sample = 0;
+  uint64_t write_sample = dest_sample;
+  uint64_t write_bit_offset = 0;
+  
+  if (use_packed) {
+
+    write_bit_offset = dest_sample * row_stride_bits;
+  }
+  
   for (uint64_t s = 0; s < n_samples; s ++) {
 
     if (sample_set != NULL && !tk_iuset_contains(sample_set, (int64_t) s))
@@ -494,10 +557,29 @@ static inline void tk_cvec_bits_copy (
     }
 
 
-    uint64_t out_offset = write_sample * out_bytes_per_sample;
-    memcpy(dest_data + out_offset, temp, out_bytes_per_sample);
+    if (use_packed) {
+
+      for (uint64_t i = 0; i < n_selected_features; i++) {
+        uint64_t src_byte = i / CHAR_BIT;
+        uint8_t src_bit_pos = i % CHAR_BIT;
+        
+        if (temp[src_byte] & (1u << src_bit_pos)) {
+          uint64_t dst_byte = write_bit_offset / CHAR_BIT;
+          uint8_t dst_bit_pos = write_bit_offset % CHAR_BIT;
+          dest_data[dst_byte] |= (1u << dst_bit_pos);
+        }
+        write_bit_offset++;
+      }
+
+
+    } else {
+
+      uint64_t out_offset = write_sample * out_bytes_per_sample;
+      memcpy(dest_data + out_offset, temp, out_bytes_per_sample);
+      write_sample++;
+    }
+    
     free(temp);
-    write_sample ++;
   }
 
   if (sample_set != NULL)

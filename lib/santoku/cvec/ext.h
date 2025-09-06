@@ -754,5 +754,36 @@ static inline tk_dvec_t *tk_cvec_bits_score_entropy (
   return scores;
 }
 
+static inline void tk_cvec_bits_to_ascii (
+  lua_State *L,
+  const tk_cvec_t *bitmap,
+  uint64_t start_bit,
+  uint64_t end_bit
+) {
+
+  uint64_t n_bits = end_bit - start_bit;
+  
+
+  tk_cvec_t *ascii = tk_cvec_create(L, n_bits + 1, 0, 0);
+  
+  const uint8_t *data = (const uint8_t *)bitmap->a;
+  char *out = ascii->a;
+  
+
+  for (uint64_t i = 0; i < n_bits; i++) {
+    uint64_t bit_pos = start_bit + i;
+    uint64_t byte_idx = bit_pos / 8;
+    uint64_t bit_idx = bit_pos % 8;
+    out[i] = (data[byte_idx] & (1 << bit_idx)) ? '1' : '0';
+  }
+  
+  ascii->n = n_bits;
+  out[n_bits] = '\0';
+  
+
+  lua_pushstring(L, out);
+  lua_remove(L, -2);
+}
+
 
 #endif
