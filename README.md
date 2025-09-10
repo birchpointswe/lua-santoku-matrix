@@ -1,10 +1,12 @@
 # Santoku Matrix
 
-Templated array-like containers (vectors), hash maps, and sets with type-specific implementations.
+Templated array-like containers (vectors), hash maps, and sets with
+type-specific implementations.
 
 ## Common Vector Operations
 
-All vector types (ivec, dvec, cvec, rvec, pvec) share these core operations unless otherwise noted in their specific sections.
+All vector types (ivec, dvec, cvec, rvec, pvec) share these core operations
+unless otherwise noted in their specific sections.
 
 ### Constructor Functions
 
@@ -124,11 +126,13 @@ Integer vector module providing dynamic arrays of 64-bit integers.
 | `set_overlap` | `vector_b, [weights]` | `number` | Computes overlap coefficient |
 | `set_dice` | `vector_b, [weights]` | `number` | Computes Dice coefficient |
 | `set_tversky` | `vector_b, alpha, beta, [weights]` | `number` | Computes Tversky index |
-| `set_similarity` | `vector_b, type, [alpha], [beta], [weights]` | `number` | Computes specified similarity measure |
+| `set_similarity` | `vector_b, [weights], [type], [alpha], [beta]` | `number` | Computes specified similarity measure |
 | `set_stats` | `vector_b, [weights]` | `inter, sum_a, sum_b` | Computes set statistics |
 | `set_intersect` | `vector_b, [output]` | `ivec` | Computes set intersection (assumes sorted) |
 | `set_union` | `vector_b, [output]` | `ivec` | Computes set union (assumes sorted) |
 | `set_find` | `value` | `index, insert_pos` | Binary search, returns index or -1 and insertion position |
+| `set_weights_by_rank` | `weights` | `-` | Applies weights to elements based on rank |
+| `set_similarity_by_rank` | `vector_b, [weights], [type], [alpha], [beta]` | `number` | Computes similarity measure using rank-based weights |
 
 ##### Feature Selection
 
@@ -136,10 +140,10 @@ Integer vector module providing dynamic arrays of 64-bit integers.
 |----------|-----------|---------|-------------|
 | `bits_score_chi2` | `set_bits, codes/labels, samples, visible, hidden, [threads]` | `dvec` | Chi-squared feature scores. `codes` can be string, light userdata, or cvec; `labels` can be ivec |
 | `bits_score_mi` | `set_bits, codes/labels, samples, visible, hidden, [threads]` | `dvec` | Mutual information scores. `codes` can be string, light userdata, or cvec; `labels` can be ivec |
-| `bits_score_entropy` | `codes, samples, hidden, [threads]` | `dvec` | Entropy scores. `codes` can be string, light userdata, or cvec |
-| `bits_top_chi2` | `set_bits, codes/labels, samples, visible, hidden, k, [threads]` | `ivec` | Top k features by chi-squared. `codes` can be string, light userdata, or cvec; `labels` can be ivec |
-| `bits_top_mi` | `set_bits, codes/labels, samples, visible, hidden, k, [threads]` | `ivec` | Top k features by mutual information. `codes` can be string, light userdata, or cvec; `labels` can be ivec |
-| `bits_top_entropy` | `codes, samples, hidden, k, [threads]` | `ivec` | Top k features by entropy. `codes` can be string, light userdata, or cvec |
+| `bits_score_entropy` | `set_bits, samples, hidden, [threads]` | `dvec` | Entropy scores for sparse bit representation |
+| `bits_top_chi2` | `set_bits, codes/labels, samples, visible, hidden, k, [threads]` | `ivec, dvec` | Top k features by chi-squared. `codes` can be string, light userdata, or cvec; `labels` can be ivec |
+| `bits_top_mi` | `set_bits, codes/labels, samples, visible, hidden, k, [threads]` | `ivec, dvec` | Top k features by mutual information. `codes` can be string, light userdata, or cvec; `labels` can be ivec |
+| `bits_top_entropy` | `set_bits, samples, hidden, k, [threads]` | `ivec, dvec` | Top k features by entropy |
 
 ##### Bit Operations
 
@@ -149,7 +153,8 @@ Integer vector module providing dynamic arrays of 64-bit integers.
 | `bits_rearrange` | `ids, features` | `-` | Rearranges bits by feature IDs |
 | `bits_extend` | `base_bits, ext_bits, features, extended` | `-` | Extends bit representation |
 | `bits_to_cvec` | `set_bits, samples, features, [flip_interleave]` | `cvec` | Converts sparse bit indices to packed bitmap |
-| `bits_filter` | `set_bits, top_v, visible` | `-` | Filters elements by selected features |
+| `bits_filter` | `set_bits, top_v, [sample_ids], visible` | `-` | Filters elements by selected features and optional sample IDs |
+| `bits_copy` | `dest, src_bits, [selected_features], [sample_ids], visible, [dest_sample]` | `-` | Copies sparse bit representation with optional feature and sample selection |
 
 ##### Matrix Sorting Operations
 
@@ -174,6 +179,7 @@ Integer vector module providing dynamic arrays of 64-bit integers.
 | `copy_pvalues` | `pvec, [start], [end], [dest]` | `-` | Copies values from pair vector |
 | `copy_rkeys` | `rvec, [start], [end], [dest]` | `-` | Copies keys from rank vector |
 | `copy_rvalues` | `rvec, [start], [end], [dest]` | `-` | Copies values from rank vector |
+| `lookup` | `source` | `-` | Replaces elements with values from source array indexed by current elements |
 
 ### `santoku.dvec`
 Double-precision floating-point vector module.
@@ -183,6 +189,13 @@ Double-precision floating-point vector module.
 **Excluded:** Bit operations, cross-type operations, set operations, feature selection
 
 #### Additional Operations (dvec-specific)
+
+##### Matrix Operations
+
+| Function | Arguments | Returns | Description |
+|----------|-----------|---------|-------------|
+| `center` | `samples, dims` | `dvec` | Centers matrix columns by subtracting column means |
+| `multiply_bits` | `bits, samples, features, hidden` | `dvec` | Sparse matrix-dense vector multiplication |
 
 ##### Matrix Sorting Operations
 
@@ -222,13 +235,26 @@ Character vector module providing byte arrays and bitmap operations.
 | `bits_to_ivec` | `samples, features` | `ivec` | Converts packed bitmap to sparse bit indices |
 | `bits_rearrange` | `ids, features` | `-` | Rearranges bitmap samples by IDs |
 | `bits_extend` | `ext, samples, base_features, ext_features` | `-` | Extends bitmap with additional features |
-| `bits_filter` | `selected_features, samples, features` | `-` | Filters bitmap to selected features |
+| `bits_filter` | `selected_features, [sample_ids], samples, features` | `-` | Filters bitmap to selected features and optional sample IDs |
+| `bits_copy` | `dest, src_bitmap, [selected_features], [sample_ids], samples, features, [dest_sample]` | `-` | Copies bitmap with optional feature and sample selection |
 | `bits_popcount` | `n_bits` | `integer` | Counts set bits in bitmap |
 | `bits_hamming` | `other, n_bits` | `integer` | Hamming distance between bitmaps |
 | `bits_hamming_mask` | `other, mask, n_bits` | `integer` | Masked Hamming distance |
 | `bits_and` | `out, other, n_bits` | `-` | Bitwise AND operation |
 | `bits_or` | `out, other, n_bits` | `-` | Bitwise OR operation |
 | `bits_xor` | `out, other, n_bits` | `-` | Bitwise XOR operation |
+| `bits_to_ascii` | `[start_bit], [end_bit]` | `string` | Converts bitmap to ASCII representation for visualization |
+
+##### Feature Selection Operations
+
+| Method | Arguments | Returns | Description |
+|----------|-----------|---------|-------------|
+| `bits_score_chi2` | `labels, samples, visible, hidden, [threads]` | `dvec` | Chi-squared feature scores for packed bitmap |
+| `bits_score_mi` | `labels, samples, visible, hidden, [threads]` | `dvec` | Mutual information scores for packed bitmap |
+| `bits_score_entropy` | `samples, hidden, [threads]` | `dvec` | Entropy scores for packed bitmap |
+| `bits_top_chi2` | `labels, samples, visible, hidden, k, [threads]` | `ivec, dvec` | Top k features by chi-squared for packed bitmap |
+| `bits_top_mi` | `labels, samples, visible, hidden, k, [threads]` | `ivec, dvec` | Top k features by mutual information for packed bitmap |
+| `bits_top_entropy` | `samples, hidden, k, [threads]` | `ivec, dvec` | Top k features by entropy for packed bitmap |
 
 ### `santoku.rvec`
 Rank vector module for storing pairs of (integer, double).
@@ -419,7 +445,7 @@ Template header for matrix-specific operations on vectors (treating vector as ro
 #### Lua Bindings
 All functions above have corresponding `_lua` suffixed versions for Lua registration:
 - `tk_vec_name##_rasc_lua`, `tk_vec_name##_rdesc_lua` - Row sorting
-- `tk_vec_name##_casc_lua`, `tk_vec_name##_cdesc_lua` - Column sorting  
+- `tk_vec_name##_casc_lua`, `tk_vec_name##_cdesc_lua` - Column sorting
 - `tk_vec_name##_rmagnitudes_lua`, `tk_vec_name##_cmagnitudes_lua` - Magnitudes
 - `tk_vec_name##_rmaxargs_lua`, `tk_vec_name##_cmaxargs_lua` - Argmax
 - `tk_vec_name##_rminargs_lua`, `tk_vec_name##_cminargs_lua` - Argmin
@@ -566,3 +592,25 @@ Size_t-to-size_t hash map implementation.
 | `tk_zumap_clear(map)` | Removes all pairs |
 | `tk_zumap_foreach(map, kvar, vvar, code)` | Iterates over all pairs |
 
+## License
+
+MIT License
+
+Copyright 2025 Birch Point SWE
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
