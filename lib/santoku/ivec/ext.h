@@ -4,6 +4,7 @@
 #include <santoku/rvec.h>
 #include <santoku/threads.h>
 #include <santoku/dvec.h>
+#include <santoku/iumap.h>
 #include <stdatomic.h>
 #include <math.h>
 #include <limits.h>
@@ -402,6 +403,121 @@ static inline void tk_ivec_bits_extend (
   }
   base->n = total;
   tk_ivec_asc(base, 0, base->n);
+}
+
+static inline void tk_ivec_bits_extend_mapped (
+  tk_ivec_t *base,
+  tk_ivec_t *ext,
+  tk_ivec_t *aids,
+  tk_ivec_t *bids,
+  uint64_t n_feat,
+  uint64_t n_extfeat
+) {
+
+  tk_ivec_asc(base, 0, base->n);
+  tk_ivec_asc(ext, 0, ext->n);
+
+
+  tk_iumap_t *a_id_to_pos = tk_iumap_from_ivec(aids);
+
+
+  uint64_t n_only_b = 0;
+  int64_t *b_to_final = (int64_t *)malloc(bids->n * sizeof(int64_t));
+  int64_t *a_to_final = (int64_t *)malloc(aids->n * sizeof(int64_t));
+
+  if (!b_to_final || !a_to_final) {
+    free(b_to_final);
+    free(a_to_final);
+    tk_iumap_destroy(a_id_to_pos);
+    return;
+  }
+
+
+  for (size_t i = 0; i < aids->n; i++)
+    a_to_final[i] = (int64_t)i;
+
+
+  int64_t next_pos = (int64_t)aids->n;
+  for (size_t bi = 0; bi < bids->n; bi++) {
+    khint_t khi = tk_iumap_get(a_id_to_pos, bids->a[bi]);
+    if (khi != tk_iumap_end(a_id_to_pos)) {
+
+      b_to_final[bi] = tk_iumap_value(a_id_to_pos, khi);
+    } else {
+
+      b_to_final[bi] = next_pos++;
+      n_only_b++;
+    }
+  }
+
+  uint64_t final_n_samples = aids->n + n_only_b;
+  uint64_t n_total_feat = n_feat + n_extfeat;
+
+
+  size_t old_aids_n = aids->n;
+  tk_ivec_ensure(aids, final_n_samples);
+
+  for (size_t i = 0; i < bids->n; i++) {
+    if (b_to_final[i] >= (int64_t)old_aids_n) {
+
+      aids->a[aids->n++] = bids->a[i];
+    }
+  }
+
+
+  size_t max_bits = 0;
+
+
+  for (size_t i = 0; i < base->n; i++) {
+    uint64_t bit = (uint64_t)base->a[i];
+    uint64_t sample = bit / n_feat;
+    if (sample < old_aids_n) {
+      max_bits++;
+    }
+  }
+
+
+  for (size_t i = 0; i < ext->n; i++) {
+    uint64_t bit = (uint64_t)ext->a[i];
+    uint64_t sample = bit / n_extfeat;
+    if (sample < bids->n && b_to_final[sample] >= 0) {
+      max_bits++;
+    }
+  }
+
+  tk_ivec_ensure(base, max_bits);
+
+
+
+  for (int64_t i = (int64_t)base->n - 1; i >= 0; i--) {
+    uint64_t bit = (uint64_t)base->a[i];
+    uint64_t sample = bit / n_feat;
+    uint64_t feature = bit % n_feat;
+    if (sample < old_aids_n) {
+      uint64_t new_sample_pos = (uint64_t)a_to_final[sample];
+      base->a[i] = (int64_t)(new_sample_pos * n_total_feat + feature);
+    }
+  }
+
+
+  size_t insert_pos = base->n;
+  for (size_t i = 0; i < ext->n; i++) {
+    uint64_t bit = (uint64_t)ext->a[i];
+    uint64_t b_sample = bit / n_extfeat;
+    uint64_t feature = bit % n_extfeat;
+    if (b_sample < bids->n && b_to_final[b_sample] >= 0) {
+      uint64_t final_sample = (uint64_t)b_to_final[b_sample];
+      base->a[insert_pos++] = (int64_t)(final_sample * n_total_feat + n_feat + feature);
+    }
+  }
+
+  base->n = insert_pos;
+  tk_ivec_asc(base, 0, base->n);
+
+
+  free(b_to_final);
+  free(a_to_final);
+  tk_iumap_destroy(a_id_to_pos);
 }
 
 static inline tk_dvec_t *tk_ivec_bits_score_chi2 (

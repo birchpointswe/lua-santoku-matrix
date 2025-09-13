@@ -5,6 +5,7 @@
 #include <santoku/ivec.h>
 #include <santoku/dvec.h>
 #include <santoku/rvec.h>
+#include <santoku/iumap.h>
 #include <santoku/threads.h>
 #include <string.h>
 #include <limits.h>
@@ -166,7 +167,7 @@ static inline void tk_cvec_bits_flip_interleave (
 ) {
   if (n_features == 0)
     return;
-  
+
   uint64_t n_samples = v->n / TK_CVEC_BITS_BYTES(n_features);
   if (n_samples == 0)
     return;
@@ -418,7 +419,7 @@ static inline tk_cvec_t *tk_cvec_bits_from_ivec (
   uint8_t *data = (uint8_t *)out->a;
   memset(data, 0, total_bytes);
 
-  for (uint64_t i = 0; i < set_bits->n; i++) {
+  for (size_t i = 0; i < set_bits->n; i++) {
     int64_t bit_idx = set_bits->a[i];
     uint64_t sample = (uint64_t) bit_idx / n_features;
     uint64_t feature = (uint64_t) bit_idx % n_features;
@@ -520,6 +521,149 @@ static inline void tk_cvec_bits_extend (
   }
 
   base->n = n_samples * total_bytes_per_sample;
+}
+
+static inline void tk_cvec_bits_extend_mapped (
+  tk_cvec_t *base,
+  tk_cvec_t *ext,
+  tk_ivec_t *aids,
+  tk_ivec_t *bids,
+  uint64_t n_base_features,
+  uint64_t n_ext_features
+) {
+  uint64_t n_total_features = n_base_features + n_ext_features;
+  uint64_t base_bytes_per_sample = TK_CVEC_BITS_BYTES(n_base_features);
+  uint64_t ext_bytes_per_sample = TK_CVEC_BITS_BYTES(n_ext_features);
+  uint64_t total_bytes_per_sample = TK_CVEC_BITS_BYTES(n_total_features);
+
+
+  tk_iumap_t *a_id_to_pos = tk_iumap_from_ivec(aids);
+
+
+  uint64_t n_only_b = 0;
+  int64_t *b_to_final = (int64_t *)malloc(bids->n * sizeof(int64_t));
+
+  if (!b_to_final) {
+    tk_iumap_destroy(a_id_to_pos);
+    return;
+  }
+
+
+  int64_t next_pos = (int64_t)aids->n;
+  for (size_t bi = 0; bi < bids->n; bi++) {
+    khint_t khi = tk_iumap_get(a_id_to_pos, bids->a[bi]);
+    if (khi != tk_iumap_end(a_id_to_pos)) {
+
+      b_to_final[bi] = tk_iumap_value(a_id_to_pos, khi);
+    } else {
+
+      b_to_final[bi] = next_pos++;
+      n_only_b++;
+    }
+  }
+
+  uint64_t final_n_samples = aids->n + n_only_b;
+
+
+  size_t old_aids_n = aids->n;
+  tk_ivec_ensure(aids, final_n_samples);
+
+  for (size_t i = 0; i < bids->n; i++) {
+    if (b_to_final[i] >= (int64_t)old_aids_n) {
+      aids->a[aids->n++] = bids->a[i];
+    }
+  }
+
+
+  tk_cvec_ensure(base, final_n_samples * total_bytes_per_sample);
+  uint8_t *base_data = (uint8_t *)base->a;
+  uint8_t *ext_data = (uint8_t *)ext->a;
+
+
+  tk_iumap_t *b_id_to_pos = tk_iumap_from_ivec(bids);
+
+
+  uint8_t *new_data = malloc(final_n_samples * total_bytes_per_sample);
+  if (!new_data) {
+    free(b_to_final);
+    tk_iumap_destroy(a_id_to_pos);
+    tk_iumap_destroy(b_id_to_pos);
+    return;
+  }
+  memset(new_data, 0, final_n_samples * total_bytes_per_sample);
+
+
+  for (size_t ai = 0; ai < old_aids_n; ai++) {
+    uint64_t dest_offset = ai * total_bytes_per_sample;
+    uint64_t src_offset = ai * base_bytes_per_sample;
+
+    memcpy(new_data + dest_offset, base_data + src_offset, base_bytes_per_sample);
+
+
+    khint_t khi = tk_iumap_get(b_id_to_pos, aids->a[ai]);
+    if (khi != tk_iumap_end(b_id_to_pos)) {
+      int64_t b_idx = tk_iumap_value(b_id_to_pos, khi);
+
+      uint64_t ext_src_offset = (uint64_t)b_idx * ext_bytes_per_sample;
+      uint64_t ext_bit_offset = n_base_features;
+      uint64_t ext_byte_offset = ext_bit_offset / CHAR_BIT;
+      uint8_t ext_bit_shift = ext_bit_offset % CHAR_BIT;
+      if (ext_bit_shift == 0) {
+
+        memcpy(new_data + dest_offset + ext_byte_offset,
+               ext_data + ext_src_offset, ext_bytes_per_sample);
+      } else {
+
+        uint8_t carry = 0;
+        for (uint64_t i = 0; i < ext_bytes_per_sample; i++) {
+          uint8_t byte = ext_data[ext_src_offset + i];
+          new_data[dest_offset + ext_byte_offset + i] |= (byte << ext_bit_shift) | carry;
+          carry = byte >> (CHAR_BIT - ext_bit_shift);
+        }
+        if (carry != 0 && ext_byte_offset + ext_bytes_per_sample < total_bytes_per_sample) {
+          new_data[dest_offset + ext_byte_offset + ext_bytes_per_sample] |= carry;
+        }
+      }
+    }
+
+  }
+
+
+  for (size_t bi = 0; bi < bids->n; bi++) {
+    int64_t final_pos = b_to_final[bi];
+    if (final_pos >= (int64_t)old_aids_n) {
+
+      uint64_t dest_offset = (uint64_t)final_pos * total_bytes_per_sample;
+      uint64_t src_offset = bi * ext_bytes_per_sample;
+
+
+      uint64_t ext_bit_offset = n_base_features;
+      uint64_t ext_byte_offset = ext_bit_offset / CHAR_BIT;
+      uint8_t ext_bit_shift = ext_bit_offset % CHAR_BIT;
+      if (ext_bit_shift == 0) {
+        memcpy(new_data + dest_offset + ext_byte_offset,
+               ext_data + src_offset, ext_bytes_per_sample);
+      } else {
+        uint8_t carry = 0;
+        for (uint64_t i = 0; i < ext_bytes_per_sample; i++) {
+          uint8_t byte = ext_data[src_offset + i];
+          new_data[dest_offset + ext_byte_offset + i] |= (byte << ext_bit_shift) | carry;
+          carry = byte >> (CHAR_BIT - ext_bit_shift);
+        }
+        if (carry != 0 && ext_byte_offset + ext_bytes_per_sample < total_bytes_per_sample) {
+          new_data[dest_offset + ext_byte_offset + ext_bytes_per_sample] |= carry;
+        }
+      }
+    }
+  }
+
+
+  memcpy(base_data, new_data, final_n_samples * total_bytes_per_sample);
+  free(new_data);
+  free(b_to_final);
+  tk_iumap_destroy(a_id_to_pos);
+  tk_iumap_destroy(b_id_to_pos);
+  base->n = final_n_samples * total_bytes_per_sample;
 }
 
 
@@ -762,13 +906,13 @@ static inline void tk_cvec_bits_to_ascii (
 ) {
 
   uint64_t n_bits = end_bit - start_bit;
-  
+
 
   tk_cvec_t *ascii = tk_cvec_create(L, n_bits + 1, 0, 0);
-  
+
   const uint8_t *data = (const uint8_t *)bitmap->a;
   char *out = ascii->a;
-  
+
 
   for (uint64_t i = 0; i < n_bits; i++) {
     uint64_t bit_pos = start_bit + i;
@@ -776,10 +920,10 @@ static inline void tk_cvec_bits_to_ascii (
     uint64_t bit_idx = bit_pos % 8;
     out[i] = (data[byte_idx] & (1 << bit_idx)) ? '1' : '0';
   }
-  
+
   ascii->n = n_bits;
   out[n_bits] = '\0';
-  
+
 
   lua_pushstring(L, out);
   lua_remove(L, -2);

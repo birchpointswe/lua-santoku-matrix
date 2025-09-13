@@ -52,17 +52,45 @@ static inline void tk_cvec_bits_extend_ivec_helper (
 }
 
 static inline int tk_cvec_bits_extend_lua (lua_State *L) {
-  lua_settop(L, 4);
-  tk_cvec_t *base = tk_cvec_peek(L, 1, "base");
-  uint64_t n_base_features = tk_lua_checkunsigned(L, 3, "n_base_features");
-  uint64_t n_ext_features = tk_lua_checkunsigned(L, 4, "n_ext_features");
-  tk_cvec_t *ext_cvec = tk_cvec_peekopt(L, 2);
-  if (ext_cvec) {
-    tk_cvec_bits_extend(base, ext_cvec, n_base_features, n_ext_features);
+  int nargs = lua_gettop(L);
+
+
+  if (nargs == 4) {
+
+    tk_cvec_t *base = tk_cvec_peek(L, 1, "base");
+    uint64_t n_base_features = tk_lua_checkunsigned(L, 3, "n_base_features");
+    uint64_t n_ext_features = tk_lua_checkunsigned(L, 4, "n_ext_features");
+    tk_cvec_t *ext_cvec = tk_cvec_peekopt(L, 2);
+    if (ext_cvec) {
+      tk_cvec_bits_extend(base, ext_cvec, n_base_features, n_ext_features);
+    } else {
+      tk_ivec_t *ext_ivec = tk_ivec_peek(L, 2, "ext");
+      uint64_t n_samples = base->n / TK_CVEC_BITS_BYTES(n_base_features);
+      tk_cvec_bits_extend_ivec_helper(L, base, ext_ivec, n_base_features, n_ext_features, n_samples);
+    }
+  } else if (nargs == 6) {
+
+    tk_cvec_t *base = tk_cvec_peek(L, 1, "base");
+    tk_ivec_t *aids = tk_ivec_peek(L, 3, "aids");
+    tk_ivec_t *bids = tk_ivec_peek(L, 4, "bids");
+    uint64_t n_base_features = tk_lua_checkunsigned(L, 5, "n_base_features");
+    uint64_t n_ext_features = tk_lua_checkunsigned(L, 6, "n_ext_features");
+
+    tk_cvec_t *ext_cvec = tk_cvec_peekopt(L, 2);
+    if (ext_cvec) {
+      tk_cvec_bits_extend_mapped(base, ext_cvec, aids, bids, n_base_features, n_ext_features);
+    } else {
+
+      tk_ivec_t *ext_ivec = tk_ivec_peek(L, 2, "ext");
+      uint64_t n_samples = ext_ivec->n > 0 ?
+        ((uint64_t)ext_ivec->a[ext_ivec->n - 1] / n_ext_features + 1) : 0;
+      tk_cvec_t *ext = tk_cvec_bits_from_ivec(L, ext_ivec, n_samples, n_ext_features);
+      tk_cvec_bits_extend_mapped(base, ext, aids, bids, n_base_features, n_ext_features);
+      tk_cvec_destroy(ext);
+      lua_remove(L, -1);
+    }
   } else {
-    tk_ivec_t *ext_ivec = tk_ivec_peek(L, 2, "ext");
-    uint64_t n_samples = base->n / TK_CVEC_BITS_BYTES(n_base_features);
-    tk_cvec_bits_extend_ivec_helper(L, base, ext_ivec, n_base_features, n_ext_features, n_samples);
+    return luaL_error(L, "bits_extend expects 4 or 6 arguments, got %d", nargs);
   }
   return 0;
 }
