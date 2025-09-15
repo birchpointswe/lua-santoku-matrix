@@ -30,7 +30,6 @@ static inline int tk_ivec_bits_score_chi2_lua (
     codes = cvec->a;
   } else {
     tk_ivec_t *m1 = tk_ivec_peek(L, 2, "labels");
-    n_samples = m1->n < n_samples ? m1->n : n_samples;
     labels = m1;
   }
   tk_ivec_bits_score_chi2(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, n_threads);
@@ -55,7 +54,6 @@ static inline int tk_ivec_bits_score_mi_lua (
     codes = cvec->a;
   } else {
     tk_ivec_t *m1 = tk_ivec_peek(L, 2, "labels");
-    n_samples = m1->n < n_samples ? m1->n : n_samples;
     labels = m1;
   }
   tk_ivec_bits_score_mi(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, n_threads);
@@ -80,7 +78,6 @@ static inline int tk_ivec_bits_top_mi_lua (lua_State *L)
     codes = cvec->a;
   } else {
     tk_ivec_t *m1 = tk_ivec_peek(L, 2, "labels");
-    n_samples = m1->n < n_samples ? m1->n : n_samples;
     labels = m1;
   }
   tk_ivec_bits_top_mi(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, top_k, n_threads);
@@ -105,7 +102,6 @@ static inline int tk_ivec_bits_top_chi2_lua (lua_State *L)
     codes = cvec->a;
   } else {
     tk_ivec_t *m1 = tk_ivec_peek(L, 2, "labels");
-    n_samples = m1->n < n_samples ? m1->n : n_samples;
     labels = m1;
   }
   tk_ivec_bits_top_chi2(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, top_k, n_threads);
@@ -236,27 +232,31 @@ static inline int tk_ivec_bits_extend_lua (lua_State *L)
       tk_cvec_t *ext_cvec = tk_cvec_peek(L, 2, "ext_bits");
       tk_ivec_bits_extend_cvec_helper(L, base, ext_cvec, n_feat, n_extfeat);
     }
-  } else if (nargs == 6) {
-
+  } else if (nargs == 6 || nargs == 7) {
     tk_ivec_t *base = tk_ivec_peek(L, 1, "base_bits");
     tk_ivec_t *aids = tk_ivec_peek(L, 3, "aids");
     tk_ivec_t *bids = tk_ivec_peek(L, 4, "bids");
     uint64_t n_feat = tk_lua_checkunsigned(L, 5, "features");
     uint64_t n_extfeat = tk_lua_checkunsigned(L, 6, "extended");
 
+    bool project = false;
+    if (nargs == 7) {
+      project = lua_toboolean(L, 7);
+    }
+
     tk_ivec_t *ext_ivec = tk_ivec_peekopt(L, 2);
     if (ext_ivec) {
-      tk_ivec_bits_extend_mapped(base, ext_ivec, aids, bids, n_feat, n_extfeat);
+      tk_ivec_bits_extend_mapped(base, ext_ivec, aids, bids, n_feat, n_extfeat, project);
     } else {
 
       tk_cvec_t *ext_cvec = tk_cvec_peek(L, 2, "ext_bits");
       tk_ivec_t *ext = tk_cvec_bits_to_ivec(L, ext_cvec, n_extfeat);
-      tk_ivec_bits_extend_mapped(base, ext, aids, bids, n_feat, n_extfeat);
+      tk_ivec_bits_extend_mapped(base, ext, aids, bids, n_feat, n_extfeat, project);
       tk_ivec_destroy(ext);
       lua_remove(L, -1);
     }
   } else {
-    return luaL_error(L, "bits_extend expects 4 or 6 arguments, got %d", nargs);
+    return luaL_error(L, "bits_extend expects 4, 6, or 7 arguments, got %d", nargs);
   }
   return 0;
 }

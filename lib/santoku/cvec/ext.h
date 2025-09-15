@@ -91,6 +91,7 @@ static inline void tk_cvec_worker (void *dp, int sig)
         double *scores_b = scores->a + b * n_features;
         for (uint64_t f = 0; f < n_features; f++) {
           int64_t A = active_counts->a[f * n_hidden + b];
+
           int64_t G = global_counts->a[b];
           int64_t C = feat_counts->a[f];
           if (C == 0 || G == 0 || C == (int64_t) n_samples || G == (int64_t) n_samples) {
@@ -123,9 +124,11 @@ static inline void tk_cvec_worker (void *dp, int sig)
       for (int64_t j = (int64_t) data->hfirst; j <= (int64_t) data->hlast; j++) {
         double *scores_h = scores->a + j * (int64_t) n_features;
         for (int64_t i = 0; i < (int64_t) n_features; i++) {
-          int64_t *c = counts->a + i * (int64_t) n_hidden * 4 + j * 4;
+          int64_t c[4];
+          int64_t *counts_ptr = counts->a + i * (int64_t) n_hidden * 4 + j * 4;
           for (int k = 0; k < 4; k++)
-            c[k] += 1;
+            c[k] = counts_ptr[k] + 1;
+
           double total = c[0] + c[1] + c[2] + c[3];
           double mi = 0.0;
           if (total == 0.0)
@@ -529,7 +532,8 @@ static inline void tk_cvec_bits_extend_mapped (
   tk_ivec_t *aids,
   tk_ivec_t *bids,
   uint64_t n_base_features,
-  uint64_t n_ext_features
+  uint64_t n_ext_features,
+  bool project
 ) {
   uint64_t n_total_features = n_base_features + n_ext_features;
   uint64_t base_bytes_per_sample = TK_CVEC_BITS_BYTES(n_base_features);
@@ -557,20 +561,28 @@ static inline void tk_cvec_bits_extend_mapped (
       b_to_final[bi] = tk_iumap_value(a_id_to_pos, khi);
     } else {
 
-      b_to_final[bi] = next_pos++;
-      n_only_b++;
+      if (!project) {
+
+        b_to_final[bi] = next_pos++;
+        n_only_b++;
+      } else {
+
+        b_to_final[bi] = -1;
+      }
     }
   }
 
-  uint64_t final_n_samples = aids->n + n_only_b;
+  uint64_t final_n_samples = project ? aids->n : (aids->n + n_only_b);
 
 
   size_t old_aids_n = aids->n;
-  tk_ivec_ensure(aids, final_n_samples);
+  if (!project) {
+    tk_ivec_ensure(aids, final_n_samples);
 
-  for (size_t i = 0; i < bids->n; i++) {
-    if (b_to_final[i] >= (int64_t)old_aids_n) {
-      aids->a[aids->n++] = bids->a[i];
+    for (size_t i = 0; i < bids->n; i++) {
+      if (b_to_final[i] >= (int64_t)old_aids_n) {
+        aids->a[aids->n++] = bids->a[i];
+      }
     }
   }
 
@@ -686,10 +698,13 @@ static inline tk_dvec_t *tk_cvec_bits_score_chi2 (
   ctx.n_features = n_features;
   ctx.n_hidden = n_hidden;
   ctx.n_samples = n_samples;
+
+
   ctx.active_counts = tk_ivec_create(L, ctx.n_features * ctx.n_hidden, 0, 0);
+  tk_ivec_zero(ctx.active_counts);
+
   ctx.global_counts = tk_ivec_create(L, ctx.n_hidden, 0, 0);
   ctx.feat_counts = tk_ivec_create(L, ctx.n_features, 0, 0);
-  tk_ivec_zero(ctx.active_counts);
   tk_ivec_zero(ctx.global_counts);
   tk_ivec_zero(ctx.feat_counts);
 
@@ -742,27 +757,32 @@ static inline tk_dvec_t *tk_cvec_bits_score_chi2 (
     }
   } else if (labels != NULL) {
 
+
+    for (uint64_t s = 0; s < n_samples; s++) {
+      if (s >= ctx.labels->n || ctx.labels->a[s] < 0)
+        continue;
+      uint64_t b = (uint64_t) ctx.labels->a[s];
+      if (b >= ctx.n_hidden)
+        continue;
+      ctx.global_counts->a[b]++;
+    }
+
+
     for (uint64_t s = 0; s < n_samples; s++) {
       for (uint64_t f = 0; f < n_features; f++) {
         uint64_t bit_idx = s * n_features + f;
         uint64_t byte_idx = bit_idx / CHAR_BIT;
         uint64_t bit_pos = bit_idx % CHAR_BIT;
-
         if (bitmap_data[byte_idx] & (1 << bit_pos)) {
           ctx.feat_counts->a[f]++;
-          int64_t label = ctx.labels->a[s];
-          if (label >= 0 && (size_t) label < ctx.n_hidden)
-            ctx.active_counts->a[f * ctx.n_hidden + (uint64_t) label]++;
+          if (s < ctx.labels->n && ctx.labels->a[s] >= 0) {
+            uint64_t b = (uint64_t) ctx.labels->a[s];
+            if (b < ctx.n_hidden) {
+              ctx.active_counts->a[f * ctx.n_hidden + b]++;
+            }
+          }
         }
       }
-    }
-
-
-    tk_ivec_zero(ctx.global_counts);
-    for (uint64_t s = 0; s < ctx.n_samples; s++) {
-      int64_t label = ctx.labels->a[s];
-      if (label >= 0 && (size_t) label < ctx.n_hidden)
-        ctx.global_counts->a[label]++;
     }
   }
 
@@ -771,6 +791,7 @@ static inline tk_dvec_t *tk_cvec_bits_score_chi2 (
   tk_dvec_zero(ctx.scores);
   tk_threads_signal(pool, TK_CVEC_CHI2, 0);
   tk_threads_destroy(pool);
+
 
   tk_ivec_destroy(ctx.active_counts);
   tk_ivec_destroy(ctx.global_counts);
@@ -798,6 +819,8 @@ static inline tk_dvec_t *tk_cvec_bits_score_mi (
   ctx.n_features = n_features;
   ctx.n_hidden = n_hidden;
   ctx.n_samples = n_samples;
+
+
   ctx.counts = tk_ivec_create(L, ctx.n_features * ctx.n_hidden * 4, 0, 0);
   tk_ivec_zero(ctx.counts);
 
@@ -828,6 +851,8 @@ static inline tk_dvec_t *tk_cvec_bits_score_mi (
       }
     }
   } else if (ctx.labels != NULL) {
+
+
     for (uint64_t s = 0; s < n_samples; s++) {
       for (uint64_t f = 0; f < n_features; f++) {
         uint64_t bit_idx = s * n_features + f;
@@ -835,10 +860,12 @@ static inline tk_dvec_t *tk_cvec_bits_score_mi (
         uint64_t bit_pos = bit_idx % CHAR_BIT;
         bool visible = (bitmap_data[byte_idx] & (1 << bit_pos)) != 0;
 
-        int64_t label = ctx.labels->a[s];
+
         for (uint64_t j = 0; j < ctx.n_hidden; j++) {
-          bool hidden = ((size_t)j == (size_t)label);
-          ctx.counts->a[f * ctx.n_hidden * 4 + j * 4 + (visible ? 2 : 0) + (hidden ? 1 : 0)]++;
+          bool label_is_j = (s < ctx.labels->n &&
+                            ctx.labels->a[s] >= 0 &&
+                            (uint64_t)ctx.labels->a[s] == j);
+          ctx.counts->a[f * ctx.n_hidden * 4 + j * 4 + (visible ? 2 : 0) + (label_is_j ? 1 : 0)]++;
         }
       }
     }
@@ -849,6 +876,7 @@ static inline tk_dvec_t *tk_cvec_bits_score_mi (
   tk_dvec_zero(ctx.scores);
   tk_threads_signal(pool, TK_CVEC_MI, 0);
   tk_threads_destroy(pool);
+
 
   tk_ivec_destroy(ctx.counts);
 

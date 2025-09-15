@@ -1,11 +1,17 @@
 # Now
 
-- Templatized hash and btree
+- Handle sparse labels/codes in bits scoring functions (e.g. accept an ivec of
+  labels that are in the list-of-set-bits representation instead of just being a
+  single label per sample; this will require extensive changes)
+- Heap for top_chi2 and top_mi instead of keeping full list
+- Paralellize counting in top_mi and top_chi2
+
+- tk_cvec_t
+    - Implement cvec to/from string
+
+- Templatized hash and btree (same peek, pop, create w/out L, register, etc)
 - Ensure all APIs exposed (heap, iuset/map extensions)
 - Standard peek/test: tk_xvec_check, tk_xvec_test, tk_xvec_fcheck, tk_xvec_ftest
-- templatize ordered/unordered map/set under a single map.template.h
-- Update iuset/ioset/iumap/iomap to have a lua API and to use lua state for cleanup
-- Heap for top_chi2 and top_mi instead of keeping full list
 
 # Consider
 
