@@ -1,11 +1,5 @@
 # Now
 
-- Handle sparse labels/codes in bits scoring functions (e.g. accept an ivec of
-  labels that are in the list-of-set-bits representation instead of just being a
-  single label per sample; this will require extensive changes)
-- Heap for top_chi2 and top_mi instead of keeping full list
-- Paralellize counting in top_mi and top_chi2
-
 - tk_cvec_t
     - Implement cvec to/from string
 

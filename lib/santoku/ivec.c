@@ -12,63 +12,14 @@ static inline int tk_ivec_bits_rearrange_lua (lua_State *L) {
   return 0;
 }
 
-static inline int tk_ivec_bits_score_chi2_lua (
-  lua_State *L
-) {
-  lua_settop(L, 6);
-  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
-  uint64_t n_samples = tk_lua_checkunsigned(L, 3, "samples");
-  uint64_t n_visible = tk_lua_checkunsigned(L, 4, "visible");
-  uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
-  unsigned int n_threads = tk_threads_getn(L, 6, "threads", NULL);
-  char *codes = NULL;
-  tk_ivec_t *labels = NULL;
-  if (lua_isnil(L, 2)) {
-
-  } else if (tk_lua_testuserdata(L, 2, "tk_cvec_t")) {
-    tk_cvec_t *cvec = tk_cvec_peek(L, 2, "codes");
-    codes = cvec->a;
-  } else {
-    tk_ivec_t *m1 = tk_ivec_peek(L, 2, "labels");
-    labels = m1;
-  }
-  tk_ivec_bits_score_chi2(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, n_threads);
-  return 1;
-}
-
-static inline int tk_ivec_bits_score_mi_lua (
-  lua_State *L
-) {
-  lua_settop(L, 6);
-  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
-  uint64_t n_samples = tk_lua_checkunsigned(L, 3, "samples");
-  uint64_t n_visible = tk_lua_checkunsigned(L, 4, "visible");
-  uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
-  unsigned int n_threads = tk_threads_getn(L, 6, "threads", NULL);
-  char *codes = NULL;
-  tk_ivec_t *labels = NULL;
-  if (lua_isnil(L, 2)) {
-
-  } else if (tk_lua_testuserdata(L, 2, "tk_cvec_t")) {
-    tk_cvec_t *cvec = tk_cvec_peek(L, 2, "codes");
-    codes = cvec->a;
-  } else {
-    tk_ivec_t *m1 = tk_ivec_peek(L, 2, "labels");
-    labels = m1;
-  }
-  tk_ivec_bits_score_mi(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, n_threads);
-  return 1;
-}
-
 static inline int tk_ivec_bits_top_mi_lua (lua_State *L)
 {
-  lua_settop(L, 7);
+  lua_settop(L, 6);
   tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
   uint64_t n_samples = tk_lua_checkunsigned(L, 3, "samples");
   uint64_t n_visible = tk_lua_checkunsigned(L, 4, "visible");
   uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
-  uint64_t top_k = tk_lua_checkunsigned(L, 6, "top_k");
-  unsigned int n_threads = tk_threads_getn(L, 7, "threads", NULL);
+  uint64_t top_k = lua_isnil(L, 6) ? n_visible : tk_lua_checkunsigned(L, 6, "top_k");
   char *codes = NULL;
   tk_ivec_t *labels = NULL;
   if (lua_isnil(L, 2)) {
@@ -80,19 +31,18 @@ static inline int tk_ivec_bits_top_mi_lua (lua_State *L)
     tk_ivec_t *m1 = tk_ivec_peek(L, 2, "labels");
     labels = m1;
   }
-  tk_ivec_bits_top_mi(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, top_k, n_threads);
+  tk_ivec_bits_top_mi(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, top_k);
   return 2;
 }
 
 static inline int tk_ivec_bits_top_chi2_lua (lua_State *L)
 {
-  lua_settop(L, 7);
+  lua_settop(L, 6);
   tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
   uint64_t n_samples = tk_lua_checkunsigned(L, 3, "samples");
   uint64_t n_visible = tk_lua_checkunsigned(L, 4, "visible");
   uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
-  uint64_t top_k = tk_lua_checkunsigned(L, 6, "top_k");
-  unsigned int n_threads = tk_threads_getn(L, 7, "threads", NULL);
+  uint64_t top_k = lua_isnil(L, 6) ? n_visible : tk_lua_checkunsigned(L, 6, "top_k");
   char *codes = NULL;
   tk_ivec_t *labels = NULL;
   if (lua_isnil(L, 2)) {
@@ -104,31 +54,31 @@ static inline int tk_ivec_bits_top_chi2_lua (lua_State *L)
     tk_ivec_t *m1 = tk_ivec_peek(L, 2, "labels");
     labels = m1;
   }
-  tk_ivec_bits_top_chi2(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, top_k, n_threads);
+  tk_ivec_bits_top_chi2(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, top_k);
   return 2;
-}
-
-static inline int tk_ivec_bits_score_entropy_lua (
-  lua_State *L
-) {
-  lua_settop(L, 4);
-  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
-  uint64_t n_samples = tk_lua_checkunsigned(L, 2, "samples");
-  uint64_t n_hidden = tk_lua_checkunsigned(L, 3, "hidden");
-  unsigned int n_threads = tk_threads_getn(L, 4, "threads", NULL);
-  tk_ivec_bits_score_entropy(L, set_bits, n_samples, n_hidden, n_threads);
-  return 1;
 }
 
 static inline int tk_ivec_bits_top_entropy_lua (lua_State *L)
 {
-  lua_settop(L, 5);
+  lua_settop(L, 4);
   tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
   uint64_t n_samples = tk_lua_checkunsigned(L, 2, "samples");
   uint64_t n_hidden = tk_lua_checkunsigned(L, 3, "hidden");
-  uint64_t top_k = tk_lua_checkunsigned(L, 4, "top_k");
-  unsigned int n_threads = tk_threads_getn(L, 5, "threads", NULL);
-  tk_ivec_bits_top_entropy(L, set_bits, n_samples, n_hidden, top_k, n_threads);
+  uint64_t top_k = lua_isnil(L, 4) ? n_hidden : tk_lua_checkunsigned(L, 4, "top_k");
+  tk_ivec_bits_top_entropy(L, set_bits, n_samples, n_hidden, top_k);
+  return 2;
+}
+
+static inline int tk_ivec_bits_top_df_lua (lua_State *L)
+{
+  lua_settop(L, 6);
+  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
+  uint64_t n_samples = tk_lua_checkunsigned(L, 2, "samples");
+  uint64_t n_features = tk_lua_checkunsigned(L, 3, "features");
+  uint64_t top_k = lua_isnil(L, 4) ? n_features : tk_lua_checkunsigned(L, 4, "top_k");
+  double min_df = tk_lua_optnumber(L, 5, "min_df", 0.0);
+  double max_df = tk_lua_optnumber(L, 6, "max_df", 1.0);
+  tk_ivec_bits_top_df(L, set_bits, n_samples, n_features, min_df, max_df, top_k);
   return 2;
 }
 
@@ -519,14 +469,30 @@ static inline int tk_ivec_set_similarity_by_rank_lua (lua_State *L)
 
 static inline int tk_ivec_set_find_lua (lua_State *L)
 {
-  lua_settop(L, 2);
+  int nargs = lua_gettop(L);
   tk_ivec_t *vec = tk_ivec_peek(L, 1, "vector");
   int64_t value = luaL_checkinteger(L, 2);
-  int64_t insert_idx = -1;
-  int64_t found_idx = tk_ivec_set_find(vec, value, &insert_idx);
-  lua_pushinteger(L, found_idx);
-  lua_pushinteger(L, insert_idx);
-  return 2;
+  int64_t start = (nargs >= 3) ? luaL_checkinteger(L, 3) : 0;
+  int64_t end = (nargs >= 4) ? luaL_checkinteger(L, 4) : (int64_t)vec->n;
+
+
+  if (start < 0) start = 0;
+  if (end > (int64_t)vec->n) end = (int64_t)vec->n;
+  if (start > end) start = end;
+
+  int64_t result = tk_ivec_set_find(vec->a, start, end, value);
+  lua_pushinteger(L, result);
+  return 1;
+}
+
+static inline int tk_ivec_set_insert_lua (lua_State *L)
+{
+  lua_settop(L, 3);
+  tk_ivec_t *vec = tk_ivec_peek(L, 1, "vector");
+  int64_t pos = luaL_checkinteger(L, 2);
+  int64_t value = luaL_checkinteger(L, 3);
+  tk_ivec_set_insert(vec, pos, value);
+  return 0;
 }
 
 static inline int tk_ivec_set_intersect_lua (lua_State *L)
@@ -571,9 +537,7 @@ static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
   { "bits_top_chi2", tk_ivec_bits_top_chi2_lua },
   { "bits_top_mi", tk_ivec_bits_top_mi_lua },
   { "bits_top_entropy", tk_ivec_bits_top_entropy_lua },
-  { "bits_score_chi2", tk_ivec_bits_score_chi2_lua },
-  { "bits_score_mi", tk_ivec_bits_score_mi_lua },
-  { "bits_score_entropy", tk_ivec_bits_score_entropy_lua },
+  { "bits_top_df", tk_ivec_bits_top_df_lua },
   { "bits_filter", tk_ivec_bits_filter_lua },
   { "bits_copy", tk_ivec_bits_copy_lua },
   { "bits_to_cvec", tk_ivec_bits_to_cvec_lua },
@@ -588,6 +552,7 @@ static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
   { "set_weights_by_rank", tk_ivec_set_weights_by_rank_lua },
   { "set_similarity_by_rank", tk_ivec_set_similarity_by_rank_lua },
   { "set_find", tk_ivec_set_find_lua },
+  { "set_insert", tk_ivec_set_insert_lua },
   { "set_intersect", tk_ivec_set_intersect_lua },
   { "set_union", tk_ivec_set_union_lua },
   { "lookup", tk_ivec_lookup_lua },

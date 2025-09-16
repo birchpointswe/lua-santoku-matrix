@@ -71,6 +71,40 @@ static inline tk_ivec_t *tk_iumap_keys (lua_State *L, tk_iumap_t *M)
   return out;
 }
 
+
+static inline void tk_iumap_inc (tk_iumap_t *map, int64_t key)
+{
+  int absent;
+  khint_t k = tk_iumap_put(map, key, &absent);
+  if (absent) {
+    tk_iumap_value(map, k) = 1;
+  } else {
+    tk_iumap_value(map, k)++;
+  }
+}
+
+
+static inline void tk_iumap_add (tk_iumap_t *map, int64_t key, int64_t val)
+{
+  int absent;
+  khint_t k = tk_iumap_put(map, key, &absent);
+  if (absent) {
+    tk_iumap_value(map, k) = val;
+  } else {
+    tk_iumap_value(map, k) += val;
+  }
+}
+
+
+static inline int64_t tk_iumap_get_or (tk_iumap_t *map, int64_t key, int64_t default_val)
+{
+  khint_t k = tk_iumap_get(map, key);
+  if (k == tk_iumap_end(map)) {
+    return default_val;
+  }
+  return tk_iumap_value(map, k);
+}
+
 static inline int tk_ivec_bits_rearrange (
   tk_ivec_t *m0,
   tk_ivec_t *ids,

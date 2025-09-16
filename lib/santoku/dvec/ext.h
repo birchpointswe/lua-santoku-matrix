@@ -17,6 +17,26 @@ static inline void tk_dvec_center (
   }
 }
 
+static inline void tk_dvec_rnorml2 (
+  double *M,
+  size_t N,
+  size_t K
+) {
+  for (size_t i = 0; i < N; i++) {
+    double sum = 0.0;
+    for (size_t j = 0; j < K; j++) {
+      double val = M[i * K + j];
+      sum += val * val;
+    }
+    double norm = sqrt(sum);
+    if (norm > 0.0) {
+      for (size_t j = 0; j < K; j++) {
+        M[i * K + j] /= norm;
+      }
+    }
+  }
+}
+
 static inline tk_dvec_t *tk_dvec_multiply_bits (
   lua_State *L,
   tk_dvec_t *P,

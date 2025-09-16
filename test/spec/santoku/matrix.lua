@@ -1,4 +1,4 @@
-local serialize  = require("santoku.serialize") -- luacheck: ignore
+local serialize  = require("santoku.serialize")
 local it  = require("santoku.iter")
 local err = require("santoku.error")
 local ivec = require("santoku.ivec")
@@ -148,4 +148,142 @@ do
   local subcorpus = ivec.create()
   subcorpus:bits_copy(corpus, nil, ivec.create({ 0, 3 }), 4)
   err.assert(tbl.equals({ 0, 4 }, subcorpus:table()))
+end
+
+do
+  require("santoku.cvec")
+  do
+    local n_samples = 3
+    local n_features = 4
+    local n_hidden = 2
+    local features = ivec.create({ 0, 1, 4, 6, 9, 11 })
+    local labels = ivec.create({ 0, 1, 3, 4 })
+    local top_features, weights = features:bits_top_mi(labels, n_samples, n_features, n_hidden, 2)
+    err.assert(top_features:size() == 2, "Should return 2 top features")
+    err.assert(weights:size() == 2, "Should return 2 weights")
+    local w = weights:table()
+    err.assert(w[1] >= w[2], "Weights should be in descending order")
+    local feats = top_features:table()
+    for i = 1, #feats do
+      err.assert(feats[i] >= 0 and feats[i] < n_features, "Invalid feature index")
+    end
+  end
+  do
+    local n_samples = 3
+    local n_features = 4
+    local n_hidden = 2
+    local features = ivec.create({ 0, 1, 4, 6, 9, 11 })
+    local labels = ivec.create({ 0, 1, 3, 4 })
+    local top_features, weights = features:bits_top_chi2(labels, n_samples, n_features, n_hidden, 2)
+    err.assert(top_features:size() == 2, "Should return 2 top features")
+    err.assert(weights:size() == 2, "Should return 2 weights")
+    local w = weights:table()
+    err.assert(w[1] >= w[2], "Chi2 weights should be in descending order")
+    local feats = top_features:table()
+    for i = 1, #feats do
+      err.assert(feats[i] >= 0 and feats[i] < n_features, "Invalid feature index")
+    end
+  end
+  do
+    local n_samples = 3
+    local n_features = 4
+    local n_hidden = 2
+    local bitmap = ivec.create({ 0, 1, 4, 6, 9, 11 })
+    bitmap = bitmap:bits_to_cvec(n_samples, n_features)
+    local labels = ivec.create({ 0, 1, 3, 4 })
+    local top_features, weights = bitmap:bits_top_mi(labels, n_samples, n_features, n_hidden, 2)
+    err.assert(top_features:size() == 2, "Should return 2 top features")
+    err.assert(weights:size() == 2, "Should return 2 weights")
+    local w = weights:table()
+    err.assert(w[1] >= w[2], "MI weights should be in descending order")
+    local feats = top_features:table()
+    for i = 1, #feats do
+      err.assert(feats[i] >= 0 and feats[i] < n_features, "Invalid feature index")
+    end
+  end
+  do
+    local n_samples = 3
+    local n_features = 4
+    local n_hidden = 2
+    local bitmap = ivec.create({ 0, 1, 4, 6, 9, 11 })
+    bitmap = bitmap:bits_to_cvec(n_samples, n_features)
+    local labels = ivec.create({ 0, 1, 3, 4 })
+    local top_features, weights = bitmap:bits_top_chi2(labels, n_samples, n_features, n_hidden, 2)
+    err.assert(top_features:size() == 2, "Should return 2 top features")
+    err.assert(weights:size() == 2, "Should return 2 weights")
+    local w = weights:table()
+    err.assert(w[1] >= w[2], "Chi2 weights should be in descending order")
+    local feats = top_features:table()
+    for i = 1, #feats do
+      err.assert(feats[i] >= 0 and feats[i] < n_features, "Invalid feature index")
+    end
+  end
+  do
+    local n_samples = 3
+    local n_features = 4
+    local n_hidden = 2
+    local features = ivec.create({ 0, 1, 4, 6 })
+    local labels = nil
+    local top_features, weights = features:bits_top_mi(labels, n_samples, n_features, n_hidden, 2)
+    err.assert(top_features:size() == 0, "Should return empty when no labels")
+    err.assert(weights:size() == 0, "Should return empty weights when no labels")
+  end
+  do
+    local n_samples = 4
+    local n_features = 2
+    local n_hidden = 2
+    local features = ivec.create({ 0, 2, 5, 7 })
+    local labels = ivec.create({ 0, 3, 4, 7 })
+    local top_features, weights = features:bits_top_mi(labels, n_samples, n_features, n_hidden, 2)
+    err.assert(top_features:size() == 2, "Should return 2 features")
+    local w = weights:table()
+    err.assert(math.abs(w[1] - w[2]) < 1e-10, "Weights should be equal for balanced data")
+  end
+  do
+    local n_samples = 5
+    local n_features = 3
+    local n_hidden = 2
+    local features = ivec.create({ 0, 3, 4, 6, 9, 10, 14 })
+    local labels = ivec.create({ 0, 2, 4, 6, 9 })
+    local top_features, mi_weights = features:bits_top_mi(labels, n_samples, n_features, n_hidden, 3)
+    err.assert(top_features:size() <= 3, "Should return at most 3 features")
+    err.assert(mi_weights:size() == top_features:size(), "Weights should match features")
+  end
+  do
+    local dvec = require("santoku.dvec")
+    local function prepare_weights_with_idf(mi_scores, doc_frequencies, n_samples)
+      local weights = dvec.create(mi_scores:size())
+      for i = 0, mi_scores:size() - 1 do
+        local mi = mi_scores:get(i)
+        local df = doc_frequencies:get(i)
+        local idf = math.log((n_samples + 1) / (df + 1))
+        weights:set(i, math.sqrt(mi * idf))
+      end
+      local min_w = weights:min()
+      local max_w = weights:max()
+      if max_w > min_w then
+        weights:add(-min_w)
+        weights:scale(1.0 / (max_w - min_w))
+      end
+      return weights
+    end
+    local mi_scores = dvec.create({ 0.5, 0.4, 0.3 })
+    local doc_freqs = dvec.create({ 10, 5, 2 })
+    local n_samples = 20
+    local weights = prepare_weights_with_idf(mi_scores, doc_freqs, n_samples)
+    err.assert(weights:size() == 3, "Should return 3 weights")
+  end
+  do
+    local n_samples = 5
+    local selected_features = ivec.create({ 0, 2 })
+    local doc_frequencies = dvec.create({ 4, 1 })
+    local idf_weights = dvec.create(selected_features:size())
+    for i = 0, selected_features:size() - 1 do
+      local df = doc_frequencies:get(i)
+      local idf = math.log((n_samples + 1) / (df + 1))
+      idf_weights:set(i, idf)
+    end
+    err.assert(idf_weights:get(1) > idf_weights:get(0),
+      "Rare feature should have higher IDF despite lower MI")
+  end
 end

@@ -23,10 +23,22 @@ static inline int tk_dvec_center_lua (lua_State *L)
   return 1;
 }
 
+static inline int tk_dvec_rnorml2_lua (lua_State *L)
+{
+  lua_settop(L, 3);
+  tk_dvec_t *M = tk_dvec_peek(L, 1, "dvec");
+  uint64_t n_samples = tk_lua_checkunsigned(L, 2, "n_samples");
+  uint64_t n_dims = tk_lua_checkunsigned(L, 3, "n_dims");
+  tk_dvec_rnorml2(M->a, n_samples, n_dims);
+  lua_pushvalue(L, 1);
+  return 1;
+}
+
 static luaL_Reg tk_dvec_lua_mt_ext2_fns[] =
 {
   { "multiply_bits", tk_dvec_multiply_bits_lua },
   { "center", tk_dvec_center_lua },
+  { "rnorml2", tk_dvec_rnorml2_lua },
   { NULL, NULL }
 };
 

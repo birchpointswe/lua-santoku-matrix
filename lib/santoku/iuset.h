@@ -8,6 +8,7 @@
 #include <santoku/rvec.h>
 #include <santoku/rvec/ext.h>
 #include <santoku/dvec.h>
+#include <santoku/iumap.h>
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
@@ -353,7 +354,7 @@ static inline void tk_ivec_bits_copy (
   if (sample_ids != NULL && sample_ids->n > 0) {
 
     sample_set = tk_iuset_from_ivec(sample_ids);
-    
+
 
 
     for (uint64_t i = 0; i < src_bits->n; i ++) {
@@ -467,7 +468,7 @@ static inline void tk_cvec_bits_copy (
 
   uint64_t row_stride_bits;
   bool use_packed;
-  
+
   if (dest_stride > 0) {
 
 
@@ -478,11 +479,11 @@ static inline void tk_cvec_bits_copy (
     use_packed = false;
     row_stride_bits = out_bytes_per_sample * CHAR_BIT;
   }
-  
+
 
   uint64_t final_samples = dest_sample + n_output_samples;
   uint64_t total_bytes;
-  
+
   if (use_packed) {
 
     uint64_t total_bits = dest_sample * row_stride_bits + n_output_samples * n_selected_features;
@@ -495,11 +496,11 @@ static inline void tk_cvec_bits_copy (
 
     total_bytes = final_samples * out_bytes_per_sample;
   }
-  
+
 
   tk_cvec_ensure(dest, total_bytes);
   uint8_t *dest_data = (uint8_t *)dest->a;
-  
+
   if (dest_sample == 0) {
 
     dest->n = total_bytes;
@@ -516,12 +517,12 @@ static inline void tk_cvec_bits_copy (
 
   uint64_t write_sample = dest_sample;
   uint64_t write_bit_offset = 0;
-  
+
   if (use_packed) {
 
     write_bit_offset = dest_sample * row_stride_bits;
   }
-  
+
   for (uint64_t s = 0; s < n_samples; s ++) {
 
     if (sample_set != NULL && !tk_iuset_contains(sample_set, (int64_t) s))
@@ -562,7 +563,7 @@ static inline void tk_cvec_bits_copy (
       for (uint64_t i = 0; i < n_selected_features; i++) {
         uint64_t src_byte = i / CHAR_BIT;
         uint8_t src_bit_pos = i % CHAR_BIT;
-        
+
         if (temp[src_byte] & (1u << src_bit_pos)) {
           uint64_t dst_byte = write_bit_offset / CHAR_BIT;
           uint8_t dst_bit_pos = write_bit_offset % CHAR_BIT;
@@ -578,7 +579,7 @@ static inline void tk_cvec_bits_copy (
       memcpy(dest_data + out_offset, temp, out_bytes_per_sample);
       write_sample++;
     }
-    
+
     free(temp);
   }
 
@@ -661,21 +662,6 @@ static inline void tk_ivec_select_union (
   free(offsets);
 }
 
-static inline tk_ivec_t *tk_ivec_top_generic (
-  lua_State *L,
-  tk_dvec_t *scores,
-  uint64_t n_visible,
-  uint64_t n_hidden,
-  uint64_t top_k,
-  uint64_t trunc
-) {
-  tk_iuset_t *selected = tk_iuset_create();
-  tk_rvec_t *rankings = tk_rvec_rankings(L, scores, n_visible, n_hidden);
-  tk_ivec_select_union(L, selected, rankings, n_visible, n_hidden, top_k, trunc);
-  tk_rvec_destroy(rankings);
-  return tk_ivec_top_select(L, selected);
-}
-
 static inline tk_ivec_t *tk_ivec_bits_top_mi (
   lua_State *L,
   tk_ivec_t *set_bits,
@@ -684,15 +670,308 @@ static inline tk_ivec_t *tk_ivec_bits_top_mi (
   uint64_t n_samples,
   uint64_t n_visible,
   uint64_t n_hidden,
-  uint64_t top_k,
-  unsigned int n_threads
+  uint64_t top_k
 ) {
+
   tk_ivec_asc(set_bits, 0, set_bits->n);
-  tk_dvec_t *scores = tk_ivec_bits_score_mi(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, n_threads);
-  int iscores = tk_lua_absindex(L, -1);
-  tk_ivec_t *out = tk_ivec_top_generic(L, scores, n_visible, n_hidden, top_k, 0);
-  lua_pushvalue(L, iscores);
-  return out;
+
+
+
+
+  if (codes) {
+
+    tk_ivec_t *counts = tk_ivec_create(L, n_visible * n_hidden * 4, 0, 0);
+    tk_ivec_zero(counts);
+
+
+
+    uint64_t prev_sample = UINT64_MAX;
+    uint8_t *sample_codes = NULL;
+
+
+    for (uint64_t i = 0; i < set_bits->n; i++) {
+      int64_t bit_idx = set_bits->a[i];
+      if (bit_idx < 0) continue;
+
+      uint64_t sample_idx = (uint64_t)bit_idx / n_visible;
+      uint64_t feature_idx = (uint64_t)bit_idx % n_visible;
+
+      if (sample_idx >= n_samples || feature_idx >= n_visible) continue;
+
+
+      if (sample_idx != prev_sample) {
+        prev_sample = sample_idx;
+        sample_codes = (uint8_t *)(codes + sample_idx * TK_CVEC_BITS_BYTES(n_hidden));
+      }
+
+
+      for (uint64_t j = 0; j < n_hidden; j++) {
+        uint64_t byte_idx = j / CHAR_BIT;
+        uint64_t bit_pos = j % CHAR_BIT;
+        bool hidden = (sample_codes[byte_idx] & (1u << bit_pos)) != 0;
+
+        counts->a[feature_idx * n_hidden * 4 + j * 4 + 2 + (hidden ? 1 : 0)]++;
+      }
+    }
+
+
+    for (uint64_t s = 0; s < n_samples; s++) {
+
+      tk_iuset_t *sample_features = tk_iuset_create();
+      for (uint64_t i = 0; i < set_bits->n; i++) {
+        int64_t bit_idx = set_bits->a[i];
+        if (bit_idx < 0) continue;
+        uint64_t sample_idx = (uint64_t)bit_idx / n_visible;
+        uint64_t feature_idx = (uint64_t)bit_idx % n_visible;
+        if (sample_idx == s) {
+          int absent;
+          tk_iuset_put(sample_features, (int64_t)feature_idx, &absent);
+        }
+      }
+
+
+      uint8_t *s_codes = (uint8_t *)(codes + s * TK_CVEC_BITS_BYTES(n_hidden));
+      for (uint64_t f = 0; f < n_visible; f++) {
+        if (!tk_iuset_contains(sample_features, (int64_t)f)) {
+          for (uint64_t j = 0; j < n_hidden; j++) {
+            uint64_t byte_idx = j / CHAR_BIT;
+            uint64_t bit_pos = j % CHAR_BIT;
+            bool hidden = (s_codes[byte_idx] & (1u << bit_pos)) != 0;
+
+            counts->a[f * n_hidden * 4 + j * 4 + (hidden ? 1 : 0)]++;
+          }
+        }
+      }
+
+      tk_iuset_destroy(sample_features);
+    }
+
+
+
+    tk_rvec_t *top_heap = tk_rvec_create(L, 0, 0, 0);
+
+
+    for (uint64_t f = 0; f < n_visible; f++) {
+      double max_mi = 0.0;
+
+      for (uint64_t j = 0; j < n_hidden; j++) {
+        int64_t c[4];
+        int64_t *counts_ptr = counts->a + f * n_hidden * 4 + j * 4;
+        for (int k = 0; k < 4; k++) {
+          c[k] = counts_ptr[k] + 1;
+        }
+
+        double total = c[0] + c[1] + c[2] + c[3];
+        double mi = 0.0;
+
+        if (total > 0.0) {
+          for (unsigned int o = 0; o < 4; o++) {
+            if (c[o] == 0) continue;
+            double p_fb = c[o] / total;
+            unsigned int feat = o >> 1;
+            unsigned int hid = o & 1;
+            double pf = (c[2] + c[3]) / total;
+            if (feat == 0) pf = 1.0 - pf;
+            double ph = (c[1] + c[3]) / total;
+            if (hid == 0) ph = 1.0 - ph;
+            double d = pf * ph;
+            if (d > 0) mi += p_fb * log2(p_fb / d);
+          }
+        }
+
+        if (mi > max_mi) max_mi = mi;
+      }
+
+
+      tk_rank_t r = { (int64_t)f, max_mi };
+      tk_rvec_hmin(top_heap, top_k, r);
+    }
+
+
+    tk_rvec_desc(top_heap, 0, top_heap->n);
+
+
+
+    tk_ivec_t *out = tk_ivec_create(L, top_heap->n, 0, 0);
+
+
+    tk_dvec_t *weights = tk_dvec_create(L, top_heap->n, 0, 0);
+
+
+    for (uint64_t i = 0; i < top_heap->n; i++) {
+      out->a[i] = top_heap->a[i].i;
+      weights->a[i] = top_heap->a[i].d;
+    }
+
+
+    lua_remove(L, -4);
+    lua_remove(L, -3);
+
+    return out;
+
+  } else if (labels) {
+
+
+    tk_ivec_asc(labels, 0, labels->n);
+
+
+    tk_iumap_t *counts = tk_iumap_create();
+
+
+    tk_ivec_t *feat_counts = tk_ivec_create(L, n_visible, 0, 0);
+    tk_ivec_zero(feat_counts);
+    tk_ivec_t *label_counts = tk_ivec_create(L, n_hidden, 0, 0);
+    tk_ivec_zero(label_counts);
+
+
+
+    for (uint64_t i = 0; i < set_bits->n; i++) {
+      int64_t bit = set_bits->a[i];
+      if (bit >= 0) {
+        uint64_t f = (uint64_t)bit % n_visible;
+        feat_counts->a[f]++;
+      }
+    }
+
+    for (uint64_t i = 0; i < labels->n; i++) {
+      int64_t bit = labels->a[i];
+      if (bit >= 0) {
+        uint64_t h = (uint64_t)bit % n_hidden;
+        label_counts->a[h]++;
+      }
+    }
+
+
+    size_t si = 0, li = 0;
+    while (si < set_bits->n) {
+      if (set_bits->a[si] < 0) {
+        si++;
+        continue;
+      }
+
+      uint64_t s_sample = (uint64_t)set_bits->a[si] / n_visible;
+      uint64_t f = (uint64_t)set_bits->a[si] % n_visible;
+
+
+      while (li < labels->n && labels->a[li] >= 0 &&
+             (uint64_t)labels->a[li] / n_hidden < s_sample) {
+        li++;
+      }
+
+
+      if (li >= labels->n || labels->a[li] < 0 ||
+          (uint64_t)labels->a[li] / n_hidden > s_sample) {
+        si++;
+        continue;
+      }
+
+
+      size_t li_start = li;
+
+
+      while (li < labels->n && labels->a[li] >= 0 &&
+             (uint64_t)labels->a[li] / n_hidden == s_sample) {
+        uint64_t h = (uint64_t)labels->a[li] % n_hidden;
+        int64_t key = (int64_t)(f * n_hidden * 4 + h * 4 + 3);
+        tk_iumap_inc(counts, key);
+        li++;
+      }
+
+
+      si++;
+
+
+      if (si < set_bits->n && set_bits->a[si] >= 0 &&
+          (uint64_t)set_bits->a[si] / n_visible == s_sample) {
+        li = li_start;
+      }
+    }
+
+
+    tk_rvec_t *top_heap = tk_rvec_create(L, 0, 0, 0);
+
+
+    for (uint64_t f = 0; f < n_visible; f++) {
+      double max_mi = 0.0;
+      int64_t feat_total = feat_counts->a[f];
+
+      for (uint64_t h = 0; h < n_hidden; h++) {
+        int64_t label_total = label_counts->a[h];
+
+
+        int64_t key_11 = (int64_t)(f * n_hidden * 4 + h * 4 + 3);
+        int64_t count_11 = tk_iumap_get_or(counts, key_11, 0);
+
+
+        int64_t count_10 = feat_total - count_11;
+        int64_t count_01 = label_total - count_11;
+        int64_t count_00 = (int64_t)n_samples - count_11 - count_10 - count_01;
+
+
+        int64_t c[4];
+        c[0] = count_00 + 1;
+        c[1] = count_01 + 1;
+        c[2] = count_10 + 1;
+        c[3] = count_11 + 1;
+
+        double total = c[0] + c[1] + c[2] + c[3];
+        double mi = 0.0;
+
+        if (total > 0.0) {
+          for (unsigned int o = 0; o < 4; o++) {
+            if (c[o] == 0) continue;
+            double p_fb = c[o] / total;
+            unsigned int feat = o >> 1;
+            unsigned int hid = o & 1;
+            double pf = (c[2] + c[3]) / total;
+            if (feat == 0) pf = 1.0 - pf;
+            double ph = (c[1] + c[3]) / total;
+            if (hid == 0) ph = 1.0 - ph;
+            double d = pf * ph;
+            if (d > 0) mi += p_fb * log2(p_fb / d);
+          }
+        }
+
+        if (mi > max_mi) max_mi = mi;
+      }
+
+
+      tk_rank_t r = { (int64_t)f, max_mi };
+      tk_rvec_hmin(top_heap, top_k, r);
+    }
+
+
+    tk_iumap_destroy(counts);
+
+
+    tk_rvec_desc(top_heap, 0, top_heap->n);
+
+
+
+    tk_ivec_t *out = tk_ivec_create(L, top_heap->n, 0, 0);
+
+
+    tk_dvec_t *weights = tk_dvec_create(L, top_heap->n, 0, 0);
+
+
+    for (uint64_t i = 0; i < top_heap->n; i++) {
+      out->a[i] = top_heap->a[i].i;
+      weights->a[i] = top_heap->a[i].d;
+    }
+
+
+    lua_remove(L, -5);
+    lua_remove(L, -4);
+    lua_remove(L, -3);
+
+    return out;
+
+  } else {
+
+    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_create(L, 0, 0, 0);
+    return out;
+  }
 }
 
 static inline tk_ivec_t *tk_ivec_bits_top_chi2 (
@@ -703,15 +982,288 @@ static inline tk_ivec_t *tk_ivec_bits_top_chi2 (
   uint64_t n_samples,
   uint64_t n_visible,
   uint64_t n_hidden,
-  uint64_t top_k,
-  unsigned int n_threads
+  uint64_t top_k
 ) {
+
   tk_ivec_asc(set_bits, 0, set_bits->n);
-  tk_dvec_t *scores = tk_ivec_bits_score_chi2(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, n_threads);
-  int iscores = tk_lua_absindex(L, -1);
-  tk_ivec_t *out = tk_ivec_top_generic(L, scores, n_visible, n_hidden, top_k, 0);
-  lua_pushvalue(L, iscores);
-  return out;
+
+
+
+
+  if (codes) {
+
+    tk_ivec_t *active_counts = tk_ivec_create(L, n_visible * n_hidden, 0, 0);
+    tk_ivec_zero(active_counts);
+
+
+    tk_ivec_t *global_counts = tk_ivec_create(L, n_hidden, 0, 0);
+    tk_ivec_zero(global_counts);
+
+
+    tk_ivec_t *feat_counts = tk_ivec_create(L, n_visible, 0, 0);
+    tk_ivec_zero(feat_counts);
+
+
+
+    uint64_t prev_sample = UINT64_MAX;
+    uint8_t *sample_codes = NULL;
+
+    for (uint64_t i = 0; i < set_bits->n; i++) {
+      int64_t bit_idx = set_bits->a[i];
+      if (bit_idx < 0) continue;
+
+      uint64_t sample_idx = (uint64_t)bit_idx / n_visible;
+      uint64_t feature_idx = (uint64_t)bit_idx % n_visible;
+
+      if (sample_idx >= n_samples || feature_idx >= n_visible) continue;
+
+
+      feat_counts->a[feature_idx]++;
+
+
+      if (sample_idx != prev_sample) {
+        prev_sample = sample_idx;
+        sample_codes = (uint8_t *)(codes + sample_idx * TK_CVEC_BITS_BYTES(n_hidden));
+      }
+
+
+      for (uint64_t b = 0; b < n_hidden; b++) {
+        uint64_t byte_idx = b / CHAR_BIT;
+        uint64_t bit_pos = b % CHAR_BIT;
+        if (sample_codes[byte_idx] & (1u << bit_pos)) {
+          active_counts->a[feature_idx * n_hidden + b]++;
+        }
+      }
+    }
+
+
+    for (uint64_t s = 0; s < n_samples; s++) {
+      uint8_t *s_codes = (uint8_t *)(codes + s * TK_CVEC_BITS_BYTES(n_hidden));
+      for (uint64_t b = 0; b < n_hidden; b++) {
+        uint64_t byte_idx = b / CHAR_BIT;
+        uint64_t bit_pos = b % CHAR_BIT;
+        if (s_codes[byte_idx] & (1u << bit_pos)) {
+          global_counts->a[b]++;
+        }
+      }
+    }
+
+
+
+    tk_rvec_t *top_heap = tk_rvec_create(L, 0, 0, 0);
+
+
+    for (uint64_t f = 0; f < n_visible; f++) {
+      double max_chi2 = 0.0;
+
+      for (uint64_t b = 0; b < n_hidden; b++) {
+        int64_t A = active_counts->a[f * n_hidden + b];
+        int64_t G = global_counts->a[b];
+        int64_t C = feat_counts->a[f];
+
+        if (C == 0 || G == 0 || C == (int64_t)n_samples || G == (int64_t)n_samples) {
+          continue;
+        }
+
+        int64_t B = G - A;
+        int64_t C_ = C - A;
+        int64_t D = (int64_t)n_samples - C - B;
+
+        double n = (double)n_samples;
+        double E_A = ((double)C * (double)G) / n;
+        double E_B = ((double)(n - C) * (double)G) / n;
+        double E_C = ((double)C * (double)(n - G)) / n;
+        double E_D = ((double)(n - C) * (double)(n - G)) / n;
+
+        double chi2 = 0.0;
+        if (E_A > 0) chi2 += ((A - E_A) * (A - E_A)) / E_A;
+        if (E_B > 0) chi2 += ((B - E_B) * (B - E_B)) / E_B;
+        if (E_C > 0) chi2 += ((C_ - E_C) * (C_ - E_C)) / E_C;
+        if (E_D > 0) chi2 += ((D - E_D) * (D - E_D)) / E_D;
+
+        if (chi2 > max_chi2) max_chi2 = chi2;
+      }
+
+
+      tk_rank_t r = { (int64_t)f, max_chi2 };
+      tk_rvec_hmin(top_heap, top_k, r);
+    }
+
+
+    tk_rvec_desc(top_heap, 0, top_heap->n);
+
+
+
+    tk_ivec_t *out = tk_ivec_from_rvec(L, top_heap);
+
+
+    tk_dvec_t *weights = tk_dvec_create(L, top_heap->n, 0, 0);
+
+
+    for (uint64_t i = 0; i < top_heap->n; i++) {
+      weights->a[i] = top_heap->a[i].d;
+    }
+
+
+    lua_remove(L, -6);
+    lua_remove(L, -5);
+    lua_remove(L, -4);
+    lua_remove(L, -3);
+
+    return out;
+
+  } else if (labels) {
+
+
+    tk_ivec_asc(labels, 0, labels->n);
+
+
+    tk_iumap_t *active_counts = tk_iumap_create();
+
+
+    tk_ivec_t *feat_counts = tk_ivec_create(L, n_visible, 0, 0);
+    tk_ivec_zero(feat_counts);
+    tk_ivec_t *global_counts = tk_ivec_create(L, n_hidden, 0, 0);
+    tk_ivec_zero(global_counts);
+
+
+
+    for (uint64_t i = 0; i < set_bits->n; i++) {
+      int64_t bit = set_bits->a[i];
+      if (bit >= 0) {
+        uint64_t f = (uint64_t)bit % n_visible;
+        feat_counts->a[f]++;
+      }
+    }
+
+    for (uint64_t i = 0; i < labels->n; i++) {
+      int64_t bit = labels->a[i];
+      if (bit >= 0) {
+        uint64_t h = (uint64_t)bit % n_hidden;
+        global_counts->a[h]++;
+      }
+    }
+
+
+    size_t si = 0, li = 0;
+    while (si < set_bits->n) {
+      if (set_bits->a[si] < 0) {
+        si++;
+        continue;
+      }
+
+      uint64_t s_sample = (uint64_t)set_bits->a[si] / n_visible;
+      uint64_t f = (uint64_t)set_bits->a[si] % n_visible;
+
+
+      while (li < labels->n && labels->a[li] >= 0 &&
+             (uint64_t)labels->a[li] / n_hidden < s_sample) {
+        li++;
+      }
+
+
+      if (li >= labels->n || labels->a[li] < 0 ||
+          (uint64_t)labels->a[li] / n_hidden > s_sample) {
+        si++;
+        continue;
+      }
+
+
+      size_t li_start = li;
+
+
+      while (li < labels->n && labels->a[li] >= 0 &&
+             (uint64_t)labels->a[li] / n_hidden == s_sample) {
+        uint64_t h = (uint64_t)labels->a[li] % n_hidden;
+        int64_t key = (int64_t)(f * n_hidden + h);
+        tk_iumap_inc(active_counts, key);
+        li++;
+      }
+
+
+      si++;
+
+
+      if (si < set_bits->n && set_bits->a[si] >= 0 &&
+          (uint64_t)set_bits->a[si] / n_visible == s_sample) {
+        li = li_start;
+      }
+    }
+
+
+    tk_rvec_t *top_heap = tk_rvec_create(L, 0, 0, 0);
+
+
+    for (uint64_t f = 0; f < n_visible; f++) {
+      double max_chi2 = 0.0;
+      int64_t C = feat_counts->a[f];
+
+      for (uint64_t b = 0; b < n_hidden; b++) {
+        int64_t G = global_counts->a[b];
+
+        if (C == 0 || G == 0 || C == (int64_t)n_samples || G == (int64_t)n_samples) {
+          continue;
+        }
+
+
+        int64_t key = (int64_t)(f * n_hidden + b);
+        int64_t A = tk_iumap_get_or(active_counts, key, 0);
+
+        int64_t B = G - A;
+        int64_t C_ = C - A;
+        int64_t D = (int64_t)n_samples - C - B;
+
+        double n = (double)n_samples;
+        double E_A = ((double)C * (double)G) / n;
+        double E_B = ((double)(n - C) * (double)G) / n;
+        double E_C = ((double)C * (double)(n - G)) / n;
+        double E_D = ((double)(n - C) * (double)(n - G)) / n;
+
+        double chi2 = 0.0;
+        if (E_A > 0) chi2 += ((A - E_A) * (A - E_A)) / E_A;
+        if (E_B > 0) chi2 += ((B - E_B) * (B - E_B)) / E_B;
+        if (E_C > 0) chi2 += ((C_ - E_C) * (C_ - E_C)) / E_C;
+        if (E_D > 0) chi2 += ((D - E_D) * (D - E_D)) / E_D;
+
+        if (chi2 > max_chi2) max_chi2 = chi2;
+      }
+
+
+      tk_rank_t r = { (int64_t)f, max_chi2 };
+      tk_rvec_hmin(top_heap, top_k, r);
+    }
+
+
+    tk_iumap_destroy(active_counts);
+
+
+    tk_rvec_desc(top_heap, 0, top_heap->n);
+
+
+
+    tk_ivec_t *out = tk_ivec_from_rvec(L, top_heap);
+
+
+    tk_dvec_t *weights = tk_dvec_create(L, top_heap->n, 0, 0);
+
+
+    for (uint64_t i = 0; i < top_heap->n; i++) {
+      weights->a[i] = top_heap->a[i].d;
+    }
+
+
+    lua_remove(L, -5);
+    lua_remove(L, -4);
+    lua_remove(L, -3);
+
+    return out;
+
+  } else {
+
+    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_create(L, 0, 0, 0);
+    return out;
+  }
 }
 
 static inline tk_ivec_t *tk_ivec_bits_top_entropy (
@@ -719,17 +1271,68 @@ static inline tk_ivec_t *tk_ivec_bits_top_entropy (
   tk_ivec_t *set_bits,
   uint64_t n_samples,
   uint64_t n_hidden,
-  uint64_t top_k,
-  unsigned int n_threads
+  uint64_t top_k
 ) {
-  tk_dvec_t *scores = tk_ivec_bits_score_entropy(L, set_bits, n_samples, n_hidden, n_threads);
-  int iscores = tk_lua_absindex(L, -1);
-  tk_rvec_t *rankings = tk_rvec_from_dvec(L, scores);
-  tk_rvec_kdesc(rankings, top_k, 0, rankings->n);
-  tk_ivec_t *out = tk_ivec_from_rvec(L, rankings);
-  out->n = top_k < out->n ? top_k : out->n;
-  lua_pushvalue(L, iscores);
+
+  tk_ivec_asc(set_bits, 0, set_bits->n);
+
+
+
+
+  tk_ivec_t *bit_counts = tk_ivec_create(L, n_hidden, 0, 0);
+  tk_ivec_zero(bit_counts);
+
+
+
+  for (uint64_t i = 0; i < set_bits->n; i++) {
+    int64_t bit_idx = set_bits->a[i];
+    if (bit_idx < 0) continue;
+
+    uint64_t sample_idx = (uint64_t)bit_idx / n_hidden;
+    uint64_t hidden_idx = (uint64_t)bit_idx % n_hidden;
+
+    if (sample_idx >= n_samples || hidden_idx >= n_hidden) continue;
+
+    bit_counts->a[hidden_idx]++;
+  }
+
+
+
+  tk_rvec_t *top_heap = tk_rvec_create(L, 0, 0, 0);
+
+
+  for (uint64_t h = 0; h < n_hidden; h++) {
+    double p = (double)bit_counts->a[h] / (double)n_samples;
+    double entropy = 0.0;
+
+    if (p > 0.0 && p < 1.0) {
+      entropy = -(p * log2(p) + (1.0 - p) * log2(1.0 - p));
+    }
+
+
+    tk_rank_t r = { (int64_t)h, entropy };
+    tk_rvec_hmin(top_heap, top_k, r);
+  }
+
+
+  tk_rvec_desc(top_heap, 0, top_heap->n);
+
+
+
+  tk_ivec_t *out = tk_ivec_from_rvec(L, top_heap);
+
+
+  tk_dvec_t *weights = tk_dvec_create(L, top_heap->n, 0, 0);
+
+
+  for (uint64_t i = 0; i < top_heap->n; i++) {
+    weights->a[i] = top_heap->a[i].d;
+  }
+
+
+  lua_remove(L, -4);
   lua_remove(L, -3);
+
   return out;
 }
 
@@ -742,14 +1345,260 @@ static inline tk_ivec_t *tk_cvec_bits_top_mi (
   uint64_t n_samples,
   uint64_t n_features,
   uint64_t n_hidden,
-  uint64_t top_k,
-  unsigned int n_threads
+  uint64_t top_k
 ) {
-  tk_dvec_t *scores = tk_cvec_bits_score_mi(L, bitmap, codes, labels, n_samples, n_features, n_hidden, n_threads);
-  int iscores = tk_lua_absindex(L, -1);
-  tk_ivec_t *out = tk_ivec_top_generic(L, scores, n_features, n_hidden, top_k, 0);
-  lua_pushvalue(L, iscores);
-  return out;
+
+
+
+  if (codes) {
+
+    tk_ivec_t *counts = tk_ivec_create(L, n_features * n_hidden * 4, 0, 0);
+    tk_ivec_zero(counts);
+
+
+
+    uint8_t *bitmap_data = (uint8_t *)bitmap->a;
+    uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
+
+
+    for (uint64_t s = 0; s < n_samples; s++) {
+      uint64_t sample_offset = s * bytes_per_sample;
+      uint8_t *sample_codes = (uint8_t *)(codes->a + s * TK_CVEC_BITS_BYTES(n_hidden));
+
+      for (uint64_t f = 0; f < n_features; f++) {
+        uint64_t byte_idx = f / CHAR_BIT;
+        uint8_t bit_idx = f % CHAR_BIT;
+        bool visible = (bitmap_data[sample_offset + byte_idx] & (1u << bit_idx)) != 0;
+
+        for (uint64_t j = 0; j < n_hidden; j++) {
+          uint64_t j_byte = j / CHAR_BIT;
+          uint8_t j_bit = j % CHAR_BIT;
+          bool hidden = (sample_codes[j_byte] & (1u << j_bit)) != 0;
+          counts->a[f * n_hidden * 4 + j * 4 + (visible ? 2 : 0) + (hidden ? 1 : 0)]++;
+        }
+      }
+    }
+
+
+
+    tk_rvec_t *top_heap = tk_rvec_create(L, 0, 0, 0);
+
+
+    for (uint64_t f = 0; f < n_features; f++) {
+      double max_mi = 0.0;
+
+      for (uint64_t j = 0; j < n_hidden; j++) {
+        int64_t c[4];
+        int64_t *counts_ptr = counts->a + f * n_hidden * 4 + j * 4;
+        for (int k = 0; k < 4; k++) {
+          c[k] = counts_ptr[k] + 1;
+        }
+
+        double total = c[0] + c[1] + c[2] + c[3];
+        double mi = 0.0;
+
+        if (total > 0.0) {
+          for (unsigned int o = 0; o < 4; o++) {
+            if (c[o] == 0) continue;
+            double p_fb = c[o] / total;
+            unsigned int feat = o >> 1;
+            unsigned int hid = o & 1;
+            double pf = (c[2] + c[3]) / total;
+            if (feat == 0) pf = 1.0 - pf;
+            double ph = (c[1] + c[3]) / total;
+            if (hid == 0) ph = 1.0 - ph;
+            double d = pf * ph;
+            if (d > 0) mi += p_fb * log2(p_fb / d);
+          }
+        }
+
+        if (mi > max_mi) max_mi = mi;
+      }
+
+
+      tk_rank_t r = { (int64_t)f, max_mi };
+      tk_rvec_hmin(top_heap, top_k, r);
+    }
+
+
+    tk_rvec_desc(top_heap, 0, top_heap->n);
+
+
+
+    tk_ivec_t *out = tk_ivec_from_rvec(L, top_heap);
+
+
+    tk_dvec_t *weights = tk_dvec_create(L, top_heap->n, 0, 0);
+
+
+    for (uint64_t i = 0; i < top_heap->n; i++) {
+      weights->a[i] = top_heap->a[i].d;
+    }
+
+
+    lua_remove(L, -4);
+    lua_remove(L, -3);
+
+    return out;
+
+  } else if (labels) {
+
+
+    tk_ivec_asc(labels, 0, labels->n);
+
+
+    tk_iumap_t *counts = tk_iumap_create();
+
+
+    tk_ivec_t *feat_counts = tk_ivec_create(L, n_features, 0, 0);
+    tk_ivec_zero(feat_counts);
+    tk_ivec_t *label_counts = tk_ivec_create(L, n_hidden, 0, 0);
+    tk_ivec_zero(label_counts);
+
+
+
+    uint8_t *bitmap_data = (uint8_t *)bitmap->a;
+    uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
+
+    for (uint64_t s = 0; s < n_samples; s++) {
+      uint64_t sample_offset = s * bytes_per_sample;
+      for (uint64_t f = 0; f < n_features; f++) {
+        uint64_t byte_idx = f / CHAR_BIT;
+        uint8_t bit_idx = f % CHAR_BIT;
+        if (bitmap_data[sample_offset + byte_idx] & (1u << bit_idx)) {
+          feat_counts->a[f]++;
+        }
+      }
+    }
+
+
+    for (uint64_t i = 0; i < labels->n; i++) {
+      int64_t bit = labels->a[i];
+      if (bit >= 0) {
+        uint64_t h = (uint64_t)bit % n_hidden;
+        label_counts->a[h]++;
+      }
+    }
+
+
+    for (uint64_t s = 0; s < n_samples; s++) {
+      uint64_t sample_offset = s * bytes_per_sample;
+
+
+      int64_t label_start = tk_ivec_set_find(
+        labels->a, 0, (int64_t) labels->n, (int64_t)(s * n_hidden)
+      );
+
+      if (label_start < 0) {
+        label_start = -(label_start + 1);
+      }
+
+
+      for (uint64_t f = 0; f < n_features; f++) {
+        uint64_t byte_idx = f / CHAR_BIT;
+        uint8_t bit_idx = f % CHAR_BIT;
+
+        if (!(bitmap_data[sample_offset + byte_idx] & (1u << bit_idx))) {
+          continue;
+        }
+
+
+        for (int64_t li = label_start;
+             li < (int64_t) labels->n && labels->a[li] >= 0 &&
+             (uint64_t)labels->a[li] / n_hidden == s;
+             li++) {
+          uint64_t h = (uint64_t)labels->a[li] % n_hidden;
+          int64_t key = (int64_t)(f * n_hidden * 4 + h * 4 + 3);
+          tk_iumap_inc(counts, key);
+        }
+      }
+    }
+
+
+    tk_rvec_t *top_heap = tk_rvec_create(L, 0, 0, 0);
+
+
+    for (uint64_t f = 0; f < n_features; f++) {
+      double max_mi = 0.0;
+      int64_t feat_total = feat_counts->a[f];
+
+      for (uint64_t h = 0; h < n_hidden; h++) {
+        int64_t label_total = label_counts->a[h];
+
+
+        int64_t key_11 = (int64_t)(f * n_hidden * 4 + h * 4 + 3);
+        int64_t count_11 = tk_iumap_get_or(counts, key_11, 0);
+
+
+        int64_t count_10 = feat_total - count_11;
+        int64_t count_01 = label_total - count_11;
+        int64_t count_00 = (int64_t)n_samples - count_11 - count_10 - count_01;
+
+
+        int64_t c[4];
+        c[0] = count_00 + 1;
+        c[1] = count_01 + 1;
+        c[2] = count_10 + 1;
+        c[3] = count_11 + 1;
+
+        double total = c[0] + c[1] + c[2] + c[3];
+        double mi = 0.0;
+
+        if (total > 0.0) {
+          for (unsigned int o = 0; o < 4; o++) {
+            if (c[o] == 0) continue;
+            double p_fb = c[o] / total;
+            unsigned int feat = o >> 1;
+            unsigned int hid = o & 1;
+            double pf = (c[2] + c[3]) / total;
+            if (feat == 0) pf = 1.0 - pf;
+            double ph = (c[1] + c[3]) / total;
+            if (hid == 0) ph = 1.0 - ph;
+            double d = pf * ph;
+            if (d > 0) mi += p_fb * log2(p_fb / d);
+          }
+        }
+
+        if (mi > max_mi) max_mi = mi;
+      }
+
+
+      tk_rank_t r = { (int64_t)f, max_mi };
+      tk_rvec_hmin(top_heap, top_k, r);
+    }
+
+
+    tk_iumap_destroy(counts);
+
+
+    tk_rvec_desc(top_heap, 0, top_heap->n);
+
+
+
+    tk_ivec_t *out = tk_ivec_from_rvec(L, top_heap);
+
+
+    tk_dvec_t *weights = tk_dvec_create(L, top_heap->n, 0, 0);
+
+
+    for (uint64_t i = 0; i < top_heap->n; i++) {
+      out->a[i] = top_heap->a[i].i;
+      weights->a[i] = top_heap->a[i].d;
+    }
+
+
+    lua_remove(L, -5);
+    lua_remove(L, -4);
+    lua_remove(L, -3);
+
+    return out;
+
+  } else {
+
+    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_create(L, 0, 0, 0);
+    return out;
+  }
 }
 
 static inline tk_ivec_t *tk_cvec_bits_top_chi2 (
@@ -760,14 +1609,276 @@ static inline tk_ivec_t *tk_cvec_bits_top_chi2 (
   uint64_t n_samples,
   uint64_t n_features,
   uint64_t n_hidden,
-  uint64_t top_k,
-  unsigned int n_threads
+  uint64_t top_k
 ) {
-  tk_dvec_t *scores = tk_cvec_bits_score_chi2(L, bitmap, codes, labels, n_samples, n_features, n_hidden, n_threads);
-  int iscores = tk_lua_absindex(L, -1);
-  tk_ivec_t *out = tk_ivec_top_generic(L, scores, n_features, n_hidden, top_k, 0);
-  lua_pushvalue(L, iscores);
-  return out;
+
+
+
+  if (codes) {
+
+    tk_ivec_t *active_counts = tk_ivec_create(L, n_features * n_hidden, 0, 0);
+    tk_ivec_zero(active_counts);
+
+
+    tk_ivec_t *global_counts = tk_ivec_create(L, n_hidden, 0, 0);
+    tk_ivec_zero(global_counts);
+
+
+    tk_ivec_t *feat_counts = tk_ivec_create(L, n_features, 0, 0);
+    tk_ivec_zero(feat_counts);
+
+
+
+    uint8_t *bitmap_data = (uint8_t *)bitmap->a;
+    uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
+
+
+    for (uint64_t s = 0; s < n_samples; s++) {
+      uint64_t sample_offset = s * bytes_per_sample;
+      uint8_t *sample_codes = (uint8_t *)(codes->a + s * TK_CVEC_BITS_BYTES(n_hidden));
+
+      for (uint64_t f = 0; f < n_features; f++) {
+        uint64_t byte_idx = f / CHAR_BIT;
+        uint8_t bit_idx = f % CHAR_BIT;
+
+        if (bitmap_data[sample_offset + byte_idx] & (1u << bit_idx)) {
+          feat_counts->a[f]++;
+
+
+          for (uint64_t b = 0; b < n_hidden; b++) {
+            uint64_t b_byte = b / CHAR_BIT;
+            uint8_t b_bit = b % CHAR_BIT;
+            if (sample_codes[b_byte] & (1u << b_bit)) {
+              active_counts->a[f * n_hidden + b]++;
+            }
+          }
+        }
+      }
+    }
+
+
+    for (uint64_t s = 0; s < n_samples; s++) {
+      uint8_t *s_codes = (uint8_t *)(codes->a + s * TK_CVEC_BITS_BYTES(n_hidden));
+      for (uint64_t b = 0; b < n_hidden; b++) {
+        uint64_t byte_idx = b / CHAR_BIT;
+        uint8_t bit_pos = b % CHAR_BIT;
+        if (s_codes[byte_idx] & (1u << bit_pos)) {
+          global_counts->a[b]++;
+        }
+      }
+    }
+
+
+
+    tk_rvec_t *top_heap = tk_rvec_create(L, 0, 0, 0);
+
+
+    for (uint64_t f = 0; f < n_features; f++) {
+      double max_chi2 = 0.0;
+
+      for (uint64_t b = 0; b < n_hidden; b++) {
+        int64_t A = active_counts->a[f * n_hidden + b];
+        int64_t G = global_counts->a[b];
+        int64_t C = feat_counts->a[f];
+
+        if (C == 0 || G == 0 || C == (int64_t)n_samples || G == (int64_t)n_samples) {
+          continue;
+        }
+
+        int64_t B = G - A;
+        int64_t C_ = C - A;
+        int64_t D = (int64_t)n_samples - C - B;
+
+        double n = (double)n_samples;
+        double E_A = ((double)C * (double)G) / n;
+        double E_B = ((double)(n - C) * (double)G) / n;
+        double E_C = ((double)C * (double)(n - G)) / n;
+        double E_D = ((double)(n - C) * (double)(n - G)) / n;
+
+        double chi2 = 0.0;
+        if (E_A > 0) chi2 += ((A - E_A) * (A - E_A)) / E_A;
+        if (E_B > 0) chi2 += ((B - E_B) * (B - E_B)) / E_B;
+        if (E_C > 0) chi2 += ((C_ - E_C) * (C_ - E_C)) / E_C;
+        if (E_D > 0) chi2 += ((D - E_D) * (D - E_D)) / E_D;
+
+        if (chi2 > max_chi2) max_chi2 = chi2;
+      }
+
+
+      tk_rank_t r = { (int64_t)f, max_chi2 };
+      tk_rvec_hmin(top_heap, top_k, r);
+    }
+
+
+    tk_rvec_desc(top_heap, 0, top_heap->n);
+
+
+
+    tk_ivec_t *out = tk_ivec_from_rvec(L, top_heap);
+
+
+    tk_dvec_t *weights = tk_dvec_create(L, top_heap->n, 0, 0);
+
+
+    for (uint64_t i = 0; i < top_heap->n; i++) {
+      weights->a[i] = top_heap->a[i].d;
+    }
+
+
+    lua_remove(L, -6);
+    lua_remove(L, -5);
+    lua_remove(L, -4);
+    lua_remove(L, -3);
+
+    return out;
+
+  } else if (labels) {
+
+
+    tk_ivec_asc(labels, 0, labels->n);
+
+
+    tk_iumap_t *active_counts = tk_iumap_create();
+
+
+    tk_ivec_t *feat_counts = tk_ivec_create(L, n_features, 0, 0);
+    tk_ivec_zero(feat_counts);
+    tk_ivec_t *global_counts = tk_ivec_create(L, n_hidden, 0, 0);
+    tk_ivec_zero(global_counts);
+
+
+
+    uint8_t *bitmap_data = (uint8_t *)bitmap->a;
+    uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
+
+    for (uint64_t s = 0; s < n_samples; s++) {
+      uint64_t sample_offset = s * bytes_per_sample;
+      for (uint64_t f = 0; f < n_features; f++) {
+        uint64_t byte_idx = f / CHAR_BIT;
+        uint8_t bit_idx = f % CHAR_BIT;
+        if (bitmap_data[sample_offset + byte_idx] & (1u << bit_idx)) {
+          feat_counts->a[f]++;
+        }
+      }
+    }
+
+
+    for (uint64_t i = 0; i < labels->n; i++) {
+      int64_t bit = labels->a[i];
+      if (bit >= 0) {
+        uint64_t h = (uint64_t)bit % n_hidden;
+        global_counts->a[h]++;
+      }
+    }
+
+
+    for (uint64_t s = 0; s < n_samples; s++) {
+      uint64_t sample_offset = s * bytes_per_sample;
+
+
+      int64_t label_start = tk_ivec_set_find(
+        labels->a, 0, (int64_t) labels->n, (int64_t)(s * n_hidden)
+      );
+
+      if (label_start < 0) {
+        label_start = -(label_start + 1);
+      }
+
+
+      for (uint64_t f = 0; f < n_features; f++) {
+        uint64_t byte_idx = f / CHAR_BIT;
+        uint8_t bit_idx = f % CHAR_BIT;
+
+        if (!(bitmap_data[sample_offset + byte_idx] & (1u << bit_idx))) {
+          continue;
+        }
+
+
+        for (int64_t li = label_start;
+             li < (int64_t) labels->n && labels->a[li] >= 0 &&
+             (uint64_t)labels->a[li] / n_hidden == s;
+             li++) {
+          uint64_t h = (uint64_t)labels->a[li] % n_hidden;
+          int64_t key = (int64_t)(f * n_hidden + h);
+          tk_iumap_inc(active_counts, key);
+        }
+      }
+    }
+
+
+    tk_rvec_t *top_heap = tk_rvec_create(L, 0, 0, 0);
+
+
+    for (uint64_t f = 0; f < n_features; f++) {
+      double max_chi2 = 0.0;
+      int64_t C = feat_counts->a[f];
+
+      for (uint64_t b = 0; b < n_hidden; b++) {
+        int64_t G = global_counts->a[b];
+
+        if (C == 0 || G == 0 || C == (int64_t)n_samples || G == (int64_t)n_samples) {
+          continue;
+        }
+
+
+        int64_t key = (int64_t)(f * n_hidden + b);
+        int64_t A = tk_iumap_get_or(active_counts, key, 0);
+
+        int64_t B = G - A;
+        int64_t C_ = C - A;
+        int64_t D = (int64_t)n_samples - C - B;
+
+        double n = (double)n_samples;
+        double E_A = ((double)C * (double)G) / n;
+        double E_B = ((double)(n - C) * (double)G) / n;
+        double E_C = ((double)C * (double)(n - G)) / n;
+        double E_D = ((double)(n - C) * (double)(n - G)) / n;
+
+        double chi2 = 0.0;
+        if (E_A > 0) chi2 += ((A - E_A) * (A - E_A)) / E_A;
+        if (E_B > 0) chi2 += ((B - E_B) * (B - E_B)) / E_B;
+        if (E_C > 0) chi2 += ((C_ - E_C) * (C_ - E_C)) / E_C;
+        if (E_D > 0) chi2 += ((D - E_D) * (D - E_D)) / E_D;
+
+        if (chi2 > max_chi2) max_chi2 = chi2;
+      }
+
+
+      tk_rank_t r = { (int64_t)f, max_chi2 };
+      tk_rvec_hmin(top_heap, top_k, r);
+    }
+
+
+    tk_iumap_destroy(active_counts);
+
+
+    tk_rvec_desc(top_heap, 0, top_heap->n);
+
+
+
+    tk_ivec_t *out = tk_ivec_from_rvec(L, top_heap);
+
+
+    tk_dvec_t *weights = tk_dvec_create(L, top_heap->n, 0, 0);
+
+
+    for (uint64_t i = 0; i < top_heap->n; i++) {
+      weights->a[i] = top_heap->a[i].d;
+    }
+
+
+    lua_remove(L, -5);
+    lua_remove(L, -4);
+    lua_remove(L, -3);
+
+    return out;
+
+  } else {
+
+    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_create(L, 0, 0, 0);
+    return out;
+  }
 }
 
 static inline tk_ivec_t *tk_cvec_bits_top_entropy (
@@ -775,17 +1886,254 @@ static inline tk_ivec_t *tk_cvec_bits_top_entropy (
   tk_cvec_t *codes,
   uint64_t n_samples,
   uint64_t n_hidden,
-  uint64_t top_k,
-  unsigned int n_threads
+  uint64_t top_k
 ) {
-  tk_dvec_t *scores = tk_cvec_bits_score_entropy(L, codes, n_samples, n_hidden, n_threads);
-  int iscores = tk_lua_absindex(L, -1);
-  tk_rvec_t *rankings = tk_rvec_from_dvec(L, scores);
-  tk_rvec_kdesc(rankings, top_k, 0, rankings->n);
-  tk_ivec_t *out = tk_ivec_from_rvec(L, rankings);
-  out->n = top_k < out->n ? top_k : out->n;
-  lua_pushvalue(L, iscores);
+
+
+
+  tk_ivec_t *bit_counts = tk_ivec_create(L, n_hidden, 0, 0);
+  tk_ivec_zero(bit_counts);
+
+
+
+  for (uint64_t s = 0; s < n_samples; s++) {
+    uint8_t *sample_codes = (uint8_t *)(codes->a + s * TK_CVEC_BITS_BYTES(n_hidden));
+
+    for (uint64_t h = 0; h < n_hidden; h++) {
+      uint64_t byte_idx = h / CHAR_BIT;
+      uint8_t bit_idx = h % CHAR_BIT;
+
+      if (sample_codes[byte_idx] & (1u << bit_idx)) {
+        bit_counts->a[h]++;
+      }
+    }
+  }
+
+
+
+  tk_rvec_t *top_heap = tk_rvec_create(L, 0, 0, 0);
+
+
+  for (uint64_t h = 0; h < n_hidden; h++) {
+    double p = (double)bit_counts->a[h] / (double)n_samples;
+    double entropy = 0.0;
+
+    if (p > 0.0 && p < 1.0) {
+      entropy = -(p * log2(p) + (1.0 - p) * log2(1.0 - p));
+    }
+
+
+    tk_rank_t r = { (int64_t)h, entropy };
+    tk_rvec_hmin(top_heap, top_k, r);
+  }
+
+
+  tk_rvec_desc(top_heap, 0, top_heap->n);
+
+
+
+  tk_ivec_t *out = tk_ivec_from_rvec(L, top_heap);
+
+
+  tk_dvec_t *weights = tk_dvec_create(L, top_heap->n, 0, 0);
+
+
+  for (uint64_t i = 0; i < top_heap->n; i++) {
+    weights->a[i] = top_heap->a[i].d;
+  }
+
+
+  lua_remove(L, -4);
   lua_remove(L, -3);
+
+  return out;
+}
+
+
+static inline tk_ivec_t *tk_ivec_bits_top_df (
+  lua_State *L,
+  tk_ivec_t *set_bits,
+  uint64_t n_samples,
+  uint64_t n_features,
+  double min_df,
+  double max_df,
+  uint64_t top_k
+) {
+
+  tk_ivec_asc(set_bits, 0, set_bits->n);
+
+
+
+  tk_dvec_t *idf_scores = tk_dvec_create(L, n_features, 0, 0);
+
+  tk_dvec_zero(idf_scores);
+  int i_scores = tk_lua_absindex(L, -1);
+
+
+  tk_iuset_t **feature_docs = (tk_iuset_t **)calloc(n_features, sizeof(tk_iuset_t *));
+  for (uint64_t i = 0; i < n_features; i++) {
+    feature_docs[i] = tk_iuset_create();
+  }
+
+
+  for (uint64_t i = 0; i < set_bits->n; i++) {
+    int64_t bit_idx = set_bits->a[i];
+    if (bit_idx < 0) continue;
+
+    uint64_t sample_idx = (uint64_t)bit_idx / n_features;
+    uint64_t feature_idx = (uint64_t)bit_idx % n_features;
+
+    if (sample_idx < n_samples && feature_idx < n_features) {
+      int absent;
+      tk_iuset_put(feature_docs[feature_idx], (int64_t)sample_idx, &absent);
+    }
+  }
+
+
+
+  tk_rvec_t *top_heap = tk_rvec_create(L, 0, 0, 0);
+
+
+
+
+  double min_df_abs = min_df < 0 ? -min_df : min_df * n_samples;
+  double max_df_abs = max_df < 0 ? -max_df : max_df * n_samples;
+
+  for (uint64_t i = 0; i < n_features; i++) {
+    double df_count = (double)tk_iuset_size(feature_docs[i]);
+
+
+    double idf = log((double)(n_samples + 1) / (df_count + 1));
+    idf_scores->a[i] = idf;
+
+
+    if (df_count >= min_df_abs && df_count <= max_df_abs) {
+
+      tk_rank_t r = { (int64_t)i, idf };
+      tk_rvec_hmin(top_heap, top_k, r);
+    }
+  }
+
+
+  tk_rvec_desc(top_heap, 0, top_heap->n);
+
+
+
+  tk_ivec_t *out = tk_ivec_from_rvec(L, top_heap);
+
+  tk_dvec_t *weights = tk_dvec_create(L, top_heap->n, 0, 0);
+
+
+
+  for (uint64_t i = 0; i < top_heap->n; i++) {
+    weights->a[i] = top_heap->a[i].d;
+  }
+
+
+  for (uint64_t i = 0; i < n_features; i++) {
+    tk_iuset_destroy(feature_docs[i]);
+  }
+  free(feature_docs);
+
+
+
+  lua_remove(L, i_scores);
+  lua_remove(L, -3);
+
+  return out;
+}
+
+
+static inline tk_ivec_t *tk_cvec_bits_top_df (
+  lua_State *L,
+  tk_cvec_t *bitmap,
+  uint64_t n_samples,
+  uint64_t n_features,
+  double min_df,
+  double max_df,
+  uint64_t top_k
+) {
+
+
+
+  tk_dvec_t *idf_scores = tk_dvec_create(L, n_features, 0, 0);
+
+  tk_dvec_zero(idf_scores);
+  int i_scores = tk_lua_absindex(L, -1);
+
+
+  tk_iuset_t **feature_docs = (tk_iuset_t **)calloc(n_features, sizeof(tk_iuset_t *));
+  for (uint64_t i = 0; i < n_features; i++) {
+    feature_docs[i] = tk_iuset_create();
+  }
+
+
+  uint8_t *data = (uint8_t *)bitmap->a;
+  uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
+
+  for (uint64_t s = 0; s < n_samples; s++) {
+    uint64_t sample_offset = s * bytes_per_sample;
+    for (uint64_t f = 0; f < n_features; f++) {
+      uint64_t byte_idx = f / CHAR_BIT;
+      uint8_t bit_idx = f % CHAR_BIT;
+      if (data[sample_offset + byte_idx] & (1u << bit_idx)) {
+        int absent;
+        tk_iuset_put(feature_docs[f], (int64_t)s, &absent);
+      }
+    }
+  }
+
+
+
+  tk_rvec_t *top_heap = tk_rvec_create(L, 0, 0, 0);
+
+
+
+
+  double min_df_abs = min_df < 0 ? -min_df : min_df * n_samples;
+  double max_df_abs = max_df < 0 ? -max_df : max_df * n_samples;
+
+  for (uint64_t i = 0; i < n_features; i++) {
+    double df_count = (double)tk_iuset_size(feature_docs[i]);
+
+
+    double idf = log((double)(n_samples + 1) / (df_count + 1));
+    idf_scores->a[i] = idf;
+
+
+    if (df_count >= min_df_abs && df_count <= max_df_abs) {
+
+      tk_rank_t r = { (int64_t)i, idf };
+      tk_rvec_hmin(top_heap, top_k, r);
+    }
+  }
+
+
+  tk_rvec_desc(top_heap, 0, top_heap->n);
+
+
+
+  tk_ivec_t *out = tk_ivec_from_rvec(L, top_heap);
+
+  tk_dvec_t *weights = tk_dvec_create(L, top_heap->n, 0, 0);
+
+
+
+  for (uint64_t i = 0; i < top_heap->n; i++) {
+    weights->a[i] = top_heap->a[i].d;
+  }
+
+
+  for (uint64_t i = 0; i < n_features; i++) {
+    tk_iuset_destroy(feature_docs[i]);
+  }
+  free(feature_docs);
+
+
+
+  lua_remove(L, i_scores);
+  lua_remove(L, -3);
+
   return out;
 }
 
