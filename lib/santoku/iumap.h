@@ -71,7 +71,6 @@ static inline tk_ivec_t *tk_iumap_keys (lua_State *L, tk_iumap_t *M)
   return out;
 }
 
-
 static inline void tk_iumap_inc (tk_iumap_t *map, int64_t key)
 {
   int absent;
@@ -83,7 +82,6 @@ static inline void tk_iumap_inc (tk_iumap_t *map, int64_t key)
   }
 }
 
-
 static inline void tk_iumap_add (tk_iumap_t *map, int64_t key, int64_t val)
 {
   int absent;
@@ -94,7 +92,6 @@ static inline void tk_iumap_add (tk_iumap_t *map, int64_t key, int64_t val)
     tk_iumap_value(map, k) += val;
   }
 }
-
 
 static inline int64_t tk_iumap_get_or (tk_iumap_t *map, int64_t key, int64_t default_val)
 {

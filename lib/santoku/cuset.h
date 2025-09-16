@@ -28,11 +28,4 @@ typedef khash_t(tk_cuset) tk_cuset_t;
 		code;	\
 	} }
 
-
-
-
-
-
-
-
 #endif

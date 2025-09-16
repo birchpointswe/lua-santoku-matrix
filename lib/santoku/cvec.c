@@ -54,9 +54,7 @@ static inline void tk_cvec_bits_extend_ivec_helper (
 static inline int tk_cvec_bits_extend_lua (lua_State *L) {
   int nargs = lua_gettop(L);
 
-
   if (nargs == 4) {
-
     tk_cvec_t *base = tk_cvec_peek(L, 1, "base");
     uint64_t n_base_features = tk_lua_checkunsigned(L, 3, "n_base_features");
     uint64_t n_ext_features = tk_lua_checkunsigned(L, 4, "n_ext_features");
@@ -84,7 +82,6 @@ static inline int tk_cvec_bits_extend_lua (lua_State *L) {
     if (ext_cvec) {
       tk_cvec_bits_extend_mapped(base, ext_cvec, aids, bids, n_base_features, n_ext_features, project);
     } else {
-
       tk_ivec_t *ext_ivec = tk_ivec_peek(L, 2, "ext");
       uint64_t n_samples = ext_ivec->n > 0 ?
         ((uint64_t)ext_ivec->a[ext_ivec->n - 1] / n_ext_features + 1) : 0;

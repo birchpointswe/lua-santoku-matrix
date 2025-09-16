@@ -19,7 +19,6 @@ static inline void tk_vec_pfx(copy_indexed) (
 static inline int tk_vec_pfx(copy_indexed_lua) (lua_State *L)
 {
   int t = lua_gettop(L);
-
   if (t >= 3 && lua_type(L, 3) == LUA_TUSERDATA) {
     tk_ivec_t *indices = tk_ivec_peekopt(L, 3);
     if (indices != NULL) {

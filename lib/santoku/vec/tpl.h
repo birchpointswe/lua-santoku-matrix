@@ -202,18 +202,13 @@ static inline void tk_vec_pfx(insert) (
 ) {
   if (idx > v->n) idx = v->n;
   tk_vec_pfx(ensure)(v, v->n + 1);
-  if (idx < v->n) {
+  if (idx < v->n)
     memmove(v->a + idx + 1, v->a + idx, (v->n - idx) * sizeof(tk_vec_base));
-  }
   v->a[idx] = x;
   v->n++;
 }
 
-static inline void tk_vec_pfx(set) (
-  tk_vec_pfx(t) *v,
-  uint64_t i,
-  tk_vec_base x
-) {
+static inline void tk_vec_pfx(set) (tk_vec_pfx(t) *v, uint64_t i, tk_vec_base x) {
   tk_vec_pfx(ensure)(v, i + 1);
   v->a[i] = x;
   if (i + 1 > v->n)
@@ -222,12 +217,7 @@ static inline void tk_vec_pfx(set) (
 
 #ifdef tk_vec_pushbase
 
-static inline void tk_vec_pfx(table) (
-  lua_State *L,
-  tk_vec_pfx(t) *m0,
-  uint64_t start,
-  uint64_t end
-) {
+static inline void tk_vec_pfx(table) (lua_State *L, tk_vec_pfx(t) *m0, uint64_t start, uint64_t end) {
   lua_newtable(L);
   for (uint64_t i = start; i < end; i ++) {
     lua_pushinteger(L, (int64_t) i + 1);
@@ -246,7 +236,6 @@ static inline void tk_vec_pfx(ctable) (
   bool done = false;
   lua_newtable(L);
   for (uint64_t c = start; !done && c < end; c ++) {
-
     lua_pushinteger(L, (int64_t) c + 1);
     lua_newtable(L);
     for (uint64_t r = 0; r < m0->n / cols; r ++) {
@@ -677,10 +666,7 @@ static inline void tk_vec_pfx(abs) (
 }
 #endif
 
-static inline double tk_vec_pfx(dot) (
-  tk_vec_pfx(t) *a,
-  tk_vec_pfx(t) *b
-) {
+static inline double tk_vec_pfx(dot) (tk_vec_pfx(t) *a, tk_vec_pfx(t) *b) {
   if (a->n != b->n)
     return 0;
   size_t n = a->n;
@@ -690,33 +676,18 @@ static inline double tk_vec_pfx(dot) (
   return sum;
 }
 
-static inline void tk_vec_pfx(fill) (
-  tk_vec_pfx(t) *v,
-  tk_vec_base x,
-  uint64_t start,
-  uint64_t end
-) {
+static inline void tk_vec_pfx(fill) (tk_vec_pfx(t) *v, tk_vec_base x, uint64_t start, uint64_t end) {
   if (end <= start)
     return;
-  
-
   if (end > v->n) {
     tk_vec_pfx(ensure)(v, end);
     v->n = end;
   }
-  
   for (uint64_t i = start; i < end; i ++)
     v->a[i] = x;
 }
 
-static inline void tk_vec_pfx(multiply) (
-  tk_vec_pfx(t) *a,
-  tk_vec_pfx(t) *b,
-  tk_vec_pfx(t) *c,
-  uint64_t k,
-  bool transpose_a,
-  bool transpose_b
-) {
+static inline void tk_vec_pfx(multiply) (tk_vec_pfx(t) *a, tk_vec_pfx(t) *b, tk_vec_pfx(t) *c, uint64_t k, bool transpose_a, bool transpose_b) {
   size_t m = transpose_a ? k : a->n / k;
   size_t n = transpose_b ? k : b->n / k;
   tk_vec_pfx(ensure)(a, transpose_a ? k * m : m * k);
@@ -1269,9 +1240,6 @@ static inline int tk_vec_pfx(rtable_lua) (lua_State *L)
 
 #ifndef tk_vec_limited
 
-
-
-
 static inline int tk_vec_pfx(push_lua) (lua_State *L)
 {
   lua_settop(L, 2);
@@ -1596,7 +1564,6 @@ static inline int tk_vec_pfx(fill_indices_lua) (lua_State *L)
   return 1;
 }
 
-
 static inline int tk_vec_pfx(raw_lua) (lua_State *L)
 {
   lua_settop(L, 2);
@@ -1605,7 +1572,6 @@ static inline int tk_vec_pfx(raw_lua) (lua_State *L)
   tk_vec_pfx(raw)(L, m0, fmt);
   return 1;
 }
-
 
 static inline int tk_vec_pfx(from_raw_lua) (lua_State *L)
 {
@@ -1620,7 +1586,6 @@ static inline int tk_vec_pfx(from_raw_lua) (lua_State *L)
 
 static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
 {
-
   { "copy", tk_vec_pfx(copy_lua) },
   { "persist", tk_vec_pfx(persist_lua) },
   { "size", tk_vec_pfx(size_lua) },
@@ -1640,19 +1605,13 @@ static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
 
 #ifdef tk_vec_pushbase
   { "set", tk_vec_pfx(set_lua) },
-
-
   { "table", tk_vec_pfx(table_lua) },
   { "ctable", tk_vec_pfx(ctable_lua) },
   { "rtable", tk_vec_pfx(rtable_lua) },
-
-
   { "each", tk_vec_pfx(each_lua) },
   { "ieach", tk_vec_pfx(ieach_lua) },
 
 #endif
-
-
   { "shuffle", tk_vec_pfx(shuffle_lua) },
   { "asc", tk_vec_pfx(asc_lua) },
   { "desc", tk_vec_pfx(desc_lua) },
@@ -1664,12 +1623,8 @@ static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
   { "kdesc", tk_vec_pfx(kdesc_lua) },
 
 #ifndef tk_vec_limited
-
-
   { "push", tk_vec_pfx(push_lua) },
   { "insert", tk_vec_pfx(insert_lua) },
-
-
   { "add", tk_vec_pfx(add_lua) },
   { "add_scaled", tk_vec_pfx(add_scaled_lua) },
   { "scale", tk_vec_pfx(scale_lua) },
@@ -1682,34 +1637,20 @@ static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
 #ifdef tk_vec_abs
   { "abs", tk_vec_pfx(abs_lua) },
 #endif
-
-
   { "multiply", tk_vec_pfx(multiply_lua) },
   { "dot", tk_vec_pfx(dot_lua) },
-
-
   { "magnitude", tk_vec_pfx(magnitude_lua) },
-
-
   { "sum", tk_vec_pfx(sum_lua) },
   { "csums", tk_vec_pfx(csums_lua) },
   { "rsums", tk_vec_pfx(rsums_lua) },
-
-
   { "max", tk_vec_pfx(max_lua) },
   { "cmaxs", tk_vec_pfx(rmaxs_lua) },
   { "rmaxs", tk_vec_pfx(cmaxs_lua) },
-
-
   { "min", tk_vec_pfx(min_lua) },
   { "cmins", tk_vec_pfx(rmins_lua) },
   { "rmins", tk_vec_pfx(cmins_lua) },
-
-
   { "fill", tk_vec_pfx(fill_lua) },
   { "fill_indices", tk_vec_pfx(fill_indices_lua) },
-
-
   { "raw", tk_vec_pfx(raw_lua) },
 
 #endif

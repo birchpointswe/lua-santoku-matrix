@@ -9,20 +9,11 @@
 #include <math.h>
 #include <limits.h>
 
-
 #ifndef TK_CVEC_BITS_BYTES
 #define TK_CVEC_BITS_BYTES(n) (((n) + CHAR_BIT - 1) / CHAR_BIT)
 #endif
 
-
-
-static inline void tk_ivec_copy_pkeys (
-  tk_ivec_t *m0,
-  tk_pvec_t *m1,
-  int64_t start,
-  int64_t end,
-  int64_t dest
-) {
+static inline void tk_ivec_copy_pkeys (tk_ivec_t *m0, tk_pvec_t *m1, int64_t start, int64_t end, int64_t dest) {
   if (start < 0 || start >= end || start >= (int64_t) m1->n)
     return;
   if (end >= (int64_t) m1->n)
@@ -36,13 +27,7 @@ static inline void tk_ivec_copy_pkeys (
     m0->n = m;
 }
 
-static inline void tk_ivec_copy_pvalues (
-  tk_ivec_t *m0,
-  tk_pvec_t *m1,
-  int64_t start,
-  int64_t end,
-  int64_t dest
-) {
+static inline void tk_ivec_copy_pvalues (tk_ivec_t *m0, tk_pvec_t *m1, int64_t start, int64_t end, int64_t dest) {
   if (start < 0 || start >= end || start >= (int64_t) m1->n)
     return;
   if (end >= (int64_t) m1->n)
@@ -56,14 +41,7 @@ static inline void tk_ivec_copy_pvalues (
     m0->n = m;
 }
 
-
-static inline void tk_ivec_copy_rkeys (
-  tk_ivec_t *m0,
-  tk_rvec_t *m1,
-  int64_t start,
-  int64_t end,
-  int64_t dest
-) {
+static inline void tk_ivec_copy_rkeys (tk_ivec_t *m0, tk_rvec_t *m1, int64_t start, int64_t end, int64_t dest) {
   if (start < 0 || start >= end || start >= (int64_t) m1->n)
     return;
   if (end >= (int64_t) m1->n)
@@ -77,13 +55,7 @@ static inline void tk_ivec_copy_rkeys (
     m0->n = m;
 }
 
-static inline void tk_ivec_copy_rvalues (
-  tk_ivec_t *m0,
-  tk_rvec_t *m1,
-  int64_t start,
-  int64_t end,
-  int64_t dest
-) {
+static inline void tk_ivec_copy_rvalues (tk_ivec_t *m0, tk_rvec_t *m1, int64_t start, int64_t end, int64_t dest) {
   if (start < 0 || start >= end || start >= (int64_t) m1->n)
     return;
   if (end >= (int64_t) m1->n)
@@ -257,25 +229,22 @@ static inline void tk_ivec_bits_extend_mapped (tk_ivec_t *base, tk_ivec_t *ext, 
   if (!project) {
     tk_ivec_ensure(aids, final_n_samples);
     for (size_t i = 0; i < bids->n; i++) {
-      if (b_to_final[i] >= (int64_t)old_aids_n) {
+      if (b_to_final[i] >= (int64_t)old_aids_n)
         aids->a[aids->n++] = bids->a[i];
-      }
     }
   }
   size_t max_bits = 0;
   for (size_t i = 0; i < base->n; i++) {
     uint64_t bit = (uint64_t)base->a[i];
     uint64_t sample = bit / n_feat;
-    if (sample < old_aids_n) {
+    if (sample < old_aids_n)
       max_bits++;
-    }
   }
   for (size_t i = 0; i < ext->n; i++) {
     uint64_t bit = (uint64_t)ext->a[i];
     uint64_t sample = bit / n_extfeat;
-    if (sample < bids->n && b_to_final[sample] >= 0) {
+    if (sample < bids->n && b_to_final[sample] >= 0)
       max_bits++;
-    }
   }
   tk_ivec_ensure(base, max_bits);
   for (int64_t i = (int64_t)base->n - 1; i >= 0; i--) {
@@ -303,12 +272,7 @@ static inline void tk_ivec_bits_extend_mapped (tk_ivec_t *base, tk_ivec_t *ext, 
   free(a_to_final);
   tk_iumap_destroy(a_id_to_pos);
 }
-typedef enum {
-  TK_IVEC_JACCARD,
-  TK_IVEC_OVERLAP,
-  TK_IVEC_DICE,
-  TK_IVEC_TVERSKY
-} tk_ivec_sim_type_t;
+typedef enum { TK_IVEC_JACCARD, TK_IVEC_OVERLAP, TK_IVEC_DICE, TK_IVEC_TVERSKY } tk_ivec_sim_type_t;
 
 static inline double tk_ivec_set_jaccard (double inter_w, double sum_a, double sum_b)
 {

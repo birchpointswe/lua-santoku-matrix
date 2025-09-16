@@ -23,7 +23,6 @@ static inline int tk_ivec_bits_top_mi_lua (lua_State *L)
   char *codes = NULL;
   tk_ivec_t *labels = NULL;
   if (lua_isnil(L, 2)) {
-
   } else if (tk_lua_testuserdata(L, 2, "tk_cvec_t")) {
     tk_cvec_t *cvec = tk_cvec_peek(L, 2, "codes");
     codes = cvec->a;
@@ -46,7 +45,6 @@ static inline int tk_ivec_bits_top_chi2_lua (lua_State *L)
   char *codes = NULL;
   tk_ivec_t *labels = NULL;
   if (lua_isnil(L, 2)) {
-
   } else if (tk_lua_testuserdata(L, 2, "tk_cvec_t")) {
     tk_cvec_t *cvec = tk_cvec_peek(L, 2, "codes");
     codes = cvec->a;
@@ -93,7 +91,6 @@ static inline int tk_ivec_bits_filter_lua (lua_State *L)
     sample_ids = lua_isnil(L, 3) ? NULL : tk_ivec_peek(L, 3, "sample_ids");
     n_visible = tk_lua_checkunsigned(L, 4, "visible");
   } else {
-
     n_visible = tk_lua_checkunsigned(L, 3, "visible");
   }
   tk_ivec_bits_filter(set_bits, top_v, sample_ids, n_visible);
@@ -151,7 +148,6 @@ static inline int tk_ivec_bits_from_cvec_lua (lua_State *L)
   return 1;
 }
 
-
 static inline void tk_ivec_bits_extend_cvec_helper (
   lua_State *L,
   tk_ivec_t *base,
@@ -169,9 +165,7 @@ static inline int tk_ivec_bits_extend_lua (lua_State *L)
 {
   int nargs = lua_gettop(L);
 
-
   if (nargs == 4) {
-
     tk_ivec_t *base = tk_ivec_peek(L, 1, "base_bits");
     uint64_t n_feat = tk_lua_checkunsigned(L, 3, "features");
     uint64_t n_extfeat = tk_lua_checkunsigned(L, 4, "extended");
@@ -190,15 +184,12 @@ static inline int tk_ivec_bits_extend_lua (lua_State *L)
     uint64_t n_extfeat = tk_lua_checkunsigned(L, 6, "extended");
 
     bool project = false;
-    if (nargs == 7) {
+    if (nargs == 7)
       project = lua_toboolean(L, 7);
-    }
-
     tk_ivec_t *ext_ivec = tk_ivec_peekopt(L, 2);
     if (ext_ivec) {
       tk_ivec_bits_extend_mapped(base, ext_ivec, aids, bids, n_feat, n_extfeat, project);
     } else {
-
       tk_cvec_t *ext_cvec = tk_cvec_peek(L, 2, "ext_bits");
       tk_ivec_t *ext = tk_cvec_bits_to_ivec(L, ext_cvec, n_extfeat);
       tk_ivec_bits_extend_mapped(base, ext, aids, bids, n_feat, n_extfeat, project);
@@ -388,12 +379,6 @@ static inline int tk_ivec_set_tversky_lua (lua_State *L)
   tk_ivec_t *a = tk_ivec_peek(L, 1, "a");
   tk_ivec_t *b = tk_ivec_peek(L, 2, "b");
 
-
-
-
-
-
-
   tk_dvec_t *weights = NULL;
   double alpha = 0.5;
   double beta = 0.5;
@@ -474,8 +459,6 @@ static inline int tk_ivec_set_find_lua (lua_State *L)
   int64_t value = luaL_checkinteger(L, 2);
   int64_t start = (nargs >= 3) ? luaL_checkinteger(L, 3) : 0;
   int64_t end = (nargs >= 4) ? luaL_checkinteger(L, 4) : (int64_t)vec->n;
-
-
   if (start < 0) start = 0;
   if (end > (int64_t)vec->n) end = (int64_t)vec->n;
   if (start > end) start = end;

@@ -38,11 +38,4 @@ static inline void tk_duset_dump (tk_duset_t *s, tk_dvec_t *v)
   }))
 }
 
-
-
-
-
-
-
-
 #endif

@@ -21,11 +21,4 @@ typedef khash_t(tk_zumap) tk_zumap_t;
 #define tk_zumap_create() kh_init(tk_zumap)
 #define tk_zumap_foreach(...) kh_foreach(__VA_ARGS__)
 
-
-
-
-
-
-
-
 #endif

@@ -1,13 +1,14 @@
 # Now
 
-- tk_cvec_t
-    - Implement cvec to/from string
-
 - Templatized hash and btree (same peek, pop, create w/out L, register, etc)
 - Ensure all APIs exposed (heap, iuset/map extensions)
 - Standard peek/test: tk_xvec_check, tk_xvec_test, tk_xvec_fcheck, tk_xvec_ftest
 
 # Consider
+
+- tk_cvec_t/tk_ivec_t
+    - Implement cvec to/from string
+    - bits_extend: don't create temporary same-format buffer, copy direct
 
 - Additional default containers?
 
