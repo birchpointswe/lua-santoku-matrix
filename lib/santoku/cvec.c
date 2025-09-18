@@ -184,6 +184,26 @@ static inline int tk_cvec_bits_top_mi_lua (lua_State *L) {
   return 2;
 }
 
+static inline int tk_cvec_bits_top_lift_lua (lua_State *L) {
+  lua_settop(L, 6);
+  tk_cvec_t *bitmap = tk_cvec_peek(L, 1, "bitmap");
+  tk_cvec_t *codes = NULL;
+  tk_ivec_t *labels = NULL;
+  if (lua_isnil(L, 2)) {
+
+  } else if (tk_lua_testuserdata(L, 2, "tk_cvec_t")) {
+    codes = tk_cvec_peek(L, 2, "codes");
+  } else {
+    labels = tk_ivec_peek(L, 2, "labels");
+  }
+  uint64_t n_samples = tk_lua_checkunsigned(L, 3, "n_samples");
+  uint64_t n_features = tk_lua_checkunsigned(L, 4, "n_features");
+  uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "n_hidden");
+  uint64_t top_k = lua_isnil(L, 6) ? n_features : tk_lua_checkunsigned(L, 6, "top_k");
+  tk_cvec_bits_top_lift(L, bitmap, codes, labels, n_samples, n_features, n_hidden, top_k);
+  return 2;
+}
+
 static inline int tk_cvec_bits_top_entropy_lua (lua_State *L) {
   lua_settop(L, 4);
   tk_cvec_t *codes = tk_cvec_peek(L, 1, "codes");
@@ -301,6 +321,7 @@ static luaL_Reg tk_cvec_lua_mt_ext2_fns[] =
   { "bits_copy", tk_cvec_bits_copy_lua },
   { "bits_top_chi2", tk_cvec_bits_top_chi2_lua },
   { "bits_top_mi", tk_cvec_bits_top_mi_lua },
+  { "bits_top_lift", tk_cvec_bits_top_lift_lua },
   { "bits_top_entropy", tk_cvec_bits_top_entropy_lua },
   { "bits_top_df", tk_cvec_bits_top_df_lua },
   { "bits_popcount", tk_cvec_bits_popcount_lua },
