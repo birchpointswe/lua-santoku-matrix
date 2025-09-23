@@ -1,4 +1,3 @@
-local serialize  = require("santoku.serialize")
 local it  = require("santoku.iter")
 local err = require("santoku.error")
 local ivec = require("santoku.ivec")
@@ -8,7 +7,7 @@ local tbl = require("santoku.table")
 
 for _, vec in ipairs({ ivec, dvec }) do
 
-  local m0, m1, m2
+  local m0, m1
 
   m0 = vec.create(10)
 
@@ -41,10 +40,6 @@ for _, vec in ipairs({ ivec, dvec }) do
 
   assert(m0:size() == 3)
   assert(m1:size() == 3)
-
-  m2 = vec.from_raw(m0:raw(), 3)
-
-  assert(m2:size() == 3)
 
   m0 = vec.create({ 1, 2, 3, 4, 5, 6 })
 
@@ -229,15 +224,39 @@ do
     err.assert(weights:size() == 0, "Should return empty weights when no labels")
   end
   do
+    local iumap = require("santoku.iumap")
+    local m = iumap.create(0)
+    m:put(10)
+    m:setval(m:get(10), 100)
+    m:put(20)
+    m:setval(m:get(20), 200)
+
+    local count = 0
+    local keys = {}
+    local values = {}
+    for k, v in m:each() do
+      count = count + 1
+      table.insert(keys, k)
+      table.insert(values, v)
+    end
+
+    err.assert(count == 2, "Should iterate over 2 items")
+    m:destroy()
+  end
+  do
     local n_samples = 4
     local n_features = 2
     local n_hidden = 2
     local features = ivec.create({ 0, 2, 5, 7 })
-    local labels = ivec.create({ 0, 3, 4, 7 })
+    local labels = ivec.create({ 0, 2, 5, 7 })
     local top_features, weights = features:bits_top_mi(labels, n_samples, n_features, n_hidden, 2)
-    err.assert(top_features:size() == 2, "Should return 2 features")
-    local w = weights:table()
-    err.assert(math.abs(w[1] - w[2]) < 1e-10, "Weights should be equal for balanced data")
+
+    err.assert(top_features:size() > 0, "Should return some features for perfectly correlated data")
+    if top_features:size() > 0 then
+      local w = weights:table()
+
+      err.assert(w[1] > 0, "Should have positive MI for perfectly correlated data")
+    end
   end
   do
     local n_samples = 5

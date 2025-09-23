@@ -1,29 +1,34 @@
-# Now
+# Next
 
-- Templatized hash and btree (same peek, pop, create w/out L, register, etc)
-- Ensure all APIs exposed (heap, iuset/map extensions)
-- Standard peek/test: tk_xvec_check, tk_xvec_test, tk_xvec_fcheck, tk_xvec_ftest
+- Templatized btree
+
+- tk_cvec_t
+    - Implement cvec to/from string
+
+# Later
+
+- tk_cvec_t/tk_ivec_t
+    - bits_extend: don't create temporary same-format buffer, copy direct
 
 # Consider
 
-- tk_cvec_t/tk_ivec_t
-    - Implement cvec to/from string
-    - bits_extend: don't create temporary same-format buffer, copy direct
+- Should cumap/zumap use cvec instead of strings?
+
+- Replace iumap/dumap with puset and ruset, like euset
+
+- Standard peek/test: tk_xvec_check, tk_xvec_test, tk_xvec_fcheck, tk_xvec_ftest
+
+- Replace calls to klib with inlined implementations of vec, sort, hash, and
+  tree functions
 
 - Additional default containers?
-
     - tk_coset_t: kbtree_t(tk_cvec_t)
-    - tk_cumap_t: khash_t(int64_t, tk_cvec_t)
     - tk_comap_t: kbtree_t(int64_t, tk_cvec_t)
-
     - tk_zomap_t: kbtree_t(tk_cvec_t, int64_t)
     - tk_vumap_t: khash_t(tk_cvec_t, tk_cvec_t)
     - tk_vomap_t: kbtree_t(tk_cvec_t, tk_cvec_t)
-
     - tk_dumap_t: khash_t(int64_t, double)
     - tk_domap_t: kbtree_t(int64_t, double)
     - tk_rumap_t: khash_t(int64_t, tk_rank_t)
     - tk_romap_t: kbtree_t(int64_t, tk_rank_t)
-
-    - tk_pumap_t: khash_t(int64_t, tk_pair_t)
     - tk_pomap_t: kbtree_t(int64_t, tk_pair_t)

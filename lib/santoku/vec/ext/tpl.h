@@ -327,9 +327,43 @@ static inline int tk_vec_pfx(cdesc_lua) (lua_State *L)
 
 #endif
 
+static inline void tk_vec_pfx(persist) (lua_State *L, tk_vec_pfx(t) *v, FILE *fh)
+{
+  tk_lua_fwrite(L, (char *) &v->n, sizeof(size_t), 1, fh);
+  tk_lua_fwrite(L, (char *) v->a, sizeof(tk_vec_base) * v->n, 1, fh);
+}
+
+static inline int tk_vec_pfx(persist_lua) (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
+  bool tostr = lua_type(L, 2) == LUA_TNIL;
+  FILE *fh;
+  if (tostr)
+    fh = tk_lua_tmpfile(L);
+  else
+    fh = tk_lua_fopen(L, luaL_checkstring(L, 2), "w");
+  tk_vec_pfx(persist)(L, m0, fh);
+  if (!tostr) {
+    tk_lua_fclose(L, fh);
+    return 0;
+  } else {
+    size_t len;
+    char *data = tk_lua_fslurp(L, fh, &len);
+    if (data) {
+      tk_cvec_create(L, len, data, 0);
+      return 1;
+    } else {
+      tk_lua_fclose(L, fh);
+      return 0;
+    }
+  }
+}
+
 static luaL_Reg tk_vec_pfx(lua_mt_ext_fns)[] =
 {
   { "copy", tk_vec_pfx(copy_indexed_lua) },
+  { "persist", tk_vec_pfx(persist_lua) },
 #ifndef tk_vec_limited
   { "cmagnitudes", tk_vec_pfx(cmagnitudes_lua) },
   { "rmagnitudes", tk_vec_pfx(rmagnitudes_lua) },

@@ -196,7 +196,7 @@ static inline void tk_ivec_bits_extend (tk_ivec_t *base, tk_ivec_t *ext, uint64_
 static inline void tk_ivec_bits_extend_mapped (tk_ivec_t *base, tk_ivec_t *ext, tk_ivec_t *aids, tk_ivec_t *bids, uint64_t n_feat, uint64_t n_extfeat, bool project) {
   tk_ivec_asc(base, 0, base->n);
   tk_ivec_asc(ext, 0, ext->n);
-  tk_iumap_t *a_id_to_pos = tk_iumap_from_ivec(aids);
+  tk_iumap_t *a_id_to_pos = tk_iumap_from_ivec(0, aids);
   uint64_t n_only_b = 0;
   int64_t *b_to_final = (int64_t *)malloc(bids->n * sizeof(int64_t));
   int64_t *a_to_final = (int64_t *)malloc(aids->n * sizeof(int64_t));
@@ -213,7 +213,7 @@ static inline void tk_ivec_bits_extend_mapped (tk_ivec_t *base, tk_ivec_t *ext, 
   for (size_t bi = 0; bi < bids->n; bi++) {
     khint_t khi = tk_iumap_get(a_id_to_pos, bids->a[bi]);
     if (khi != tk_iumap_end(a_id_to_pos)) {
-      b_to_final[bi] = tk_iumap_value(a_id_to_pos, khi);
+      b_to_final[bi] = tk_iumap_val(a_id_to_pos, khi);
     } else {
       if (!project) {
         b_to_final[bi] = next_pos++;

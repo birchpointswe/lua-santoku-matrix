@@ -13,6 +13,9 @@
 #include <stdatomic.h>
 #include <math.h>
 
+#ifndef TK_CVEC_BITS
+#define TK_CVEC_BITS CHAR_BIT
+#endif
 #ifndef TK_CVEC_BITS_BYTES
 #define TK_CVEC_BITS_BYTES(n) (((n) + CHAR_BIT - 1) / CHAR_BIT)
 #endif
@@ -367,7 +370,7 @@ static inline void tk_cvec_bits_extend_mapped (
   uint64_t base_bytes_per_sample = TK_CVEC_BITS_BYTES(n_base_features);
   uint64_t ext_bytes_per_sample = TK_CVEC_BITS_BYTES(n_ext_features);
   uint64_t total_bytes_per_sample = TK_CVEC_BITS_BYTES(n_total_features);
-  tk_iumap_t *a_id_to_pos = tk_iumap_from_ivec(aids);
+  tk_iumap_t *a_id_to_pos = tk_iumap_from_ivec(0, aids);
   uint64_t n_only_b = 0;
   int64_t *b_to_final = (int64_t *)malloc(bids->n * sizeof(int64_t));
   if (!b_to_final) {
@@ -378,7 +381,7 @@ static inline void tk_cvec_bits_extend_mapped (
   for (size_t bi = 0; bi < bids->n; bi++) {
     khint_t khi = tk_iumap_get(a_id_to_pos, bids->a[bi]);
     if (khi != tk_iumap_end(a_id_to_pos)) {
-      b_to_final[bi] = tk_iumap_value(a_id_to_pos, khi);
+      b_to_final[bi] = tk_iumap_val(a_id_to_pos, khi);
     } else {
       if (!project) {
         b_to_final[bi] = next_pos++;
@@ -401,7 +404,7 @@ static inline void tk_cvec_bits_extend_mapped (
   tk_cvec_ensure(base, final_n_samples * total_bytes_per_sample);
   uint8_t *base_data = (uint8_t *)base->a;
   uint8_t *ext_data = (uint8_t *)ext->a;
-  tk_iumap_t *b_id_to_pos = tk_iumap_from_ivec(bids);
+  tk_iumap_t *b_id_to_pos = tk_iumap_from_ivec(0, bids);
   uint8_t *new_data = malloc(final_n_samples * total_bytes_per_sample);
   if (!new_data) {
     free(b_to_final);
@@ -416,7 +419,7 @@ static inline void tk_cvec_bits_extend_mapped (
     memcpy(new_data + dest_offset, base_data + src_offset, base_bytes_per_sample);
     khint_t khi = tk_iumap_get(b_id_to_pos, aids->a[ai]);
     if (khi != tk_iumap_end(b_id_to_pos)) {
-      int64_t b_idx = tk_iumap_value(b_id_to_pos, khi);
+      int64_t b_idx = tk_iumap_val(b_id_to_pos, khi);
       uint64_t ext_src_offset = (uint64_t)b_idx * ext_bytes_per_sample;
       uint64_t ext_bit_offset = n_base_features;
       uint64_t ext_byte_offset = ext_bit_offset / CHAR_BIT;
@@ -487,6 +490,12 @@ static inline void tk_cvec_bits_to_ascii (
   out[n_bits] = '\0';
   lua_pushstring(L, out);
   lua_remove(L, -2);
+}
+
+static inline void tk_cvec_push_str (tk_cvec_t *v, const char *s)
+{
+  for (char *p = (char *) s; *p; p ++)
+    tk_cvec_push(v, *p);
 }
 
 #endif

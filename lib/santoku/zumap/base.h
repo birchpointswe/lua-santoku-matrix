@@ -1,8 +1,8 @@
-#ifndef TK_ZUMAP_H
-#define TK_ZUMAP_H
+#ifndef TK_ZUMAP_BASE_H
+#define TK_ZUMAP_BASE_H
 
-#include <santoku/cvec/base.h>
-#include <santoku/zumap/base.h>
+#include <santoku/klib.h>
+#include <santoku/ivec/base.h>
 
 #define tk_umap_name tk_zumap
 #define tk_umap_key const char *
@@ -13,9 +13,6 @@
 #define tk_umap_pushvalue(...) lua_pushinteger(__VA_ARGS__)
 #define tk_umap_eq(a, b) (strcmp((a), (b)) == 0)
 #define tk_umap_hash(a) (kh_str_hash_func(a))
-#define tk_umap_no_persist
-#include <santoku/umap/ext/tpl.h>
-
-#include <santoku/zumap/ext.h>
+#include <santoku/umap/tpl.h>
 
 #endif

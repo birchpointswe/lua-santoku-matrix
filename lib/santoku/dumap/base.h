@@ -1,8 +1,8 @@
-#ifndef TK_DUMAP_H
-#define TK_DUMAP_H
+#ifndef TK_DUMAP_BASE_H
+#define TK_DUMAP_BASE_H
 
-#include <santoku/cvec/base.h>
-#include <santoku/dumap/base.h>
+#include <santoku/klib.h>
+#include <santoku/dvec/base.h>
 
 #define tk_umap_name tk_dumap
 #define tk_umap_key int64_t
@@ -13,8 +13,6 @@
 #define tk_umap_pushvalue(...) lua_pushnumber(__VA_ARGS__)
 #define tk_umap_eq(a, b) ((a) == (b))
 #define tk_umap_hash(a) (kh_int64_hash_func((uint64_t) a))
-#include <santoku/umap/ext/tpl.h>
-
-#include <santoku/dumap/ext.h>
+#include <santoku/umap/tpl.h>
 
 #endif

@@ -65,8 +65,10 @@ static inline void tk_vec_pfx(destroy) (tk_vec_pfx(t) *r)
   for (uint64_t i = 0; i < r->n; i ++)
     tk_vec_destroy_item(r->a[i]);
 #endif
+  bool lua_managed = r->lua_managed;
   kv_destroy(*r);
   memset(r, 0, sizeof(tk_vec_pfx(t)));
+  r->lua_managed = lua_managed;
 }
 
 static inline bool tk_vec_pfx(lt) (tk_vec_base a, tk_vec_base b)
@@ -746,77 +748,6 @@ static inline void tk_vec_pfx(exp) (
     m0->a[i] = exp(m0->a[i]);
 }
 
-static inline const char *tk_vec_pfx(raw) (
-  lua_State *L,
-  tk_vec_pfx(t) *m0,
-  const char *fmt
-) {
-  if (fmt == NULL) {
-    lua_pushlstring(L, (char *) m0->a, sizeof(tk_vec_base) * m0->n);
-    return lua_tostring(L, -1);
-  }
-  void *out = NULL;
-  size_t out_size = 0;
-  if (!strcmp(fmt, "u32")) {
-    out_size = sizeof(uint32_t);
-    out = malloc(out_size * m0->n);
-    if (!out) goto err_mem;
-    for (size_t i = 0; i < m0->n; i ++) {
-      tk_vec_base r = m0->a[i];
-      if (r < 0)
-        goto err_negative;
-      if (r > (tk_vec_base) UINT32_MAX)
-        goto err_toobig;
-      ((uint32_t *) out)[i] = (uint32_t) r;
-    }
-  } else if (!strcmp(fmt, "u64")) {
-    out_size = sizeof(uint64_t);
-    out = malloc(out_size * m0->n);
-    if (!out) goto err_mem;
-    for (size_t i = 0; i < m0->n; i ++) {
-      tk_vec_base r = m0->a[i];
-      if (r < 0)
-        goto err_negative;
-      if (r > (tk_vec_base) UINT64_MAX)
-        goto err_toobig;
-      ((uint64_t *) out)[i] = (uint64_t) r;
-    }
-  } else if (!strcmp(fmt, "f32")) {
-    out_size = sizeof(float);
-    out = malloc(out_size * m0->n);
-    if (!out)
-      goto err_mem;
-    for (size_t i = 0; i < m0->n; i ++)
-      ((float *) out)[i] = (float) m0->a[i];
-  } else if (!strcmp(fmt, "f64")) {
-    out_size = sizeof(double);
-    out = malloc(out_size * m0->n);
-    if (!out)
-      goto err_mem;
-    for (size_t i = 0; i < m0->n; i ++)
-      ((double *) out)[i] = (double) m0->a[i];
-  } else {
-    goto err_format;
-  }
-  lua_pushlstring(L, (char *) out, out_size * m0->n);
-  free(out);
-  return lua_tostring(L, -1);
-err_format:
-  tk_vec_err(L, raw, 2, "bad format", fmt);
-  return NULL;
-err_mem:
-  tk_vec_err(L, raw, 2, "malloc error");
-  return NULL;
-err_negative:
-  tk_vec_err(L, raw, 2, "unexpected negative");
-  goto cleanup;
-err_toobig:
-  tk_vec_err(L, raw, 2, "number too large");
-cleanup:
-  free(out);
-  return NULL;
-}
-
 static inline void tk_vec_pfx(fill_indices) (tk_vec_pfx(t) *v)
 {
   for (uint64_t i = 0; i < v->n; i ++)
@@ -831,6 +762,24 @@ static inline int tk_vec_pfx(destroy_lua) (lua_State *L)
   return 0;
 }
 
+static inline int tk_vec_pfx(gc_lua) (lua_State *L)
+{
+  tk_vec_pfx(t) *v = tk_vec_pfx(peek)(L, 1, "vector");
+  if (v->lua_managed) {
+    tk_vec_pfx(destroy)(v);
+  }
+  return 0;
+}
+
+static inline tk_vec_pfx(t) *tk_vec_pfx(load) (lua_State *L, FILE *fh)
+{
+  size_t n;
+  tk_lua_fread(L, &n, sizeof(size_t), 1, fh);
+  tk_vec_pfx(t) *v = tk_vec_pfx(create)(L, n, 0, 0);
+  tk_lua_fread(L, v->a, sizeof(tk_vec_base), n, fh);
+  return v;
+}
+
 static inline int tk_vec_pfx(load_lua) (lua_State *L)
 {
   lua_settop(L, 2);
@@ -838,10 +787,7 @@ static inline int tk_vec_pfx(load_lua) (lua_State *L)
   const char *data = luaL_checklstring(L, 1, &len);
   bool isstr = lua_type(L, 2) == LUA_TBOOLEAN && lua_toboolean(L, 2);
   FILE *fh = isstr ? tk_lua_fmemopen(L, (char *) data, len, "r") : tk_lua_fopen(L, data, "r");
-  size_t n;
-  tk_lua_fread(L, &n, sizeof(size_t), 1, fh);
-  tk_vec_pfx(t) *v = tk_vec_pfx(create)(L, n, 0, 0);
-  tk_lua_fread(L, v->a, sizeof(tk_vec_base), n, fh);
+  tk_vec_pfx(load)(L, fh);
   tk_lua_fclose(L, fh);
   return 1;
 }
@@ -902,36 +848,6 @@ static inline int tk_vec_pfx(multiply_lua) (lua_State *L)
   return 0;
 }
 #endif
-
-static inline int tk_vec_pfx(persist_lua) (lua_State *L)
-{
-  lua_settop(L, 2);
-  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
-  bool tostr = lua_type(L, 2) == LUA_TNIL;
-  FILE *fh;
-  if (tostr)
-    fh = tk_lua_tmpfile(L);
-  else
-    fh = tk_lua_fopen(L, luaL_checkstring(L, 2), "w");
-  tk_lua_fwrite(L, (char *) &m0->n, sizeof(size_t), 1, fh);
-  tk_lua_fwrite(L, (char *) m0->a, sizeof(tk_vec_base) * m0->n, 1, fh);
-  if (!tostr) {
-    tk_lua_fclose(L, fh);
-    return 0;
-  } else {
-    size_t len;
-    char *data = tk_lua_fslurp(L, fh, &len);
-    if (data) {
-      lua_pushlstring(L, data, len);
-      free(data);
-      tk_lua_fclose(L, fh);
-      return 1;
-    } else {
-      tk_lua_fclose(L, fh);
-      return 0;
-    }
-  }
-}
 
 static inline int tk_vec_pfx(copy_lua) (lua_State *L)
 {
@@ -1564,30 +1480,12 @@ static inline int tk_vec_pfx(fill_indices_lua) (lua_State *L)
   return 1;
 }
 
-static inline int tk_vec_pfx(raw_lua) (lua_State *L)
-{
-  lua_settop(L, 2);
-  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
-  const char *fmt = tk_lua_optstring(L, 2, "fmt", NULL);
-  tk_vec_pfx(raw)(L, m0, fmt);
-  return 1;
-}
-
-static inline int tk_vec_pfx(from_raw_lua) (lua_State *L)
-{
-  lua_settop(L, 2);
-  const char *data = tk_lua_checkustring(L, 1, "raw");
-  uint64_t s = tk_lua_checkunsigned(L, 2, "size");
-  tk_vec_pfx(create)(L, s, (tk_vec_base *) data, NULL);
-  return 1;
-}
-
 #endif
 
 static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
 {
   { "copy", tk_vec_pfx(copy_lua) },
-  { "persist", tk_vec_pfx(persist_lua) },
+  { "destroy", tk_vec_pfx(destroy_lua) },
   { "size", tk_vec_pfx(size_lua) },
   { "capacity", tk_vec_pfx(capacity_lua) },
   { "resize", tk_vec_pfx(resize_lua) },
@@ -1651,7 +1549,6 @@ static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
   { "rmins", tk_vec_pfx(cmins_lua) },
   { "fill", tk_vec_pfx(fill_lua) },
   { "fill_indices", tk_vec_pfx(fill_indices_lua) },
-  { "raw", tk_vec_pfx(raw_lua) },
 
 #endif
 
@@ -1667,11 +1564,12 @@ static inline tk_vec_pfx(t) *tk_vec_pfx(create) (lua_State *L, size_t n, tk_vec_
   if (v == NULL) {
     v = L == NULL
       ? malloc(sizeof(tk_vec_pfx(t)))
-      : tk_lua_newuserdata(L, tk_vec_pfx(t), tk_vec_mt, tk_vec_pfx(lua_mt_fns), tk_vec_pfx(destroy_lua));
+      : tk_lua_newuserdata(L, tk_vec_pfx(t), tk_vec_mt, tk_vec_pfx(lua_mt_fns), tk_vec_pfx(gc_lua));
     if (v == NULL)
       return v;
     v0 = *v;
-    kv_init(v0);
+    bool lua_managed = L != NULL;
+    kv_init(v0, lua_managed);
     kv_resize(tk_vec_base, v0, n);
     v0.n = n;
     *v = v0;
@@ -1687,7 +1585,7 @@ static inline tk_vec_pfx(t) *tk_vec_pfx(create) (lua_State *L, size_t n, tk_vec_
 
 static inline tk_vec_pfx(t) *tk_vec_pfx(register) (lua_State *L, tk_vec_pfx(t) *v)
 {
-  tk_vec_pfx(t) *x = tk_lua_newuserdata(L, tk_vec_pfx(t), tk_vec_mt, tk_vec_pfx(lua_mt_fns), tk_vec_pfx(destroy_lua));
+  tk_vec_pfx(t) *x = tk_lua_newuserdata(L, tk_vec_pfx(t), tk_vec_mt, tk_vec_pfx(lua_mt_fns), tk_vec_pfx(gc_lua));
   *x = *v;
   free(v);
   return x;
@@ -1697,11 +1595,6 @@ static luaL_Reg tk_vec_pfx(lua_fns)[] =
 {
   { "create", tk_vec_pfx(create_lua) },
   { "load", tk_vec_pfx(load_lua) },
-  { "destroy", tk_vec_pfx(destroy_lua) },
-#ifndef tk_vec_limited
-
-  { "from_raw", tk_vec_pfx(from_raw_lua) },
-#endif
   { NULL, NULL }
 };
 
