@@ -1,13 +1,17 @@
 # Now
 
-- Templatized btree
-
-# Next
-
 - tk_cvec_t
     - Implement cvec to/from string
 
-# Later
+- tk_cumap/zumap/etc:
+    - Strictly use cvec with proper referencing
+        - #define tk_umap_destroy_key/value tk_lua_del_ephemeron
+        - #define tk_umap_link_key/value tk_lua_link_ephemeron (like add but with pointer)
+    - Support those macros with vector as well
+
+# Next
+
+- Templatized btree
 
 - tk_cvec_t/tk_ivec_t
     - bits_extend: don't create temporary same-format buffer, copy direct
