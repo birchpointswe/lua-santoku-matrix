@@ -1,6 +1,8 @@
 #ifndef TK_RVEC_EXT_H
 #define TK_RVEC_EXT_H
 
+#include <santoku/dumap.h>
+
 static inline tk_rvec_t *tk_rvec_from_dvec (
   lua_State *L,
   tk_dvec_t *D
@@ -86,6 +88,28 @@ static inline int tk_rvec_ieach_lua (lua_State *L)
   lua_pushinteger(L, 0);
   lua_pushcclosure(L, tk_rvec_ieach_lua_iter, 2);
   return 1;
+}
+
+static inline void tk_rvec_ranks (
+  tk_rvec_t *v,
+  tk_dumap_t *r
+) {
+  tk_dumap_clear(r);
+  int kha;
+  uint32_t khi;
+  for (size_t i = 0; i < v->n; i ++) {
+    double rank = (double) i;
+    size_t count = 1;
+    while (i + 1 < v->n && v->a[i].d == v->a[i + 1].d) {
+      count ++;
+      i ++;
+    }
+    double average_rank = (rank + (rank + count - 1)) / 2.0;
+    for (size_t j = 0; j < count; j ++) {
+      khi = tk_dumap_put(r, v->a[i - j].i, &kha);
+      tk_dumap_setval(r, khi, average_rank);
+    }
+  }
 }
 
 #endif
