@@ -508,7 +508,7 @@ static inline tk_ivec_t *tk_ivec_bits_top_mi (
 
   if (codes) {
 
-    tk_ivec_t *counts = tk_ivec_create(L, n_visible * n_hidden * 4, 0, 0);
+    tk_ivec_t *counts = tk_ivec_create(0, n_visible * n_hidden * 4, 0, 0);
     tk_ivec_zero(counts);
     uint64_t prev_sample = UINT64_MAX;
     uint8_t *sample_codes = NULL;
@@ -532,8 +532,9 @@ static inline tk_ivec_t *tk_ivec_bits_top_mi (
       }
     }
 
+    tk_iuset_t *sample_features = tk_iuset_create(0, 0);
     for (uint64_t s = 0; s < n_samples; s++) {
-      tk_iuset_t *sample_features = tk_iuset_create(L, 0);
+      tk_iuset_clear(sample_features);
       for (uint64_t i = 0; i < set_bits->n; i++) {
         int64_t bit_idx = set_bits->a[i];
         if (bit_idx < 0)
@@ -556,18 +557,17 @@ static inline tk_ivec_t *tk_ivec_bits_top_mi (
           }
         }
       }
-      tk_iuset_destroy(sample_features);
     }
+    tk_iuset_destroy(sample_features);
 
-    tk_rvec_t *top_heap = tk_rvec_create(L, 0, 0, 0);
+    tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
     for (uint64_t f = 0; f < n_visible; f++) {
       double max_mi = 0.0;
       for (uint64_t j = 0; j < n_hidden; j++) {
         int64_t c[4];
         int64_t *counts_ptr = counts->a + f * n_hidden * 4 + j * 4;
-        for (int k = 0; k < 4; k++) {
+        for (int k = 0; k < 4; k++)
           c[k] = counts_ptr[k] + 1;
-        }
         double total = c[0] + c[1] + c[2] + c[3];
         double mi = 0.0;
         if (total > 0.0) {
@@ -591,27 +591,23 @@ static inline tk_ivec_t *tk_ivec_bits_top_mi (
       tk_rvec_hmin(top_heap, top_k, r);
     }
 
+    tk_ivec_destroy(counts);
+
     tk_rvec_desc(top_heap, 0, top_heap->n);
-    tk_ivec_t *out = tk_ivec_create(L, top_heap->n, 0, 0);
-    tk_dvec_t *weights = tk_dvec_create(L, top_heap->n, 0, 0);
-
-    for (uint64_t i = 0; i < top_heap->n; i++) {
-      out->a[i] = top_heap->a[i].i;
-      weights->a[i] = top_heap->a[i].d;
-    }
-
-    lua_remove(L, -4);
-    lua_remove(L, -3);
-
+    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+    tk_rvec_keys(L, top_heap, out);
+    tk_rvec_values(L, top_heap, weights);
+    tk_rvec_destroy(top_heap);
     return out;
 
   } else if (labels) {
 
     tk_ivec_asc(labels, 0, labels->n);
     tk_iumap_t *active_counts = tk_iumap_create(0, 0);
-    tk_ivec_t *feat_counts = tk_ivec_create(L, n_visible, 0, 0);
+    tk_ivec_t *feat_counts = tk_ivec_create(0, n_visible, 0, 0);
+    tk_ivec_t *label_counts = tk_ivec_create(0, n_hidden, 0, 0);
     tk_ivec_zero(feat_counts);
-    tk_ivec_t *label_counts = tk_ivec_create(L, n_hidden, 0, 0);
     tk_ivec_zero(label_counts);
     for (uint64_t i = 0; i < set_bits->n; i++) {
       int64_t bit = set_bits->a[i];
@@ -659,8 +655,8 @@ static inline tk_ivec_t *tk_ivec_bits_top_mi (
       }
     }
 
-    tk_rvec_t *top_heap = tk_rvec_create(L, 0, 0, 0);
-    tk_dvec_t *feat_max_mi = tk_dvec_create(L, n_visible, 0, 0);
+    tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+    tk_dvec_t *feat_max_mi = tk_dvec_create(0, n_visible, 0, 0);
     tk_dvec_zero(feat_max_mi);
 
     int64_t k, v;
@@ -716,19 +712,17 @@ static inline tk_ivec_t *tk_ivec_bits_top_mi (
       }
     }
 
-    lua_remove(L, -2);
-
     tk_iumap_destroy(active_counts);
+    tk_ivec_destroy(feat_counts);
+    tk_ivec_destroy(label_counts);
+    tk_dvec_destroy(feat_max_mi);
+
     tk_rvec_desc(top_heap, 0, top_heap->n);
-    tk_ivec_t *out = tk_ivec_from_rvec(L, top_heap);
-    tk_dvec_t *weights = tk_dvec_create(L, top_heap->n, 0, 0);
-    for (uint64_t i = 0; i < top_heap->n; i++)
-      weights->a[i] = top_heap->a[i].d;
-
-    lua_remove(L, -5);
-    lua_remove(L, -4);
-    lua_remove(L, -3);
-
+    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+    tk_rvec_keys(L, top_heap, out);
+    tk_rvec_values(L, top_heap, weights);
+    tk_rvec_destroy(top_heap);
     return out;
 
   } else {
@@ -753,11 +747,12 @@ static inline tk_ivec_t *tk_ivec_bits_top_chi2 (
   tk_ivec_asc(set_bits, 0, set_bits->n);
 
   if (codes) {
-    tk_ivec_t *active_counts = tk_ivec_create(L, n_visible * n_hidden, 0, 0);
+
+    tk_ivec_t *active_counts = tk_ivec_create(0, n_visible * n_hidden, 0, 0);
+    tk_ivec_t *label_counts = tk_ivec_create(0, n_hidden, 0, 0);
+    tk_ivec_t *feat_counts = tk_ivec_create(0, n_visible, 0, 0);
     tk_ivec_zero(active_counts);
-    tk_ivec_t *label_counts = tk_ivec_create(L, n_hidden, 0, 0);
     tk_ivec_zero(label_counts);
-    tk_ivec_t *feat_counts = tk_ivec_create(L, n_visible, 0, 0);
     tk_ivec_zero(feat_counts);
 
     uint64_t prev_sample = UINT64_MAX;
@@ -795,7 +790,7 @@ static inline tk_ivec_t *tk_ivec_bits_top_chi2 (
       }
     }
 
-    tk_rvec_t *top_heap = tk_rvec_create(L, 0, 0, 0);
+    tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
     for (uint64_t f = 0; f < n_visible; f++) {
       double max_chi2 = 0.0;
       for (uint64_t b = 0; b < n_hidden; b++) {
@@ -823,26 +818,25 @@ static inline tk_ivec_t *tk_ivec_bits_top_chi2 (
       tk_rvec_hmin(top_heap, top_k, r);
     }
 
+    tk_ivec_destroy(active_counts);
+    tk_ivec_destroy(feat_counts);
+    tk_ivec_destroy(label_counts);
+
     tk_rvec_desc(top_heap, 0, top_heap->n);
-    tk_ivec_t *out = tk_ivec_from_rvec(L, top_heap);
-    tk_dvec_t *weights = tk_dvec_create(L, top_heap->n, 0, 0);
-    for (uint64_t i = 0; i < top_heap->n; i++)
-      weights->a[i] = top_heap->a[i].d;
-
-    lua_remove(L, -6);
-    lua_remove(L, -5);
-    lua_remove(L, -4);
-    lua_remove(L, -3);
-
+    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+    tk_rvec_keys(L, top_heap, out);
+    tk_rvec_values(L, top_heap, weights);
+    tk_rvec_destroy(top_heap);
     return out;
 
   } else if (labels) {
 
     tk_ivec_asc(labels, 0, labels->n);
     tk_iumap_t *active_counts = tk_iumap_create(0, 0);
-    tk_ivec_t *feat_counts = tk_ivec_create(L, n_visible, 0, 0);
+    tk_ivec_t *feat_counts = tk_ivec_create(0, n_visible, 0, 0);
+    tk_ivec_t *label_counts = tk_ivec_create(0, n_hidden, 0, 0);
     tk_ivec_zero(feat_counts);
-    tk_ivec_t *label_counts = tk_ivec_create(L, n_hidden, 0, 0);
     tk_ivec_zero(label_counts);
     for (uint64_t i = 0; i < set_bits->n; i++) {
       int64_t bit = set_bits->a[i];
@@ -890,8 +884,8 @@ static inline tk_ivec_t *tk_ivec_bits_top_chi2 (
       }
     }
 
-    tk_rvec_t *top_heap = tk_rvec_create(L, 0, 0, 0);
-    tk_dvec_t *feat_max_chi2 = tk_dvec_create(L, n_visible, 0, 0);
+    tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+    tk_dvec_t *feat_max_chi2 = tk_dvec_create(0, n_visible, 0, 0);
     tk_dvec_zero(feat_max_chi2);
 
     int64_t k, v;
@@ -938,19 +932,17 @@ static inline tk_ivec_t *tk_ivec_bits_top_chi2 (
       }
     }
 
-    lua_remove(L, -2);
-
     tk_iumap_destroy(active_counts);
+    tk_ivec_destroy(feat_counts);
+    tk_ivec_destroy(label_counts);
+    tk_dvec_destroy(feat_max_chi2);
+
     tk_rvec_desc(top_heap, 0, top_heap->n);
-    tk_ivec_t *out = tk_ivec_from_rvec(L, top_heap);
-    tk_dvec_t *weights = tk_dvec_create(L, top_heap->n, 0, 0);
-    for (uint64_t i = 0; i < top_heap->n; i++)
-      weights->a[i] = top_heap->a[i].d;
-
-    lua_remove(L, -5);
-    lua_remove(L, -4);
-    lua_remove(L, -3);
-
+    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+    tk_rvec_keys(L, top_heap, out);
+    tk_rvec_values(L, top_heap, weights);
+    tk_rvec_destroy(top_heap);
     return out;
 
   } else {
@@ -970,7 +962,7 @@ static inline tk_ivec_t *tk_ivec_bits_top_entropy (
   uint64_t top_k
 ) {
   tk_ivec_asc(set_bits, 0, set_bits->n);
-  tk_ivec_t *bit_counts = tk_ivec_create(L, n_hidden, 0, 0);
+  tk_ivec_t *bit_counts = tk_ivec_create(0, n_hidden, 0, 0);
   tk_ivec_zero(bit_counts);
   for (uint64_t i = 0; i < set_bits->n; i++) {
     int64_t bit_idx = set_bits->a[i];
@@ -982,7 +974,7 @@ static inline tk_ivec_t *tk_ivec_bits_top_entropy (
       continue;
     bit_counts->a[hidden_idx]++;
   }
-  tk_rvec_t *top_heap = tk_rvec_create(L, 0, 0, 0);
+  tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
   for (uint64_t h = 0; h < n_hidden; h++) {
     double p = (double)bit_counts->a[h] / (double)n_samples;
     double entropy = 0.0;
@@ -991,13 +983,13 @@ static inline tk_ivec_t *tk_ivec_bits_top_entropy (
     tk_rank_t r = { (int64_t)h, entropy };
     tk_rvec_hmin(top_heap, top_k, r);
   }
+  tk_ivec_destroy(bit_counts);
   tk_rvec_desc(top_heap, 0, top_heap->n);
-  tk_ivec_t *out = tk_ivec_from_rvec(L, top_heap);
-  tk_dvec_t *weights = tk_dvec_create(L, top_heap->n, 0, 0);
-  for (uint64_t i = 0; i < top_heap->n; i++)
-    weights->a[i] = top_heap->a[i].d;
-  lua_remove(L, -4);
-  lua_remove(L, -3);
+  tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+  tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+  tk_rvec_keys(L, top_heap, out);
+  tk_rvec_values(L, top_heap, weights);
+  tk_rvec_destroy(top_heap);
   return out;
 }
 
@@ -1011,8 +1003,10 @@ static inline tk_ivec_t *tk_cvec_bits_top_mi (
   uint64_t n_hidden,
   uint64_t top_k
 ) {
+
   if (codes) {
-    tk_ivec_t *counts = tk_ivec_create(L, n_features * n_hidden * 4, 0, 0);
+
+    tk_ivec_t *counts = tk_ivec_create(0, n_features * n_hidden * 4, 0, 0);
     tk_ivec_zero(counts);
     uint8_t *bitmap_data = (uint8_t *)bitmap->a;
     uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
@@ -1031,7 +1025,7 @@ static inline tk_ivec_t *tk_cvec_bits_top_mi (
         }
       }
     }
-    tk_rvec_t *top_heap = tk_rvec_create(L, 0, 0, 0);
+    tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
     for (uint64_t f = 0; f < n_features; f++) {
       double max_mi = 0.0;
       for (uint64_t j = 0; j < n_hidden; j++) {
@@ -1063,24 +1057,22 @@ static inline tk_ivec_t *tk_cvec_bits_top_mi (
       tk_rvec_hmin(top_heap, top_k, r);
     }
 
+    tk_ivec_destroy(counts);
     tk_rvec_desc(top_heap, 0, top_heap->n);
-    tk_ivec_t *out = tk_ivec_from_rvec(L, top_heap);
-    tk_dvec_t *weights = tk_dvec_create(L, top_heap->n, 0, 0);
-    for (uint64_t i = 0; i < top_heap->n; i++)
-      weights->a[i] = top_heap->a[i].d;
-
-    lua_remove(L, -4);
-    lua_remove(L, -3);
-
+    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+    tk_rvec_keys(L, top_heap, out);
+    tk_rvec_values(L, top_heap, weights);
+    tk_rvec_destroy(top_heap);
     return out;
 
   } else if (labels) {
 
     tk_ivec_asc(labels, 0, labels->n);
     tk_iumap_t *active_counts = tk_iumap_create(0, 0);
-    tk_ivec_t *feat_counts = tk_ivec_create(L, n_features, 0, 0);
+    tk_ivec_t *feat_counts = tk_ivec_create(0, n_features, 0, 0);
+    tk_ivec_t *label_counts = tk_ivec_create(0, n_hidden, 0, 0);
     tk_ivec_zero(feat_counts);
-    tk_ivec_t *label_counts = tk_ivec_create(L, n_hidden, 0, 0);
     tk_ivec_zero(label_counts);
     uint8_t *bitmap_data = (uint8_t *)bitmap->a;
     uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
@@ -1126,8 +1118,8 @@ static inline tk_ivec_t *tk_cvec_bits_top_mi (
       }
     }
 
-    tk_rvec_t *top_heap = tk_rvec_create(L, 0, 0, 0);
-    tk_dvec_t *feat_max_mi = tk_dvec_create(L, n_features, 0, 0);
+    tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+    tk_dvec_t *feat_max_mi = tk_dvec_create(0, n_features, 0, 0);
     tk_dvec_zero(feat_max_mi);
 
     double observed_density = (double)(total_feature_bits + labels->n) / (double)(n_samples * (n_features + n_hidden));
@@ -1183,20 +1175,18 @@ static inline tk_ivec_t *tk_cvec_bits_top_mi (
       }
     }
 
-    lua_remove(L, -2);
-
+    tk_ivec_destroy(feat_counts);
+    tk_ivec_destroy(label_counts);
+    tk_dvec_destroy(feat_max_mi);
     tk_iumap_destroy(active_counts);
     tk_rvec_desc(top_heap, 0, top_heap->n);
-    tk_ivec_t *out = tk_ivec_from_rvec(L, top_heap);
-    tk_dvec_t *weights = tk_dvec_create(L, top_heap->n, 0, 0);
-    for (uint64_t i = 0; i < top_heap->n; i++)
-      weights->a[i] = top_heap->a[i].d;
-
-    lua_remove(L, -5);
-    lua_remove(L, -4);
-    lua_remove(L, -3);
-
+    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+    tk_rvec_keys(L, top_heap, out);
+    tk_rvec_values(L, top_heap, weights);
+    tk_rvec_destroy(top_heap);
     return out;
+
 
   } else {
 
@@ -1219,11 +1209,12 @@ static inline tk_ivec_t *tk_cvec_bits_top_chi2 (
 ) {
 
   if (codes) {
-    tk_ivec_t *active_counts = tk_ivec_create(L, n_features * n_hidden, 0, 0);
+
+    tk_ivec_t *active_counts = tk_ivec_create(0, n_features * n_hidden, 0, 0);
+    tk_ivec_t *label_counts = tk_ivec_create(0, n_hidden, 0, 0);
+    tk_ivec_t *feat_counts = tk_ivec_create(0, n_features, 0, 0);
     tk_ivec_zero(active_counts);
-    tk_ivec_t *label_counts = tk_ivec_create(L, n_hidden, 0, 0);
     tk_ivec_zero(label_counts);
-    tk_ivec_t *feat_counts = tk_ivec_create(L, n_features, 0, 0);
     tk_ivec_zero(feat_counts);
 
     uint8_t *bitmap_data = (uint8_t *)bitmap->a;
@@ -1258,7 +1249,7 @@ static inline tk_ivec_t *tk_cvec_bits_top_chi2 (
       }
     }
 
-    tk_rvec_t *top_heap = tk_rvec_create(L, 0, 0, 0);
+    tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
     for (uint64_t f = 0; f < n_features; f++) {
       double max_chi2 = 0.0;
       for (uint64_t b = 0; b < n_hidden; b++) {
@@ -1286,26 +1277,25 @@ static inline tk_ivec_t *tk_cvec_bits_top_chi2 (
       tk_rvec_hmin(top_heap, top_k, r);
     }
 
+    tk_ivec_destroy(active_counts);
+    tk_ivec_destroy(feat_counts);
+    tk_ivec_destroy(label_counts);
+
     tk_rvec_desc(top_heap, 0, top_heap->n);
-    tk_ivec_t *out = tk_ivec_from_rvec(L, top_heap);
-    tk_dvec_t *weights = tk_dvec_create(L, top_heap->n, 0, 0);
-    for (uint64_t i = 0; i < top_heap->n; i++)
-      weights->a[i] = top_heap->a[i].d;
-
-    lua_remove(L, -6);
-    lua_remove(L, -5);
-    lua_remove(L, -4);
-    lua_remove(L, -3);
-
+    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+    tk_rvec_keys(L, top_heap, out);
+    tk_rvec_values(L, top_heap, weights);
+    tk_rvec_destroy(top_heap);
     return out;
 
   } else if (labels) {
 
     tk_ivec_asc(labels, 0, labels->n);
     tk_iumap_t *active_counts = tk_iumap_create(0, 0);
-    tk_ivec_t *feat_counts = tk_ivec_create(L, n_features, 0, 0);
+    tk_ivec_t *feat_counts = tk_ivec_create(0, n_features, 0, 0);
+    tk_ivec_t *label_counts = tk_ivec_create(0, n_hidden, 0, 0);
     tk_ivec_zero(feat_counts);
-    tk_ivec_t *label_counts = tk_ivec_create(L, n_hidden, 0, 0);
     tk_ivec_zero(label_counts);
 
     uint8_t *bitmap_data = (uint8_t *)bitmap->a;
@@ -1355,8 +1345,8 @@ static inline tk_ivec_t *tk_cvec_bits_top_chi2 (
       }
     }
 
-    tk_rvec_t *top_heap = tk_rvec_create(L, 0, 0, 0);
-    tk_dvec_t *feat_max_chi2 = tk_dvec_create(L, n_features, 0, 0);
+    tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+    tk_dvec_t *feat_max_chi2 = tk_dvec_create(0, n_features, 0, 0);
     tk_dvec_zero(feat_max_chi2);
 
     double observed_density = (double)(total_feature_bits + labels->n) / (double)(n_samples * (n_features + n_hidden));
@@ -1404,19 +1394,17 @@ static inline tk_ivec_t *tk_cvec_bits_top_chi2 (
       }
     }
 
-    lua_remove(L, -2);
-
     tk_iumap_destroy(active_counts);
+    tk_ivec_destroy(feat_counts);
+    tk_ivec_destroy(label_counts);
+    tk_dvec_destroy(feat_max_chi2);
+
     tk_rvec_desc(top_heap, 0, top_heap->n);
-    tk_ivec_t *out = tk_ivec_from_rvec(L, top_heap);
-    tk_dvec_t *weights = tk_dvec_create(L, top_heap->n, 0, 0);
-    for (uint64_t i = 0; i < top_heap->n; i++)
-      weights->a[i] = top_heap->a[i].d;
-
-    lua_remove(L, -5);
-    lua_remove(L, -4);
-    lua_remove(L, -3);
-
+    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+    tk_rvec_keys(L, top_heap, out);
+    tk_rvec_values(L, top_heap, weights);
+    tk_rvec_destroy(top_heap);
     return out;
 
   } else {
@@ -1442,11 +1430,11 @@ static inline tk_ivec_t *tk_ivec_bits_top_lift (
 
   if (codes) {
 
-    tk_ivec_t *feat_counts = tk_ivec_create(L, n_visible, 0, 0);
+    tk_ivec_t *feat_counts = tk_ivec_create(0, n_visible, 0, 0);
+    tk_ivec_t *label_counts = tk_ivec_create(0, n_hidden, 0, 0);
+    tk_ivec_t *cooccur_counts = tk_ivec_create(0, n_visible * n_hidden, 0, 0);
     tk_ivec_zero(feat_counts);
-    tk_ivec_t *label_counts = tk_ivec_create(L, n_hidden, 0, 0);
     tk_ivec_zero(label_counts);
-    tk_ivec_t *cooccur_counts = tk_ivec_create(L, n_visible * n_hidden, 0, 0);
     tk_ivec_zero(cooccur_counts);
 
     uint64_t prev_sample = UINT64_MAX;
@@ -1482,7 +1470,7 @@ static inline tk_ivec_t *tk_ivec_bits_top_lift (
       }
     }
 
-    tk_rvec_t *top_heap = tk_rvec_create(L, 0, 0, 0);
+    tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
     for (uint64_t f = 0; f < n_visible; f++) {
       double max_score = 0.0;
       int64_t feat_total = feat_counts->a[f];
@@ -1511,26 +1499,25 @@ static inline tk_ivec_t *tk_ivec_bits_top_lift (
       }
     }
 
+    tk_ivec_destroy(feat_counts);
+    tk_ivec_destroy(label_counts);
+    tk_ivec_destroy(cooccur_counts);
+
     tk_rvec_desc(top_heap, 0, top_heap->n);
-    tk_ivec_t *out = tk_ivec_from_rvec(L, top_heap);
-    tk_dvec_t *weights = tk_dvec_create(L, top_heap->n, 0, 0);
-    for (uint64_t i = 0; i < top_heap->n; i++)
-      weights->a[i] = top_heap->a[i].d;
-
-    lua_remove(L, -6);
-    lua_remove(L, -5);
-    lua_remove(L, -4);
-    lua_remove(L, -3);
-
+    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+    tk_rvec_keys(L, top_heap, out);
+    tk_rvec_values(L, top_heap, weights);
+    tk_rvec_destroy(top_heap);
     return out;
 
   } else if (labels) {
 
     tk_ivec_asc(labels, 0, labels->n);
     tk_iumap_t *active_counts = tk_iumap_create(0, 0);
-    tk_ivec_t *feat_counts = tk_ivec_create(L, n_visible, 0, 0);
+    tk_ivec_t *feat_counts = tk_ivec_create(0, n_visible, 0, 0);
+    tk_ivec_t *label_counts = tk_ivec_create(0, n_hidden, 0, 0);
     tk_ivec_zero(feat_counts);
-    tk_ivec_t *label_counts = tk_ivec_create(L, n_hidden, 0, 0);
     tk_ivec_zero(label_counts);
 
     for (uint64_t i = 0; i < set_bits->n; i++) {
@@ -1578,8 +1565,8 @@ static inline tk_ivec_t *tk_ivec_bits_top_lift (
         li = li_start;
     }
 
-    tk_rvec_t *top_heap = tk_rvec_create(L, 0, 0, 0);
-    tk_dvec_t *feat_max_score = tk_dvec_create(L, n_visible, 0, 0);
+    tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+    tk_dvec_t *feat_max_score = tk_dvec_create(0, n_visible, 0, 0);
     tk_dvec_zero(feat_max_score);
 
     int64_t k, v;
@@ -1608,25 +1595,24 @@ static inline tk_ivec_t *tk_ivec_bits_top_lift (
       }
     }
 
-    lua_remove(L, -2);
-
     tk_iumap_destroy(active_counts);
+    tk_ivec_destroy(feat_counts);
+    tk_ivec_destroy(label_counts);
+
     tk_rvec_desc(top_heap, 0, top_heap->n);
-    tk_ivec_t *out = tk_ivec_from_rvec(L, top_heap);
-    tk_dvec_t *weights = tk_dvec_create(L, top_heap->n, 0, 0);
-    for (uint64_t i = 0; i < top_heap->n; i++)
-      weights->a[i] = top_heap->a[i].d;
-
-    lua_remove(L, -5);
-    lua_remove(L, -4);
-    lua_remove(L, -3);
-
+    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+    tk_rvec_keys(L, top_heap, out);
+    tk_rvec_values(L, top_heap, weights);
+    tk_rvec_destroy(top_heap);
     return out;
 
   } else {
+
     tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
     tk_dvec_create(L, 0, 0, 0);
     return out;
+
   }
 }
 
@@ -1637,7 +1623,7 @@ static inline tk_ivec_t *tk_cvec_bits_top_entropy (
   uint64_t n_hidden,
   uint64_t top_k
 ) {
-  tk_ivec_t *bit_counts = tk_ivec_create(L, n_hidden, 0, 0);
+  tk_ivec_t *bit_counts = tk_ivec_create(0, n_hidden, 0, 0);
   tk_ivec_zero(bit_counts);
   for (uint64_t s = 0; s < n_samples; s++) {
     uint8_t *sample_codes = (uint8_t *)(codes->a + s * TK_CVEC_BITS_BYTES(n_hidden));
@@ -1648,7 +1634,7 @@ static inline tk_ivec_t *tk_cvec_bits_top_entropy (
         bit_counts->a[h]++;
     }
   }
-  tk_rvec_t *top_heap = tk_rvec_create(L, 0, 0, 0);
+  tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
   for (uint64_t h = 0; h < n_hidden; h++) {
     double p = (double)bit_counts->a[h] / (double)n_samples;
     double entropy = 0.0;
@@ -1657,13 +1643,13 @@ static inline tk_ivec_t *tk_cvec_bits_top_entropy (
     tk_rank_t r = { (int64_t)h, entropy };
     tk_rvec_hmin(top_heap, top_k, r);
   }
+  tk_ivec_destroy(bit_counts);
   tk_rvec_desc(top_heap, 0, top_heap->n);
-  tk_ivec_t *out = tk_ivec_from_rvec(L, top_heap);
-  tk_dvec_t *weights = tk_dvec_create(L, top_heap->n, 0, 0);
-  for (uint64_t i = 0; i < top_heap->n; i++)
-    weights->a[i] = top_heap->a[i].d;
-  lua_remove(L, -4);
-  lua_remove(L, -3);
+  tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+  tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+  tk_rvec_keys(L, top_heap, out);
+  tk_rvec_values(L, top_heap, weights);
+  tk_rvec_destroy(top_heap);
   return out;
 }
 
@@ -1677,12 +1663,9 @@ static inline tk_ivec_t *tk_ivec_bits_top_df (
   uint64_t top_k
 ) {
   tk_ivec_asc(set_bits, 0, set_bits->n);
-  tk_dvec_t *idf_scores = tk_dvec_create(L, n_features, 0, 0);
-  tk_dvec_zero(idf_scores);
-  int i_scores = tk_lua_absindex(L, -1);
   tk_iuset_t **feature_docs = (tk_iuset_t **)calloc(n_features, sizeof(tk_iuset_t *));
   for (uint64_t i = 0; i < n_features; i++)
-    feature_docs[i] = tk_iuset_create(L, 0);
+    feature_docs[i] = tk_iuset_create(0, 0);
   for (uint64_t i = 0; i < set_bits->n; i++) {
     int64_t bit_idx = set_bits->a[i];
     if (bit_idx < 0)
@@ -1694,30 +1677,26 @@ static inline tk_ivec_t *tk_ivec_bits_top_df (
       tk_iuset_put(feature_docs[feature_idx], (int64_t)sample_idx, &absent);
     }
   }
-  tk_rvec_t *top_heap = tk_rvec_create(L, 0, 0, 0);
+  tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
   double min_df_abs = min_df < 0 ? -min_df : min_df * n_samples;
   double max_df_abs = max_df < 0 ? -max_df : max_df * n_samples;
   for (uint64_t i = 0; i < n_features; i++) {
     double df_count = (double)tk_iuset_size(feature_docs[i]);
     double idf = log((double)(n_samples + 1) / (df_count + 1));
-    idf_scores->a[i] = idf;
     if (df_count >= min_df_abs && df_count <= max_df_abs) {
       tk_rank_t r = { (int64_t)i, idf };
       tk_rvec_hmin(top_heap, top_k, r);
     }
   }
   tk_rvec_desc(top_heap, 0, top_heap->n);
-  tk_ivec_t *out = tk_ivec_from_rvec(L, top_heap);
-  tk_dvec_t *weights = tk_dvec_create(L, top_heap->n, 0, 0);
-  for (uint64_t i = 0; i < top_heap->n; i++) {
-    weights->a[i] = top_heap->a[i].d;
-  }
-  for (uint64_t i = 0; i < n_features; i++) {
+  tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+  tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+  tk_rvec_keys(L, top_heap, out);
+  tk_rvec_values(L, top_heap, weights);
+  for (uint64_t i = 0; i < n_features; i++)
     tk_iuset_destroy(feature_docs[i]);
-  }
   free(feature_docs);
-  lua_remove(L, i_scores);
-  lua_remove(L, -3);
+  tk_rvec_destroy(top_heap);
   return out;
 }
 
@@ -1734,11 +1713,11 @@ static inline tk_ivec_t *tk_cvec_bits_top_lift (
 
   if (codes) {
 
-    tk_ivec_t *feat_counts = tk_ivec_create(L, n_features, 0, 0);
-    tk_ivec_zero(feat_counts);
-    tk_ivec_t *label_counts = tk_ivec_create(L, n_hidden, 0, 0);
-    tk_ivec_zero(label_counts);
     tk_iumap_t *active_counts = tk_iumap_create(0, 0);
+    tk_ivec_t *feat_counts = tk_ivec_create(0, n_features, 0, 0);
+    tk_ivec_t *label_counts = tk_ivec_create(0, n_hidden, 0, 0);
+    tk_ivec_zero(feat_counts);
+    tk_ivec_zero(label_counts);
 
     uint8_t *bitmap_data = (uint8_t *)bitmap->a;
     uint8_t *codes_data = (uint8_t *)codes->a;
@@ -1784,8 +1763,8 @@ static inline tk_ivec_t *tk_cvec_bits_top_lift (
       }
     }
 
-    tk_rvec_t *top_heap = tk_rvec_create(L, 0, 0, 0);
-    tk_dvec_t *feat_max_score = tk_dvec_create(L, n_features, 0, 0);
+    tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+    tk_dvec_t *feat_max_score = tk_dvec_create(0, n_features, 0, 0);
     tk_dvec_zero(feat_max_score);
 
     int64_t k, v;
@@ -1797,18 +1776,12 @@ static inline tk_ivec_t *tk_cvec_bits_top_lift (
       int64_t cooccur = v;
       int64_t feat_total = feat_counts->a[f];
       int64_t label_total = label_counts->a[h];
-
-
       double p_label_given_feature = (double)cooccur / feat_total;
       double p_label = (double)label_total / n_samples;
       double lift = p_label_given_feature / (p_label + 1e-10);
-
-
       double expected = (double)(feat_total * label_total) / n_samples;
       if (expected > 1.0 && cooccur < sqrt(expected))
         continue;
-
-
       double weighted_lift = lift * log2(1 + cooccur);
       if (weighted_lift > feat_max_score->a[f])
         feat_max_score->a[f] = weighted_lift;
@@ -1821,28 +1794,26 @@ static inline tk_ivec_t *tk_cvec_bits_top_lift (
       }
     }
 
-    lua_remove(L, -2);
-
     tk_iumap_destroy(active_counts);
+    tk_ivec_destroy(feat_counts);
+    tk_ivec_destroy(label_counts);
+    tk_dvec_destroy(feat_max_score);
+
     tk_rvec_desc(top_heap, 0, top_heap->n);
-    tk_ivec_t *out = tk_ivec_from_rvec(L, top_heap);
-    tk_dvec_t *weights = tk_dvec_create(L, top_heap->n, 0, 0);
-    for (uint64_t i = 0; i < top_heap->n; i++)
-      weights->a[i] = top_heap->a[i].d;
-
-    lua_remove(L, -5);
-    lua_remove(L, -4);
-    lua_remove(L, -3);
-
+    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+    tk_rvec_keys(L, top_heap, out);
+    tk_rvec_values(L, top_heap, weights);
+    tk_rvec_destroy(top_heap);
     return out;
 
   } else if (labels) {
 
     tk_ivec_asc(labels, 0, labels->n);
     tk_iumap_t *active_counts = tk_iumap_create(0, 0);
-    tk_ivec_t *feat_counts = tk_ivec_create(L, n_features, 0, 0);
+    tk_ivec_t *feat_counts = tk_ivec_create(0, n_features, 0, 0);
+    tk_ivec_t *label_counts = tk_ivec_create(0, n_hidden, 0, 0);
     tk_ivec_zero(feat_counts);
-    tk_ivec_t *label_counts = tk_ivec_create(L, n_hidden, 0, 0);
     tk_ivec_zero(label_counts);
 
     uint8_t *bitmap_data = (uint8_t *)bitmap->a;
@@ -1856,7 +1827,6 @@ static inline tk_ivec_t *tk_cvec_bits_top_lift (
           feat_counts->a[f]++;
       }
     }
-
 
     for (uint64_t i = 0; i < labels->n; i++) {
       int64_t bit = labels->a[i];
@@ -1887,8 +1857,8 @@ static inline tk_ivec_t *tk_cvec_bits_top_lift (
       }
     }
 
-    tk_rvec_t *top_heap = tk_rvec_create(L, 0, 0, 0);
-    tk_dvec_t *feat_max_score = tk_dvec_create(L, n_features, 0, 0);
+    tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+    tk_dvec_t *feat_max_score = tk_dvec_create(0, n_features, 0, 0);
     tk_dvec_zero(feat_max_score);
 
     int64_t k, v;
@@ -1900,18 +1870,12 @@ static inline tk_ivec_t *tk_cvec_bits_top_lift (
       int64_t cooccur = v;
       int64_t feat_total = feat_counts->a[f];
       int64_t label_total = label_counts->a[h];
-
-
       double p_label_given_feature = (double)cooccur / feat_total;
       double p_label = (double)label_total / n_samples;
       double lift = p_label_given_feature / (p_label + 1e-10);
-
-
       double expected = (double)(feat_total * label_total) / n_samples;
       if (expected > 1.0 && cooccur < sqrt(expected))
         continue;
-
-
       double weighted_lift = lift * log2(1 + cooccur);
       if (weighted_lift > feat_max_score->a[f])
         feat_max_score->a[f] = weighted_lift;
@@ -1924,18 +1888,18 @@ static inline tk_ivec_t *tk_cvec_bits_top_lift (
       }
     }
 
-    lua_remove(L, -2);
-
     tk_iumap_destroy(active_counts);
-    tk_rvec_desc(top_heap, 0, top_heap->n);
-    tk_ivec_t *out = tk_ivec_from_rvec(L, top_heap);
-    tk_dvec_t *weights = tk_dvec_create(L, top_heap->n, 0, 0);
-    for (uint64_t i = 0; i < top_heap->n; i++)
-      weights->a[i] = top_heap->a[i].d;
+    tk_ivec_destroy(feat_counts);
+    tk_ivec_destroy(label_counts);
+    tk_dvec_destroy(feat_max_score);
 
-    lua_remove(L, -5);
-    lua_remove(L, -4);
-    lua_remove(L, -3);
+    tk_rvec_desc(top_heap, 0, top_heap->n);
+    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+    tk_rvec_keys(L, top_heap, out);
+    tk_rvec_values(L, top_heap, weights);
+    tk_rvec_destroy(top_heap);
+    return out;
 
     return out;
 
@@ -1957,12 +1921,9 @@ static inline tk_ivec_t *tk_cvec_bits_top_df (
   double max_df,
   uint64_t top_k
 ) {
-  tk_dvec_t *idf_scores = tk_dvec_create(L, n_features, 0, 0);
-  tk_dvec_zero(idf_scores);
-  int i_scores = tk_lua_absindex(L, -1);
   tk_iuset_t **feature_docs = (tk_iuset_t **)calloc(n_features, sizeof(tk_iuset_t *));
   for (uint64_t i = 0; i < n_features; i++)
-    feature_docs[i] = tk_iuset_create(L, 0);
+    feature_docs[i] = tk_iuset_create(0, 0);
   uint8_t *data = (uint8_t *)bitmap->a;
   uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
   for (uint64_t s = 0; s < n_samples; s++) {
@@ -1982,24 +1943,20 @@ static inline tk_ivec_t *tk_cvec_bits_top_df (
   for (uint64_t i = 0; i < n_features; i++) {
     double df_count = (double)tk_iuset_size(feature_docs[i]);
     double idf = log((double)(n_samples + 1) / (df_count + 1));
-    idf_scores->a[i] = idf;
     if (df_count >= min_df_abs && df_count <= max_df_abs) {
       tk_rank_t r = { (int64_t)i, idf };
       tk_rvec_hmin(top_heap, top_k, r);
     }
   }
   tk_rvec_desc(top_heap, 0, top_heap->n);
-  tk_ivec_t *out = tk_ivec_from_rvec(L, top_heap);
-  tk_dvec_t *weights = tk_dvec_create(L, top_heap->n, 0, 0);
-  for (uint64_t i = 0; i < top_heap->n; i++) {
-    weights->a[i] = top_heap->a[i].d;
-  }
-  for (uint64_t i = 0; i < n_features; i++) {
+  tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+  tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+  tk_rvec_keys(L, top_heap, out);
+  tk_rvec_values(L, top_heap, weights);
+  for (uint64_t i = 0; i < n_features; i++)
     tk_iuset_destroy(feature_docs[i]);
-  }
   free(feature_docs);
-  lua_remove(L, i_scores);
-  lua_remove(L, -3);
+  tk_rvec_destroy(top_heap);
   return out;
 }
 

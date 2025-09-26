@@ -1,5 +1,8 @@
 # Now
 
+- Sanitize
+    - All bits_top routines
+
 - tk_cvec_t
     - Implement cvec to/from string
 
