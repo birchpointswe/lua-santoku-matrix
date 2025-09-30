@@ -32,7 +32,8 @@ static inline double tk_dumap_correlation (
 ) {
   uint32_t i;
   uint32_t n = 0;
-  int64_t a, ra, rb;
+  int64_t a;
+  double ra, rb;
   double sum_squared_diff = 0.0;
   tk_umap_foreach(nbrs_a, a, ra, ({
     i = tk_dumap_get(nbrs_b, a);
@@ -44,7 +45,8 @@ static inline double tk_dumap_correlation (
     sum_squared_diff += diff * diff;
   }))
   if (n > 1) {
-    double correlation = 1.0 - (6.0 * sum_squared_diff) / (n * (n * n - 1));
+    double n_double = (double) n;
+    double correlation = 1.0 - (6.0 * sum_squared_diff) / (n_double * (n_double * n_double - 1.0));
     return correlation;
   }
   return 1.0;

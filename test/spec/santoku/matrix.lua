@@ -141,7 +141,7 @@ end
 do
   local corpus = ivec.create({ 0, 4, 8, 12 })
   local subcorpus = ivec.create()
-  subcorpus:bits_copy(corpus, nil, ivec.create({ 0, 3 }), 4)
+  corpus:bits_select(nil, ivec.create({ 0, 3 }), 4, subcorpus)
   err.assert(tbl.equals({ 0, 4 }, subcorpus:table()))
 end
 

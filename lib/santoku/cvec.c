@@ -28,15 +28,6 @@ static inline int tk_cvec_bits_from_ivec_lua (lua_State *L) {
   return 1;
 }
 
-static inline int tk_cvec_bits_rearrange_lua (lua_State *L) {
-  lua_settop(L, 3);
-  tk_cvec_t *bitmap = tk_cvec_peek(L, 1, "bitmap");
-  tk_ivec_t *ids = tk_ivec_peek(L, 2, "ids");
-  uint64_t n_features = tk_lua_checkunsigned(L, 3, "n_features");
-  tk_cvec_bits_rearrange(bitmap, ids, n_features);
-  return 0;
-}
-
 static inline void tk_cvec_bits_extend_ivec_helper (
   lua_State *L,
   tk_cvec_t *base,
@@ -96,51 +87,39 @@ static inline int tk_cvec_bits_extend_lua (lua_State *L) {
   return 0;
 }
 
-static inline int tk_cvec_bits_filter_lua (lua_State *L) {
+static inline int tk_cvec_bits_select_lua (lua_State *L) {
   int n_args = lua_gettop(L);
-  tk_cvec_t *bitmap = tk_cvec_peek(L, 1, "bitmap");
+  tk_cvec_t *src_bitmap = tk_cvec_peek(L, 1, "src_bitmap");
   tk_ivec_t *selected_features = lua_isnil(L, 2) ? NULL : tk_ivec_peek(L, 2, "selected_features");
   tk_ivec_t *sample_ids = NULL;
   uint64_t n_features;
-  if (n_args == 4) {
-    sample_ids = lua_isnil(L, 3) ? NULL : tk_ivec_peek(L, 3, "sample_ids");
-    n_features = tk_lua_checkunsigned(L, 4, "n_features");
-  } else {
-    n_features = tk_lua_checkunsigned(L, 3, "n_features");
-  }
-  tk_cvec_bits_filter(bitmap, selected_features, sample_ids, n_features);
-  return 0;
-}
-
-static inline int tk_cvec_bits_copy_lua (lua_State *L) {
-  int n_args = lua_gettop(L);
-  tk_cvec_t *dest = tk_cvec_peek(L, 1, "dest");
-  tk_cvec_t *src_bitmap = tk_cvec_peek(L, 2, "src_bitmap");
-  tk_ivec_t *selected_features = lua_isnil(L, 3) ? NULL : tk_ivec_peek(L, 3, "selected_features");
-  tk_ivec_t *sample_ids = NULL;
-  uint64_t n_features;
+  tk_cvec_t *dest = NULL;
   uint64_t dest_sample = 0;
   uint64_t dest_stride = 0;
 
-  if (n_args == 7) {
-    sample_ids = lua_isnil(L, 4) ? NULL : tk_ivec_peek(L, 4, "sample_ids");
-    n_features = tk_lua_checkunsigned(L, 5, "n_features");
+  if (n_args == 4) {
+    sample_ids = lua_isnil(L, 3) ? NULL : tk_ivec_peek(L, 3, "sample_ids");
+    n_features = tk_lua_checkunsigned(L, 4, "n_features");
+  } else if (n_args == 5) {
+    sample_ids = lua_isnil(L, 3) ? NULL : tk_ivec_peek(L, 3, "sample_ids");
+    n_features = tk_lua_checkunsigned(L, 4, "n_features");
+    dest = tk_cvec_peek(L, 5, "dest");
+  } else if (n_args == 6) {
+    sample_ids = lua_isnil(L, 3) ? NULL : tk_ivec_peek(L, 3, "sample_ids");
+    n_features = tk_lua_checkunsigned(L, 4, "n_features");
+    dest = tk_cvec_peek(L, 5, "dest");
+    dest_sample = tk_lua_checkunsigned(L, 6, "dest_sample");
+  } else if (n_args == 7) {
+    sample_ids = lua_isnil(L, 3) ? NULL : tk_ivec_peek(L, 3, "sample_ids");
+    n_features = tk_lua_checkunsigned(L, 4, "n_features");
+    dest = tk_cvec_peek(L, 5, "dest");
     dest_sample = tk_lua_checkunsigned(L, 6, "dest_sample");
     dest_stride = tk_lua_checkunsigned(L, 7, "dest_stride");
-  } else if (n_args == 6) {
-    sample_ids = lua_isnil(L, 4) ? NULL : tk_ivec_peek(L, 4, "sample_ids");
-    n_features = tk_lua_checkunsigned(L, 5, "n_features");
-    dest_sample = tk_lua_checkunsigned(L, 6, "dest_sample");
-  } else if (n_args == 5) {
-    sample_ids = lua_isnil(L, 4) ? NULL : tk_ivec_peek(L, 4, "sample_ids");
-    n_features = tk_lua_checkunsigned(L, 5, "n_features");
-  } else if (n_args == 4) {
-    n_features = tk_lua_checkunsigned(L, 4, "n_features");
   } else {
-    return luaL_error(L, "bits_copy expects 4-7 arguments, got %d", n_args);
+    n_features = tk_lua_checkunsigned(L, 3, "n_features");
   }
 
-  tk_cvec_bits_copy(dest, src_bitmap, selected_features, sample_ids, n_features, dest_sample, dest_stride);
+  tk_cvec_bits_select(src_bitmap, selected_features, sample_ids, n_features, dest, dest_sample, dest_stride);
   return 0;
 }
 
@@ -315,10 +294,8 @@ static luaL_Reg tk_cvec_lua_mt_ext2_fns[] =
 {
   { "bits_flip_interleave", tk_cvec_bits_flip_interleave_lua },
   { "bits_to_ivec", tk_cvec_bits_to_ivec_lua },
-  { "bits_rearrange", tk_cvec_bits_rearrange_lua },
+  { "bits_select", tk_cvec_bits_select_lua },
   { "bits_extend", tk_cvec_bits_extend_lua },
-  { "bits_filter", tk_cvec_bits_filter_lua },
-  { "bits_copy", tk_cvec_bits_copy_lua },
   { "bits_top_chi2", tk_cvec_bits_top_chi2_lua },
   { "bits_top_mi", tk_cvec_bits_top_mi_lua },
   { "bits_top_lift", tk_cvec_bits_top_lift_lua },

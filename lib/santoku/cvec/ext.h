@@ -290,27 +290,6 @@ static inline tk_cvec_t *tk_cvec_bits_from_ivec (
   return out;
 }
 
-static inline void tk_cvec_bits_rearrange (
-  tk_cvec_t *bitmap,
-  tk_ivec_t *ids,
-  uint64_t n_features
-) {
-  uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
-  uint64_t n_samples = ids->n;
-  uint8_t *data = (uint8_t *)bitmap->a;
-  uint8_t *temp = malloc(n_samples * bytes_per_sample);
-  if (!temp) return;
-  for (uint64_t i = 0; i < n_samples; i++) {
-    int64_t src_idx = ids->a[i];
-    if (src_idx < 0) continue;
-    memcpy(temp + i * bytes_per_sample,
-           data + (uint64_t) src_idx * bytes_per_sample,
-           bytes_per_sample);
-  }
-  memcpy(data, temp, n_samples * bytes_per_sample);
-  free(temp);
-  bitmap->n = n_samples * bytes_per_sample;
-}
 
 static inline void tk_cvec_bits_extend (
   tk_cvec_t *base,
