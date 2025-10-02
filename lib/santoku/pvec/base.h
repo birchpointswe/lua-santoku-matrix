@@ -16,6 +16,8 @@ typedef struct { int64_t i; int64_t p; } tk_pair_t;
 
 static inline void tk_pvec_hmax (tk_pvec_t *v, size_t k, tk_pair_t r)
 {
+  if (k == 0)
+    return;
   if (v->n < k) {
     tk_pvec_push(v, r);
     if (v->n == k)
@@ -28,6 +30,8 @@ static inline void tk_pvec_hmax (tk_pvec_t *v, size_t k, tk_pair_t r)
 
 static inline void tk_pvec_hmin (tk_pvec_t *v, size_t k, tk_pair_t r)
 {
+  if (k == 0)
+    return;
   if (v->n < k) {
     tk_pvec_push(v, r);
     if (v->n == k)
@@ -39,24 +43,32 @@ static inline void tk_pvec_hmin (tk_pvec_t *v, size_t k, tk_pair_t r)
 }
 
 static inline void tk_pvec_hmax_init (tk_pvec_t *v) {
-  ks_heapmake(tk_pvec_asc, v->n, v->a);
+  if (v->n > 0)
+    ks_heapmake(tk_pvec_asc, v->n, v->a);
 }
 
 static inline void tk_pvec_hmin_init (tk_pvec_t *v) {
-  ks_heapmake(tk_pvec_desc, v->n, v->a);
+  if (v->n > 0)
+    ks_heapmake(tk_pvec_desc, v->n, v->a);
 }
 
 static inline tk_pair_t tk_pvec_hmax_pop (tk_pvec_t *v) {
+  if (v->n == 0)
+    return (tk_pair_t) { 0, 0 };
   tk_pair_t top = v->a[0];
   v->a[0] = v->a[--v->n];
-  ks_heapadjust(tk_pvec_asc, 0, v->n, v->a);
+  if (v->n > 0)
+    ks_heapadjust(tk_pvec_asc, 0, v->n, v->a);
   return top;
 }
 
 static inline tk_pair_t tk_pvec_hmin_pop (tk_pvec_t *v) {
+  if (v->n == 0)
+    return (tk_pair_t) { 0, 0 };
   tk_pair_t top = v->a[0];
   v->a[0] = v->a[--v->n];
-  ks_heapadjust(tk_pvec_desc, 0, v->n, v->a);
+  if (v->n > 0)
+    ks_heapadjust(tk_pvec_desc, 0, v->n, v->a);
   return top;
 }
 

@@ -67,8 +67,12 @@ static inline void tk_vec_pfx(destroy) (tk_vec_pfx(t) *r)
 #endif
   bool lua_managed = r->lua_managed;
   kv_destroy(*r);
-  memset(r, 0, sizeof(tk_vec_pfx(t)));
-  r->lua_managed = lua_managed;
+  if (!lua_managed)
+    free(r);
+  else {
+    memset(r, 0, sizeof(tk_vec_pfx(t)));
+    r->lua_managed = lua_managed;
+  }
 }
 
 static inline bool tk_vec_pfx(lt) (tk_vec_base a, tk_vec_base b)

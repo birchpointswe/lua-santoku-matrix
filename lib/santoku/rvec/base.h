@@ -16,6 +16,8 @@ typedef struct { int64_t i; double d; } tk_rank_t;
 
 static inline void tk_rvec_hmax (tk_rvec_t *v, size_t k, tk_rank_t r)
 {
+  if (k == 0)
+    return;
   if (v->n < k) {
     tk_rvec_push(v, r);
     if (v->n == k)
@@ -28,6 +30,8 @@ static inline void tk_rvec_hmax (tk_rvec_t *v, size_t k, tk_rank_t r)
 
 static inline void tk_rvec_hmin (tk_rvec_t *v, size_t k, tk_rank_t r)
 {
+  if (k == 0)
+    return;
   if (v->n < k) {
     tk_rvec_push(v, r);
     if (v->n == k)
@@ -39,24 +43,32 @@ static inline void tk_rvec_hmin (tk_rvec_t *v, size_t k, tk_rank_t r)
 }
 
 static inline void tk_rvec_hmax_init (tk_rvec_t *v) {
-  ks_heapmake(tk_rvec_desc, v->n, v->a);
+  if (v->n > 0)
+    ks_heapmake(tk_rvec_desc, v->n, v->a);
 }
 
 static inline void tk_rvec_hmin_init (tk_rvec_t *v) {
-  ks_heapmake(tk_rvec_asc, v->n, v->a);
+  if (v->n > 0)
+    ks_heapmake(tk_rvec_asc, v->n, v->a);
 }
 
 static inline tk_rank_t tk_rvec_hmax_pop (tk_rvec_t *v) {
+  if (v->n == 0)
+    return (tk_rank_t) { 0, 0.0 };
   tk_rank_t top = v->a[0];
   v->a[0] = v->a[--v->n];
-  ks_heapadjust(tk_rvec_desc, 0, v->n, v->a);
+  if (v->n > 0)
+    ks_heapadjust(tk_rvec_desc, 0, v->n, v->a);
   return top;
 }
 
 static inline tk_rank_t tk_rvec_hmin_pop (tk_rvec_t *v) {
+  if (v->n == 0)
+    return (tk_rank_t) { 0, 0.0 };
   tk_rank_t top = v->a[0];
   v->a[0] = v->a[--v->n];
-  ks_heapadjust(tk_rvec_asc, 0, v->n, v->a);
+  if (v->n > 0)
+    ks_heapadjust(tk_rvec_asc, 0, v->n, v->a);
   return top;
 }
 
