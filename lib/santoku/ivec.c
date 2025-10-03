@@ -89,7 +89,8 @@ static inline int tk_ivec_bits_top_df_lua (lua_State *L)
   uint64_t top_k = lua_isnil(L, 4) ? n_visible : tk_lua_checkunsigned(L, 4, "top_k");
   double min_df = tk_lua_optnumber(L, 5, "min_df", 0.0);
   double max_df = tk_lua_optnumber(L, 6, "max_df", 1.0);
-  tk_ivec_bits_top_df(L, set_bits, n_samples, n_visible, min_df, max_df, top_k);
+  if (!tk_ivec_bits_top_df(L, set_bits, n_samples, n_visible, min_df, max_df, top_k))
+    return tk_lua_verror(L, 2, "bits_top_df", "allocation failed");
   return 2;
 }
 

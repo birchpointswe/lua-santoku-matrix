@@ -7,7 +7,8 @@ static inline int tk_cvec_bits_flip_interleave_lua (lua_State *L) {
   lua_settop(L, 2);
   tk_cvec_t *v = tk_cvec_peek(L, 1, "cvec");
   uint64_t n_features = tk_lua_checkunsigned(L, 2, "n_features");
-  tk_cvec_bits_flip_interleave(v, n_features);
+  if (!tk_cvec_bits_flip_interleave(v, n_features))
+    return tk_lua_verror(L, 2, "bits_flip_interleave", "allocation failed");
   return 0;
 }
 
@@ -28,7 +29,7 @@ static inline int tk_cvec_bits_from_ivec_lua (lua_State *L) {
   return 1;
 }
 
-static inline void tk_cvec_bits_extend_ivec_helper (
+static inline tk_cvec_t *tk_cvec_bits_extend_ivec_helper (
   lua_State *L,
   tk_cvec_t *base,
   tk_ivec_t *ext_ivec,
@@ -37,9 +38,10 @@ static inline void tk_cvec_bits_extend_ivec_helper (
   uint64_t n_samples
 ) {
   tk_cvec_t *ext = tk_cvec_bits_from_ivec(L, ext_ivec, n_samples, n_ext_features);
-  tk_cvec_bits_extend(base, ext, n_base_features, n_ext_features);
+  tk_cvec_t *result = tk_cvec_bits_extend(base, ext, n_base_features, n_ext_features);
   tk_cvec_destroy(ext);
   lua_remove(L, -1);
+  return result;
 }
 
 static inline int tk_cvec_bits_extend_lua (lua_State *L) {
@@ -51,11 +53,13 @@ static inline int tk_cvec_bits_extend_lua (lua_State *L) {
     uint64_t n_ext_features = tk_lua_checkunsigned(L, 4, "n_ext_features");
     tk_cvec_t *ext_cvec = tk_cvec_peekopt(L, 2);
     if (ext_cvec) {
-      tk_cvec_bits_extend(base, ext_cvec, n_base_features, n_ext_features);
+      if (!tk_cvec_bits_extend(base, ext_cvec, n_base_features, n_ext_features))
+        return tk_lua_verror(L, 2, "bits_extend", "allocation failed");
     } else {
       tk_ivec_t *ext_ivec = tk_ivec_peek(L, 2, "ext");
       uint64_t n_samples = base->n / TK_CVEC_BITS_BYTES(n_base_features);
-      tk_cvec_bits_extend_ivec_helper(L, base, ext_ivec, n_base_features, n_ext_features, n_samples);
+      if (!tk_cvec_bits_extend_ivec_helper(L, base, ext_ivec, n_base_features, n_ext_features, n_samples))
+        return tk_lua_verror(L, 2, "bits_extend", "allocation failed");
     }
   } else if (nargs == 6 || nargs == 7) {
     tk_cvec_t *base = tk_cvec_peek(L, 1, "base");
@@ -119,7 +123,8 @@ static inline int tk_cvec_bits_select_lua (lua_State *L) {
     n_features = tk_lua_checkunsigned(L, 3, "n_features");
   }
 
-  tk_cvec_bits_select(src_bitmap, selected_features, sample_ids, n_features, dest, dest_sample, dest_stride);
+  if (!tk_cvec_bits_select(src_bitmap, selected_features, sample_ids, n_features, dest, dest_sample, dest_stride))
+    return tk_lua_verror(L, 2, "bits_select", "allocation failed");
   return 0;
 }
 
@@ -201,7 +206,8 @@ static inline int tk_cvec_bits_top_df_lua (lua_State *L) {
   uint64_t top_k = lua_isnil(L, 4) ? n_features : tk_lua_checkunsigned(L, 4, "top_k");
   double min_df = tk_lua_optnumber(L, 5, "min_df", 0.0);
   double max_df = tk_lua_optnumber(L, 6, "max_df", 1.0);
-  tk_cvec_bits_top_df(L, bitmap, n_samples, n_features, min_df, max_df, top_k);
+  if (!tk_cvec_bits_top_df(L, bitmap, n_samples, n_features, min_df, max_df, top_k))
+    return tk_lua_verror(L, 2, "bits_top_df", "allocation failed");
   return 2;
 }
 

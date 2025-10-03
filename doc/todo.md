@@ -1,7 +1,6 @@
-# Now
+# Next
 
-- Sanitize
-    - All bits_top routines
+- Add threading support where possible/relevant
 
 - tk_cvec_t
     - Implement cvec to/from string
@@ -11,8 +10,6 @@
         - #define tk_umap_destroy_key/value tk_lua_del_ephemeron
         - #define tk_umap_link_key/value tk_lua_link_ephemeron (like add but with pointer)
     - Support those macros with vector as well
-
-# Next
 
 - Templatized btree
 

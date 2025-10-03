@@ -42,13 +42,13 @@ static inline int tk_cvec_byte_popcount (unsigned int x) {
 #endif
 #endif
 
-static inline void tk_cvec_bits_flip_interleave (tk_cvec_t *v, uint64_t n_features) {
+static inline tk_cvec_t *tk_cvec_bits_flip_interleave (tk_cvec_t *v, uint64_t n_features) {
   if (n_features == 0)
-    return;
+    return v;
 
   uint64_t n_samples = v->n / TK_CVEC_BITS_BYTES(n_features);
   if (n_samples == 0)
-    return;
+    return v;
 
   uint64_t input_bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
   uint64_t output_features = n_features * 2;
@@ -62,7 +62,7 @@ static inline void tk_cvec_bits_flip_interleave (tk_cvec_t *v, uint64_t n_featur
   uint8_t *temp = malloc(input_bytes_per_sample);
   if (!temp) {
     v->n = output_size;
-    return;
+    return NULL;
   }
   for (uint64_t s = n_samples; s > 0; s--) {
     uint64_t idx = s - 1;
@@ -109,6 +109,7 @@ static inline void tk_cvec_bits_flip_interleave (tk_cvec_t *v, uint64_t n_featur
 
   free(temp);
   v->n = output_size;
+  return v;
 }
 
 static inline uint64_t tk_cvec_bits_popcount (
@@ -291,7 +292,7 @@ static inline tk_cvec_t *tk_cvec_bits_from_ivec (
 }
 
 
-static inline void tk_cvec_bits_extend (
+static inline tk_cvec_t *tk_cvec_bits_extend (
   tk_cvec_t *base,
   tk_cvec_t *ext,
   uint64_t n_base_features,
@@ -307,7 +308,7 @@ static inline void tk_cvec_bits_extend (
   uint8_t *ext_data = (uint8_t *)ext->a;
   uint8_t *temp = malloc(total_bytes_per_sample);
   if (!temp)
-    return;
+    return NULL;
   for (int64_t s = (int64_t) n_samples - 1; s >= 0; s--) {
     memset(temp, 0, total_bytes_per_sample);
     uint64_t base_offset = (uint64_t) s * base_bytes_per_sample;
@@ -334,6 +335,7 @@ static inline void tk_cvec_bits_extend (
   }
   free(temp);
   base->n = n_samples * total_bytes_per_sample;
+  return base;
 }
 
 static inline void tk_cvec_bits_extend_mapped (

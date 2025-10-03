@@ -228,7 +228,7 @@ static inline int tk_ivec_bits_select (
   return 0;
 }
 
-static inline void tk_cvec_bits_select (
+static inline tk_cvec_t *tk_cvec_bits_select (
   tk_cvec_t *src_bitmap,
   tk_ivec_t *selected_features,
   tk_ivec_t *sample_ids,
@@ -241,7 +241,7 @@ static inline void tk_cvec_bits_select (
 
   if (dest == NULL && (selected_features == NULL || selected_features->n == 0) &&
       (sample_ids == NULL || sample_ids->n == 0))
-    return;
+    return src_bitmap;
 
   tk_iuset_t *sample_set = NULL;
   uint64_t n_output_samples = 0;
@@ -281,7 +281,7 @@ static inline void tk_cvec_bits_select (
       uint8_t *temp = calloc(final_bytes_per_sample, 1);
       if (!temp) {
         if (sample_set != NULL) tk_iuset_destroy(sample_set);
-        return;
+        return NULL;
       }
 
       uint64_t in_offset = s * in_bytes_per_sample;
@@ -318,7 +318,7 @@ static inline void tk_cvec_bits_select (
       uint8_t *temp = malloc(out_bytes_per_sample);
       if (!temp) {
         if (sample_set != NULL) tk_iuset_destroy(sample_set);
-        return;
+        return NULL;
       }
       memset(temp, 0, out_bytes_per_sample);
 
@@ -351,6 +351,8 @@ static inline void tk_cvec_bits_select (
 
   if (sample_set != NULL)
     tk_iuset_destroy(sample_set);
+
+  return dest != NULL ? dest : src_bitmap;
 }
 
 static inline tk_ivec_t *tk_iuset_keys (lua_State *L, tk_iuset_t *S)
@@ -1506,6 +1508,8 @@ static inline tk_ivec_t *tk_ivec_bits_top_df (
 ) {
   tk_ivec_asc(set_bits, 0, set_bits->n);
   tk_iuset_t **feature_docs = (tk_iuset_t **)calloc(n_visible, sizeof(tk_iuset_t *));
+  if (!feature_docs)
+    return NULL;
   for (uint64_t i = 0; i < n_visible; i++)
     feature_docs[i] = tk_iuset_create(0, 0);
   for (uint64_t i = 0; i < set_bits->n; i++) {
@@ -1758,6 +1762,8 @@ static inline tk_ivec_t *tk_cvec_bits_top_df (
   uint64_t top_k
 ) {
   tk_iuset_t **feature_docs = (tk_iuset_t **)calloc(n_features, sizeof(tk_iuset_t *));
+  if (!feature_docs)
+    return NULL;
   for (uint64_t i = 0; i < n_features; i++)
     feature_docs[i] = tk_iuset_create(0, 0);
   uint8_t *data = (uint8_t *)bitmap->a;
