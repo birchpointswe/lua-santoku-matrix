@@ -87,7 +87,7 @@ static inline bool tk_vec_pfx(gt) (tk_vec_base a, tk_vec_base b)
 
 static inline tk_vec_pfx(t) *tk_vec_pfx(create) (lua_State *, size_t, tk_vec_base *, tk_vec_pfx(t) *);
 
-static inline tk_vec_pfx(t) *tk_vec_pfx(resize) (
+static inline int tk_vec_pfx(resize) (
   tk_vec_pfx(t) *m0,
   size_t m,
   bool setn
@@ -98,39 +98,41 @@ static inline tk_vec_pfx(t) *tk_vec_pfx(resize) (
     v.a = NULL;
     v.m = v.n = 0;
     *m0 = v;
-    return m0;
+    return 0;
   } else {
-    kv_resize(tk_vec_base, v, m);
-    if (m0->a == NULL)
-      return NULL;
+    int rc = kv_resize(tk_vec_base, v, m);
+    if (rc != 0)
+      return -1;
     v.m = m;
     if (setn)
       v.n = m;
     *m0 = v;
-    return m0;
+    return 0;
   }
 }
 
-static inline void tk_vec_pfx(setn) (
+static inline int tk_vec_pfx(setn) (
   tk_vec_pfx(t) *m0,
   size_t n
 ) {
   if (n > m0->m)
-    tk_vec_pfx(resize)(m0, n, true);
-  else
+    return tk_vec_pfx(resize)(m0, n, true);
+  else {
     m0->n = n;
+    return 0;
+  }
 }
 
-static inline void tk_vec_pfx(ensure) (
+static inline int tk_vec_pfx(ensure) (
   tk_vec_pfx(t) *m0,
   size_t m
 ) {
   if (m0->m >= m)
-    return;
-  tk_vec_pfx(resize)(m0, m, false);
+    return 0;
+  return tk_vec_pfx(resize)(m0, m, false);
 }
 
-static inline void tk_vec_pfx(copy) (
+static inline int tk_vec_pfx(copy) (
   tk_vec_pfx(t) *m0,
   tk_vec_pfx(t) *m1,
   int64_t start,
@@ -138,17 +140,19 @@ static inline void tk_vec_pfx(copy) (
   int64_t dest
 ) {
   if (start < 0 || start >= end || start >= (int64_t) m1->n)
-    return;
+    return 0;
   if (end >= (int64_t) m1->n)
     end = (int64_t) m1->n;
   uint64_t m = (uint64_t) dest + (uint64_t) (end - start);
-  tk_vec_pfx(ensure)(m0, m);
+  if (tk_vec_pfx(ensure)(m0, m) != 0)
+    return -1;
   if (m0 == m1)
     memmove(m0->a + dest, m1->a + start, sizeof(tk_vec_base) * (uint64_t) (end - start));
   else
     memcpy(m0->a + dest, m1->a + start, sizeof(tk_vec_base) * (uint64_t) (end - start));
   if (m0->n < m)
     m0->n = m;
+  return 0;
 }
 
 static inline void tk_vec_pfx(transpose) (
@@ -195,30 +199,37 @@ static inline int64_t tk_vec_pfx(find) (tk_vec_pfx(t) *v, tk_vec_base x) {
   }
   return -1;
 }
-static inline void tk_vec_pfx(push) (tk_vec_pfx(t) *v, tk_vec_base x) {
+static inline int tk_vec_pfx(push) (tk_vec_pfx(t) *v, tk_vec_base x) {
   tk_vec_pfx(t) v0 = *v;
-  kv_push(tk_vec_base, v0, x);
+  int rc = kv_push(tk_vec_base, v0, x);
   *v = v0;
+  return rc;
 }
 
-static inline void tk_vec_pfx(insert) (
+static inline int tk_vec_pfx(insert) (
   tk_vec_pfx(t) *v,
   uint64_t idx,
   tk_vec_base x
 ) {
   if (idx > v->n) idx = v->n;
-  tk_vec_pfx(ensure)(v, v->n + 1);
+  int rc = tk_vec_pfx(ensure)(v, v->n + 1);
+  if (rc != 0)
+    return -1;
   if (idx < v->n)
     memmove(v->a + idx + 1, v->a + idx, (v->n - idx) * sizeof(tk_vec_base));
   v->a[idx] = x;
   v->n++;
+  return 0;
 }
 
-static inline void tk_vec_pfx(set) (tk_vec_pfx(t) *v, uint64_t i, tk_vec_base x) {
-  tk_vec_pfx(ensure)(v, i + 1);
+static inline int tk_vec_pfx(set) (tk_vec_pfx(t) *v, uint64_t i, tk_vec_base x) {
+  int rc = tk_vec_pfx(ensure)(v, i + 1);
+  if (rc != 0)
+    return -1;
   v->a[i] = x;
   if (i + 1 > v->n)
     v->n = i + 1;
+  return 0;
 }
 
 #ifdef tk_vec_pushbase
@@ -1655,7 +1666,13 @@ static inline tk_vec_pfx(t) *tk_vec_pfx(create) (lua_State *L, size_t n, tk_vec_
     v0 = *v;
     bool lua_managed = L != NULL;
     kv_init(v0, lua_managed);
-    kv_resize(tk_vec_base, v0, n);
+    if (kv_resize(tk_vec_base, v0, n) != 0) {
+      if (L)
+        tk_error(L, "vec_create resize", ENOMEM);
+      else if (!lua_managed)
+        free(v);
+      return NULL;
+    }
     v0.n = n;
     *v = v0;
     return v;

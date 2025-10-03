@@ -473,10 +473,13 @@ static inline void tk_cvec_bits_to_ascii (
   lua_remove(L, -2);
 }
 
-static inline void tk_cvec_push_str (tk_cvec_t *v, const char *s)
+static inline int tk_cvec_push_str (tk_cvec_t *v, const char *s)
 {
-  for (char *p = (char *) s; *p; p ++)
-    tk_cvec_push(v, *p);
+  for (char *p = (char *) s; *p; p ++) {
+    if (tk_cvec_push(v, *p) != 0)
+      return -1;
+  }
+  return 0;
 }
 
 #endif

@@ -84,12 +84,13 @@ static inline tk_umap_pfx(t) *tk_umap_pfx(peekopt) (lua_State *L, int i)
   return (tk_umap_pfx(t) *) tk_lua_testuserdata(L, i, tk_umap_mt);
 }
 
-static inline void tk_umap_pfx(resize) (tk_umap_pfx(t) *h, uint32_t m) {
-  tk_umap_resize(tk_umap_name, h, m);
+static inline int tk_umap_pfx(resize) (tk_umap_pfx(t) *h, uint32_t m) {
+  int rc = tk_umap_resize(tk_umap_name, h, m);
+  return rc == 0 ? 0 : -1;
 }
 
-static inline void tk_umap_pfx(shrink) (tk_umap_pfx(t) *h) {
-  tk_umap_pfx(resize)(h, tk_umap_size(h));
+static inline int tk_umap_pfx(shrink) (tk_umap_pfx(t) *h) {
+  return tk_umap_pfx(resize)(h, tk_umap_size(h));
 }
 
 static inline uint32_t tk_umap_pfx(put) (tk_umap_pfx(t) *h, tk_umap_key k, int *absent)
@@ -496,7 +497,8 @@ static inline int tk_umap_pfx(resize_lua) (lua_State *L)
   lua_settop(L, 2);
   tk_umap_pfx(t) *h = tk_umap_pfx(peek)(L, 1, "umap");
   uint64_t m = tk_lua_checkunsigned(L, 2, "size");
-  tk_umap_pfx(resize)(h, m);
+  if (tk_umap_pfx(resize)(h, m) != 0)
+    return tk_lua_verror(L, 2, "resize", "allocation failed");
   return 0;
 }
 
@@ -504,7 +506,8 @@ static inline int tk_umap_pfx(shrink_lua) (lua_State *L)
 {
   lua_settop(L, 1);
   tk_umap_pfx(t) *h = tk_umap_pfx(peek)(L, 1, "umap");
-  tk_umap_pfx(shrink)(h);
+  if (tk_umap_pfx(shrink)(h) != 0)
+    return tk_lua_verror(L, 2, "shrink", "allocation failed");
   return 0;
 }
 
@@ -553,8 +556,16 @@ static inline tk_umap_pfx(t) *tk_umap_pfx(create) (lua_State *L, uint32_t n)
     return h;
   bool lua_managed = L != NULL;
   tk_umap_init(tk_umap_name, h, lua_managed);
-  if (n)
-    tk_umap_pfx(resize)(h, n);
+  if (n) {
+    if (tk_umap_pfx(resize)(h, n) != 0) {
+      tk_umap_pfx(destroy)(h);
+      if (L)
+        tk_error(L, "umap_create resize", ENOMEM);
+      else if (!lua_managed)
+        free(h);
+      return NULL;
+    }
+  }
   return h;
 }
 

@@ -1,7 +1,5 @@
 # Next
 
-- Add threading support where possible/relevant
-
 - tk_cvec_t
     - Implement cvec to/from string
 
@@ -15,6 +13,8 @@
 
 - tk_cvec_t/tk_ivec_t
     - bits_extend: don't create temporary same-format buffer, copy direct
+
+- Add threading support where possible/relevant
 
 # Consider
 
