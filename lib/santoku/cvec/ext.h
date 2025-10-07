@@ -338,7 +338,7 @@ static inline tk_cvec_t *tk_cvec_bits_extend (
   return base;
 }
 
-static inline void tk_cvec_bits_extend_mapped (
+static inline int tk_cvec_bits_extend_mapped (
   tk_cvec_t *base,
   tk_cvec_t *ext,
   tk_ivec_t *aids,
@@ -352,11 +352,13 @@ static inline void tk_cvec_bits_extend_mapped (
   uint64_t ext_bytes_per_sample = TK_CVEC_BITS_BYTES(n_ext_features);
   uint64_t total_bytes_per_sample = TK_CVEC_BITS_BYTES(n_total_features);
   tk_iumap_t *a_id_to_pos = tk_iumap_from_ivec(0, aids);
+  if (!a_id_to_pos)
+    return -1;
   uint64_t n_only_b = 0;
-  int64_t *b_to_final = (int64_t *)malloc(bids->n * sizeof(int64_t));
+  int64_t *b_to_final = (int64_t *)calloc(bids->n, sizeof(int64_t));
   if (!b_to_final) {
     tk_iumap_destroy(a_id_to_pos);
-    return;
+    return -1;
   }
   int64_t next_pos = (int64_t)aids->n;
   for (size_t bi = 0; bi < bids->n; bi++) {
@@ -375,25 +377,37 @@ static inline void tk_cvec_bits_extend_mapped (
   uint64_t final_n_samples = project ? aids->n : (aids->n + n_only_b);
   size_t old_aids_n = aids->n;
   if (!project) {
-    tk_ivec_ensure(aids, final_n_samples);
+    if (tk_ivec_ensure(aids, final_n_samples) != 0) {
+      free(b_to_final);
+      tk_iumap_destroy(a_id_to_pos);
+      return -1;
+    }
     for (size_t i = 0; i < bids->n; i++) {
       if (b_to_final[i] >= (int64_t)old_aids_n) {
         aids->a[aids->n++] = bids->a[i];
       }
     }
   }
-  tk_cvec_ensure(base, final_n_samples * total_bytes_per_sample);
+  if (tk_cvec_ensure(base, final_n_samples * total_bytes_per_sample) != 0) {
+    free(b_to_final);
+    tk_iumap_destroy(a_id_to_pos);
+    return -1;
+  }
   uint8_t *base_data = (uint8_t *)base->a;
   uint8_t *ext_data = (uint8_t *)ext->a;
   tk_iumap_t *b_id_to_pos = tk_iumap_from_ivec(0, bids);
-  uint8_t *new_data = malloc(final_n_samples * total_bytes_per_sample);
+  if (!b_id_to_pos) {
+    free(b_to_final);
+    tk_iumap_destroy(a_id_to_pos);
+    return -1;
+  }
+  uint8_t *new_data = calloc(final_n_samples, total_bytes_per_sample);
   if (!new_data) {
     free(b_to_final);
     tk_iumap_destroy(a_id_to_pos);
     tk_iumap_destroy(b_id_to_pos);
-    return;
+    return -1;
   }
-  memset(new_data, 0, final_n_samples * total_bytes_per_sample);
   for (size_t ai = 0; ai < old_aids_n; ai++) {
     uint64_t dest_offset = ai * total_bytes_per_sample;
     uint64_t src_offset = ai * base_bytes_per_sample;
@@ -449,6 +463,7 @@ static inline void tk_cvec_bits_extend_mapped (
   tk_iumap_destroy(a_id_to_pos);
   tk_iumap_destroy(b_id_to_pos);
   base->n = final_n_samples * total_bytes_per_sample;
+  return 0;
 }
 
 static inline void tk_cvec_bits_to_ascii (

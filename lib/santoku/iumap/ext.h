@@ -8,8 +8,14 @@ static inline tk_iumap_t *tk_iumap_from_ivec (lua_State *L, tk_ivec_t *V)
   int kha;
   uint32_t khi;
   tk_iumap_t *M = tk_iumap_create(L, V->n);
+  if (!M)
+    return NULL;
   for (int64_t i = 0; i < (int64_t) V->n; i ++) {
     khi = tk_iumap_put(M, V->a[i], &kha);
+    if (kha < 0) {
+      tk_iumap_destroy(M);
+      return NULL;
+    }
     tk_iumap_setval(M, khi, i);
   }
   return M;

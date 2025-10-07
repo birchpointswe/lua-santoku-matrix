@@ -96,8 +96,15 @@ static inline tk_iuset_t *tk_iuset_from_ivec (lua_State *L, tk_ivec_t *v)
 {
   int kha;
   tk_iuset_t *s = tk_iuset_create(L, v->n);
-  for (uint64_t i = 0; i < v->n; i ++)
+  if (!s)
+    return NULL;
+  for (uint64_t i = 0; i < v->n; i ++) {
     tk_iuset_put(s, v->a[i], &kha);
+    if (kha < 0) {
+      tk_iuset_destroy(s);
+      return NULL;
+    }
+  }
   return s;
 }
 
@@ -122,7 +129,7 @@ static inline int tk_ivec_bits_select (
   int64_t *feature_map = NULL;
   uint64_t n_new_features = n_visible;
   if (selected_features != NULL && selected_features->n > 0) {
-    feature_map = malloc(n_visible * sizeof(int64_t));
+    feature_map = calloc(n_visible, sizeof(int64_t));
     if (!feature_map) return -1;
     for (uint64_t i = 0; i < n_visible; i++)
       feature_map[i] = -1;
@@ -145,7 +152,11 @@ static inline int tk_ivec_bits_select (
       }
     }
     sample_set = tk_iuset_from_ivec(NULL, sample_ids);
-    sample_map = malloc((max_sample + 1) * sizeof(int64_t));
+    if (!sample_set) {
+      if (feature_map) free(feature_map);
+      return -1;
+    }
+    sample_map = calloc(max_sample + 1, sizeof(int64_t));
     if (!sample_map) {
       if (feature_map) free(feature_map);
       tk_iuset_destroy(sample_set);
@@ -188,7 +199,12 @@ static inline int tk_ivec_bits_select (
       }
       new_sample += (int64_t) dest_sample;
       int64_t new_val = new_sample * (int64_t) n_new_features + new_feature;
-      tk_ivec_push(dest, new_val);
+      if (tk_ivec_push(dest, new_val) != 0) {
+        if (feature_map) free(feature_map);
+        if (sample_map) free(sample_map);
+        if (sample_set) tk_iuset_destroy(sample_set);
+        return -1;
+      }
     }
     tk_ivec_shrink(dest);
   } else {
@@ -248,6 +264,8 @@ static inline tk_cvec_t *tk_cvec_bits_select (
 
   if (sample_ids != NULL && sample_ids->n > 0) {
     sample_set = tk_iuset_from_ivec(NULL, sample_ids);
+    if (!sample_set)
+      return NULL;
     n_output_samples = sample_ids->n;
   } else {
     n_output_samples = n_samples;

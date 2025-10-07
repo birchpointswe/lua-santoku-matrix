@@ -75,13 +75,20 @@ static inline int tk_cvec_bits_extend_lua (lua_State *L) {
 
     tk_cvec_t *ext_cvec = tk_cvec_peekopt(L, 2);
     if (ext_cvec) {
-      tk_cvec_bits_extend_mapped(base, ext_cvec, aids, bids, n_base_features, n_ext_features, project);
+      if (tk_cvec_bits_extend_mapped(base, ext_cvec, aids, bids, n_base_features, n_ext_features, project) != 0)
+        return tk_lua_verror(L, 2, "bits_extend_mapped", "allocation failed");
     } else {
       tk_ivec_t *ext_ivec = tk_ivec_peek(L, 2, "ext");
       uint64_t n_samples = ext_ivec->n > 0 ?
         ((uint64_t)ext_ivec->a[ext_ivec->n - 1] / n_ext_features + 1) : 0;
       tk_cvec_t *ext = tk_cvec_bits_from_ivec(L, ext_ivec, n_samples, n_ext_features);
-      tk_cvec_bits_extend_mapped(base, ext, aids, bids, n_base_features, n_ext_features, project);
+      if (!ext)
+        return tk_lua_verror(L, 2, "bits_from_ivec", "allocation failed");
+      if (tk_cvec_bits_extend_mapped(base, ext, aids, bids, n_base_features, n_ext_features, project) != 0) {
+        tk_cvec_destroy(ext);
+        lua_remove(L, -1);
+        return tk_lua_verror(L, 2, "bits_extend_mapped", "allocation failed");
+      }
       tk_cvec_destroy(ext);
       lua_remove(L, -1);
     }

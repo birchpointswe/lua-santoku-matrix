@@ -163,8 +163,12 @@ static inline tk_ivec_t *tk_ivec_bits_from_cvec (lua_State *L, const char *bm, u
       uint64_t bit = i * n_features + j;
       uint64_t chunk = bit / CHAR_BIT;
       uint64_t pos = bit % CHAR_BIT;
-      if (bm[chunk] & (1 << pos))
-        tk_ivec_push(out, (int64_t) bit);
+      if (bm[chunk] & (1 << pos)) {
+        if (tk_ivec_push(out, (int64_t) bit) != 0) {
+          tk_ivec_destroy(out);
+          return NULL;
+        }
+      }
     }
   tk_ivec_shrink(out);
   return out;
@@ -193,19 +197,21 @@ static inline void tk_ivec_bits_extend (tk_ivec_t *base, tk_ivec_t *ext, uint64_
   tk_ivec_asc(base, 0, base->n);
 }
 
-static inline void tk_ivec_bits_extend_mapped (tk_ivec_t *base, tk_ivec_t *ext, tk_ivec_t *aids, tk_ivec_t *bids, uint64_t n_feat, uint64_t n_extfeat, bool project) {
+static inline int tk_ivec_bits_extend_mapped (tk_ivec_t *base, tk_ivec_t *ext, tk_ivec_t *aids, tk_ivec_t *bids, uint64_t n_feat, uint64_t n_extfeat, bool project) {
   tk_ivec_asc(base, 0, base->n);
   tk_ivec_asc(ext, 0, ext->n);
   tk_iumap_t *a_id_to_pos = tk_iumap_from_ivec(0, aids);
+  if (!a_id_to_pos)
+    return -1;
   uint64_t n_only_b = 0;
-  int64_t *b_to_final = (int64_t *)malloc(bids->n * sizeof(int64_t));
-  int64_t *a_to_final = (int64_t *)malloc(aids->n * sizeof(int64_t));
+  int64_t *b_to_final = (int64_t *)calloc(bids->n, sizeof(int64_t));
+  int64_t *a_to_final = (int64_t *)calloc(aids->n, sizeof(int64_t));
 
   if (!b_to_final || !a_to_final) {
     free(b_to_final);
     free(a_to_final);
     tk_iumap_destroy(a_id_to_pos);
-    return;
+    return -1;
   }
   for (size_t i = 0; i < aids->n; i++)
     a_to_final[i] = (int64_t)i;
@@ -227,7 +233,12 @@ static inline void tk_ivec_bits_extend_mapped (tk_ivec_t *base, tk_ivec_t *ext, 
   uint64_t n_total_feat = n_feat + n_extfeat;
   size_t old_aids_n = aids->n;
   if (!project) {
-    tk_ivec_ensure(aids, final_n_samples);
+    if (tk_ivec_ensure(aids, final_n_samples) != 0) {
+      free(b_to_final);
+      free(a_to_final);
+      tk_iumap_destroy(a_id_to_pos);
+      return -1;
+    }
     for (size_t i = 0; i < bids->n; i++) {
       if (b_to_final[i] >= (int64_t)old_aids_n)
         aids->a[aids->n++] = bids->a[i];
@@ -246,7 +257,12 @@ static inline void tk_ivec_bits_extend_mapped (tk_ivec_t *base, tk_ivec_t *ext, 
     if (sample < bids->n && b_to_final[sample] >= 0)
       max_bits++;
   }
-  tk_ivec_ensure(base, max_bits);
+  if (tk_ivec_ensure(base, max_bits) != 0) {
+    free(b_to_final);
+    free(a_to_final);
+    tk_iumap_destroy(a_id_to_pos);
+    return -1;
+  }
   for (int64_t i = (int64_t)base->n - 1; i >= 0; i--) {
     uint64_t bit = (uint64_t)base->a[i];
     uint64_t sample = bit / n_feat;
@@ -271,6 +287,7 @@ static inline void tk_ivec_bits_extend_mapped (tk_ivec_t *base, tk_ivec_t *ext, 
   free(b_to_final);
   free(a_to_final);
   tk_iumap_destroy(a_id_to_pos);
+  return 0;
 }
 typedef enum { TK_IVEC_JACCARD, TK_IVEC_OVERLAP, TK_IVEC_DICE, TK_IVEC_TVERSKY } tk_ivec_sim_type_t;
 
