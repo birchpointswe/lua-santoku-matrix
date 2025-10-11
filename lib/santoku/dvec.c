@@ -117,6 +117,18 @@ static inline int tk_dvec_scores_tolerance_lua (lua_State *L)
   return 4;
 }
 
+static inline int tk_dvec_scores_plateau_lua (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_dvec_t *scores = tk_dvec_peek(L, 1, "dvec");
+  double tolerance = luaL_optnumber(L, 2, 1e-3);
+  double val;
+  size_t idx = tk_dvec_scores_plateau(scores->a, scores->n, tolerance, &val);
+  lua_pushnumber(L, (lua_Number)val);
+  lua_pushnumber(L, (lua_Number)idx);
+  return 2;
+}
+
 static luaL_Reg tk_dvec_lua_mt_ext2_fns[] =
 {
   { "multiply_bits", tk_dvec_multiply_bits_lua },
@@ -129,6 +141,7 @@ static luaL_Reg tk_dvec_lua_mt_ext2_fns[] =
   { "scores_max_drop", tk_dvec_scores_max_drop_lua },
   { "scores_max_acceleration", tk_dvec_scores_max_acceleration_lua },
   { "scores_tolerance", tk_dvec_scores_tolerance_lua },
+  { "scores_plateau", tk_dvec_scores_plateau_lua },
   { NULL, NULL }
 };
 

@@ -235,6 +235,35 @@ static inline size_t tk_dvec_scores_max_drop (
 
 
 
+static inline size_t tk_dvec_scores_plateau (
+  double *scores,
+  size_t n,
+  double tolerance,
+  double *out_val
+) {
+  if (n == 0) {
+    if (out_val) *out_val = 0.0;
+    return 0;
+  }
+  if (n == 1) {
+    if (out_val) *out_val = scores[0];
+    return 0;
+  }
+  double base = scores[0];
+  size_t end_idx = 0;
+  for (size_t i = 1; i < n; i++) {
+    if (fabs(scores[i] - base) <= tolerance) {
+      end_idx = i;
+    } else {
+      break;
+    }
+  }
+  if (out_val) *out_val = scores[end_idx];
+  return end_idx;
+}
+
+
+
 static inline size_t tk_dvec_scores_max_acceleration (
   double *scores,
   size_t n,
