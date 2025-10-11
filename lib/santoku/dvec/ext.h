@@ -63,25 +63,28 @@ static inline tk_dvec_t *tk_dvec_multiply_bits (
 
 static inline size_t tk_dvec_scores_kaiser (
   double *scores,
-  size_t n
+  size_t n,
+  double *out_val
 ) {
-  if (n == 0) return 0;
-  if (n == 1) return 1;
-
-
-  double sum = 0.0;
-  for (size_t i = 0; i < n; i++) {
-    sum += scores[i];
+  if (n == 0) {
+    if (out_val) *out_val = 0.0;
+    return 0;
   }
+  if (n == 1) {
+    if (out_val) *out_val = scores[0];
+    return 1;
+  }
+  double sum = 0.0;
+  for (size_t i = 0; i < n; i++)
+    sum += scores[i];
   double mean = sum / (double)n;
-
-
   for (size_t i = 0; i < n; i++) {
     if (scores[i] < mean) {
+      if (out_val) *out_val = scores[i];
       return i;
     }
   }
-
+  if (out_val) *out_val = (n > 0) ? scores[n-1] : 0.0;
   return n;
 }
 
@@ -89,13 +92,15 @@ static inline size_t tk_dvec_scores_kaiser (
 
 static inline size_t tk_dvec_scores_max_curvature (
   double *scores,
-  size_t n
+  size_t n,
+  double *out_val
 ) {
-  if (n < 3) return 0;
-
+  if (n < 3) {
+    if (out_val) *out_val = (n > 0) ? scores[0] : 0.0;
+    return 0;
+  }
   double max_curv = 0.0;
   size_t max_idx = 1;
-
   for (size_t i = 1; i < n - 1; i++) {
     double curv = fabs(scores[i-1] - 2.0 * scores[i] + scores[i+1]);
     if (curv > max_curv) {
@@ -103,7 +108,7 @@ static inline size_t tk_dvec_scores_max_curvature (
       max_idx = i;
     }
   }
-
+  if (out_val) *out_val = scores[max_idx];
   return max_idx;
 }
 
@@ -111,10 +116,13 @@ static inline size_t tk_dvec_scores_max_curvature (
 
 static inline size_t tk_dvec_scores_lmethod (
   double *scores,
-  size_t n
+  size_t n,
+  double *out_val
 ) {
-  if (n < 3) return 0;
-
+  if (n < 3) {
+    if (out_val) *out_val = (n > 0) ? scores[0] : 0.0;
+    return 0;
+  }
   double best_rmse = DBL_MAX;
   size_t best_k = 1;
 
@@ -173,7 +181,7 @@ static inline size_t tk_dvec_scores_lmethod (
       best_k = k;
     }
   }
-
+  if (out_val) *out_val = scores[best_k];
   return best_k;
 }
 
@@ -181,13 +189,15 @@ static inline size_t tk_dvec_scores_lmethod (
 
 static inline size_t tk_dvec_scores_max_gap (
   double *scores,
-  size_t n
+  size_t n,
+  double *out_val
 ) {
-  if (n < 2) return 0;
-
+  if (n < 2) {
+    if (out_val) *out_val = (n > 0) ? scores[0] : 0.0;
+    return 0;
+  }
   double max_gap = 0.0;
   size_t max_idx = 0;
-
   for (size_t i = 0; i < n - 1; i++) {
     double gap = scores[i + 1] - scores[i];
     if (gap > max_gap) {
@@ -195,7 +205,7 @@ static inline size_t tk_dvec_scores_max_gap (
       max_idx = i;
     }
   }
-
+  if (out_val) *out_val = scores[max_idx];
   return max_idx;
 }
 
@@ -203,24 +213,25 @@ static inline size_t tk_dvec_scores_max_gap (
 
 static inline size_t tk_dvec_scores_max_acceleration (
   double *scores,
-  size_t n
+  size_t n,
+  double *out_val
 ) {
-  if (n < 3) return 0;
-
+  if (n < 3) {
+    if (out_val) *out_val = (n > 0) ? scores[0] : 0.0;
+    return 0;
+  }
   double max_accel = -DBL_MAX;
   size_t max_idx = 0;
-
   for (size_t i = 0; i < n - 2; i++) {
     double gap1 = scores[i + 1] - scores[i];
     double gap2 = scores[i + 2] - scores[i + 1];
     double accel = gap2 - gap1;
-
     if (accel > max_accel) {
       max_accel = accel;
       max_idx = i;
     }
   }
-
+  if (out_val) *out_val = scores[max_idx];
   return max_idx;
 }
 

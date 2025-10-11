@@ -39,55 +39,55 @@ static inline int tk_dvec_scores_kaiser_lua (lua_State *L)
 {
   lua_settop(L, 1);
   tk_dvec_t *scores = tk_dvec_peek(L, 1, "dvec");
-
-  size_t idx = tk_dvec_scores_kaiser(scores->a, scores->n);
-
-  lua_pushnumber(L, (lua_Number)(idx));
-  return 1;
+  double val;
+  size_t idx = tk_dvec_scores_kaiser(scores->a, scores->n, &val);
+  lua_pushnumber(L, (lua_Number)val);
+  lua_pushnumber(L, (lua_Number)idx);
+  return 2;
 }
 
 static inline int tk_dvec_scores_max_curvature_lua (lua_State *L)
 {
   lua_settop(L, 1);
   tk_dvec_t *scores = tk_dvec_peek(L, 1, "dvec");
-
-  size_t idx = tk_dvec_scores_max_curvature(scores->a, scores->n);
-
-  lua_pushnumber(L, (lua_Number)(idx));
-  return 1;
+  double val;
+  size_t idx = tk_dvec_scores_max_curvature(scores->a, scores->n, &val);
+  lua_pushnumber(L, (lua_Number)val);
+  lua_pushnumber(L, (lua_Number)idx);
+  return 2;
 }
 
 static inline int tk_dvec_scores_lmethod_lua (lua_State *L)
 {
   lua_settop(L, 1);
   tk_dvec_t *scores = tk_dvec_peek(L, 1, "dvec");
-
-  size_t idx = tk_dvec_scores_lmethod(scores->a, scores->n);
-
-  lua_pushnumber(L, (lua_Number)(idx));
-  return 1;
+  double val;
+  size_t idx = tk_dvec_scores_lmethod(scores->a, scores->n, &val);
+  lua_pushnumber(L, (lua_Number)val);
+  lua_pushnumber(L, (lua_Number)idx);
+  return 2;
 }
 
 static inline int tk_dvec_scores_max_gap_lua (lua_State *L)
 {
   lua_settop(L, 1);
   tk_dvec_t *scores = tk_dvec_peek(L, 1, "dvec");
-
-  size_t idx = tk_dvec_scores_max_gap(scores->a, scores->n);
-
-  lua_pushnumber(L, (lua_Number)(idx));
-  return 1;
+  double val;
+  size_t idx = tk_dvec_scores_max_gap(scores->a, scores->n, &val);
+  lua_pushnumber(L, (lua_Number)val);
+  lua_pushnumber(L, (lua_Number)idx);
+  return 2;
 }
 
 static inline int tk_dvec_scores_max_acceleration_lua (lua_State *L)
 {
   lua_settop(L, 1);
   tk_dvec_t *scores = tk_dvec_peek(L, 1, "dvec");
-
-  size_t idx = tk_dvec_scores_max_acceleration(scores->a, scores->n);
-
-  lua_pushnumber(L, (lua_Number)(idx));
-  return 1;
+  double val;
+  size_t idx = tk_dvec_scores_max_acceleration(scores->a, scores->n, &val);
+  lua_pushnumber(L, (lua_Number)val);
+  lua_pushnumber(L, (lua_Number)idx);
+  return 2;
 }
 
 static inline int tk_dvec_scores_tolerance_lua (lua_State *L)

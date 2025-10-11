@@ -1075,61 +1075,96 @@ static inline double tk_rvec_rank_biserial_binary(
 }
 
 static inline double tk_rvec_variance_ratio_binary(
-  tk_rvec_t *values,
+  tk_rvec_t *ranks,
   tk_iuset_t *group_1,
   double *out_var_0,
   double *out_var_1
 ) {
-  if (!values || !group_1 || values->n == 0)
+  if (!ranks || !group_1 || ranks->n == 0)
     return 0.0;
-
-  double sum_0 = 0.0, sum_1 = 0.0;
+  double rank_sum_0 = 0.0, rank_sum_1 = 0.0;
   uint64_t count_0 = 0, count_1 = 0;
-
-  for (uint64_t i = 0; i < values->n; i++) {
-    int64_t id = values->a[i].i;
-    double value = values->a[i].d;
-
+  for (uint64_t i = 0; i < ranks->n; i++) {
+    int64_t id = ranks->a[i].i;
+    double rank = (double)(i + 1);
     if (tk_iuset_get(group_1, id) != tk_iuset_end(group_1)) {
-      sum_1 += value;
+      rank_sum_1 += rank;
       count_1++;
     } else {
-      sum_0 += value;
+      rank_sum_0 += rank;
       count_0++;
     }
   }
-
   if (count_0 < 2 || count_1 < 2)
     return 0.0;
-
-  double mean_0 = sum_0 / count_0;
-  double mean_1 = sum_1 / count_1;
-
+  double mean_rank_0 = rank_sum_0 / count_0;
+  double mean_rank_1 = rank_sum_1 / count_1;
   double var_0 = 0.0, var_1 = 0.0;
-
-  for (uint64_t i = 0; i < values->n; i++) {
-    int64_t id = values->a[i].i;
-    double value = values->a[i].d;
+  for (uint64_t i = 0; i < ranks->n; i++) {
+    int64_t id = ranks->a[i].i;
+    double rank = (double)(i + 1);
     double diff;
-
     if (tk_iuset_get(group_1, id) != tk_iuset_end(group_1)) {
-      diff = value - mean_1;
+      diff = rank - mean_rank_1;
       var_1 += diff * diff;
     } else {
-      diff = value - mean_0;
+      diff = rank - mean_rank_0;
       var_0 += diff * diff;
     }
   }
-
   var_0 /= count_0;
   var_1 /= count_1;
-
   if (out_var_0) *out_var_0 = var_0;
   if (out_var_1) *out_var_1 = var_1;
-
   if (var_1 <= 0.0)
     return 0.0;
+  return var_0 / var_1;
+}
 
+static inline double tk_pvec_variance_ratio_binary(
+  tk_pvec_t *ranks,
+  tk_iuset_t *group_1,
+  double *out_var_0,
+  double *out_var_1
+) {
+  if (!ranks || !group_1 || ranks->n == 0)
+    return 0.0;
+  double rank_sum_0 = 0.0, rank_sum_1 = 0.0;
+  uint64_t count_0 = 0, count_1 = 0;
+  for (uint64_t i = 0; i < ranks->n; i++) {
+    int64_t id = ranks->a[i].i;
+    double rank = (double)(i + 1);
+    if (tk_iuset_get(group_1, id) != tk_iuset_end(group_1)) {
+      rank_sum_1 += rank;
+      count_1++;
+    } else {
+      rank_sum_0 += rank;
+      count_0++;
+    }
+  }
+  if (count_0 < 2 || count_1 < 2)
+    return 0.0;
+  double mean_rank_0 = rank_sum_0 / count_0;
+  double mean_rank_1 = rank_sum_1 / count_1;
+  double var_0 = 0.0, var_1 = 0.0;
+  for (uint64_t i = 0; i < ranks->n; i++) {
+    int64_t id = ranks->a[i].i;
+    double rank = (double)(i + 1);
+    double diff;
+    if (tk_iuset_get(group_1, id) != tk_iuset_end(group_1)) {
+      diff = rank - mean_rank_1;
+      var_1 += diff * diff;
+    } else {
+      diff = rank - mean_rank_0;
+      var_0 += diff * diff;
+    }
+  }
+  var_0 /= count_0;
+  var_1 /= count_1;
+  if (out_var_0) *out_var_0 = var_0;
+  if (out_var_1) *out_var_1 = var_1;
+  if (var_1 <= 0.0)
+    return 0.0;
   return var_0 / var_1;
 }
 
