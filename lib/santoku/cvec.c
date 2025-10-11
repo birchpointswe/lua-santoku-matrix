@@ -1,6 +1,6 @@
+#include <santoku/iuset.h>
 #include <santoku/cvec.h>
 #include <santoku/ivec.h>
-#include <santoku/iuset.h>
 #include <stdbool.h>
 
 static inline int tk_cvec_bits_flip_interleave_lua (lua_State *L) {

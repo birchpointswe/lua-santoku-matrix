@@ -1,3 +1,4 @@
+#include <santoku/iuset.h>
 #include <santoku/evec.h>
 
 static inline int tk_evec_get_lua (lua_State *L) {

@@ -584,5 +584,4 @@ static inline tk_ivec_t *tk_ivec_set_union (lua_State *L, tk_ivec_t *a, tk_ivec_
   return out;
 }
 
-
 #endif

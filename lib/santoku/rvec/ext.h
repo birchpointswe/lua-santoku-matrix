@@ -17,6 +17,28 @@ static inline tk_rvec_t *tk_rvec_from_dvec (
   return R;
 }
 
+static inline int tk_rvec_split (
+  tk_rvec_t *P,
+  tk_ivec_t *K,
+  tk_dvec_t *V,
+  bool append
+) {
+  if (!append) {
+    tk_ivec_clear(K);
+    tk_dvec_clear(V);
+  }
+  if (tk_ivec_ensure(K, K->n + P->n) != 0)
+    return -1;
+  if (tk_dvec_ensure(V, V->n + P->n) != 0)
+    return -1;
+  for (uint64_t i = 0; i < P->n; i ++) {
+    tk_rank_t r = P->a[i];
+    K->a[K->n ++] = r.i;
+    V->a[V->n ++] = r.d;
+  }
+  return 0;
+}
+
 static inline tk_ivec_t *tk_rvec_keys (
   lua_State *L,
   tk_rvec_t *P,
@@ -190,8 +212,8 @@ static inline void tk_kendall_merge_sort_unweighted(
 }
 
 static inline double tk_rvec_kendall(
-  const tk_rvec_t *ranks_a,
-  const tk_rvec_t *ranks_b
+  tk_rvec_t *ranks_a,
+  tk_rvec_t *ranks_b
 ) {
   if (!ranks_a || !ranks_b || ranks_a->n == 0 || ranks_b->n == 0)
     return 0.0;
@@ -251,8 +273,8 @@ static inline double tk_rvec_kendall(
 }
 
 static inline double tk_rvec_kendall_weighted(
-  const tk_rvec_t *ranks_a,
-  const tk_rvec_t *ranks_b
+  tk_rvec_t *ranks_a,
+  tk_rvec_t *ranks_b
 ) {
   if (!ranks_a || !ranks_b || ranks_a->n == 0 || ranks_b->n == 0)
     return 0.0;
@@ -322,8 +344,8 @@ static inline double tk_rvec_kendall_weighted(
 }
 
 static inline double tk_rvec_spearman_weighted(
-  const tk_rvec_t *ranks_a,
-  const tk_rvec_t *ranks_b
+  tk_rvec_t *ranks_a,
+  tk_rvec_t *ranks_b
 ) {
   if (!ranks_a || !ranks_b || ranks_a->n == 0 || ranks_b->n == 0)
     return 0.0;
@@ -395,8 +417,8 @@ static inline double tk_rvec_spearman_weighted(
 }
 
 static inline double tk_rvec_kendall_pvec(
-  const tk_rvec_t *ranks_a,
-  const tk_pvec_t *ranks_b
+  tk_rvec_t *ranks_a,
+  tk_pvec_t *ranks_b
 ) {
   if (!ranks_a || !ranks_b || ranks_a->n == 0 || ranks_b->n == 0)
     return 0.0;
@@ -460,8 +482,8 @@ static inline double tk_rvec_kendall_pvec(
 }
 
 static inline double tk_rvec_kendall_weighted_pvec(
-  const tk_rvec_t *ranks_a,
-  const tk_pvec_t *ranks_b
+  tk_rvec_t *ranks_a,
+  tk_pvec_t *ranks_b
 ) {
   if (!ranks_a || !ranks_b || ranks_a->n == 0 || ranks_b->n == 0)
     return 0.0;
@@ -535,8 +557,8 @@ static inline double tk_rvec_kendall_weighted_pvec(
 }
 
 static inline double tk_rvec_spearman_weighted_pvec(
-  const tk_rvec_t *ranks_a,
-  const tk_pvec_t *ranks_b
+  tk_rvec_t *ranks_a,
+  tk_pvec_t *ranks_b
 ) {
   if (!ranks_a || !ranks_b || ranks_a->n == 0 || ranks_b->n == 0)
     return 0.0;
@@ -608,8 +630,8 @@ static inline double tk_rvec_spearman_weighted_pvec(
 }
 
 static inline double tk_pvec_kendall(
-  const tk_pvec_t *ranks_a,
-  const tk_pvec_t *ranks_b
+  tk_pvec_t *ranks_a,
+  tk_pvec_t *ranks_b
 ) {
   if (!ranks_a || !ranks_b || ranks_a->n == 0 || ranks_b->n == 0)
     return 0.0;
@@ -668,8 +690,8 @@ static inline double tk_pvec_kendall(
 }
 
 static inline double tk_pvec_kendall_weighted(
-  const tk_pvec_t *ranks_a,
-  const tk_pvec_t *ranks_b
+  tk_pvec_t *ranks_a,
+  tk_pvec_t *ranks_b
 ) {
   if (!ranks_a || !ranks_b || ranks_a->n == 0 || ranks_b->n == 0)
     return 0.0;
@@ -739,8 +761,8 @@ static inline double tk_pvec_kendall_weighted(
 }
 
 static inline double tk_pvec_kendall_rvec(
-  const tk_pvec_t *ranks_a,
-  const tk_rvec_t *ranks_b
+  tk_pvec_t *ranks_a,
+  tk_rvec_t *ranks_b
 ) {
   if (!ranks_a || !ranks_b || ranks_a->n == 0 || ranks_b->n == 0)
     return 0.0;
@@ -799,8 +821,8 @@ static inline double tk_pvec_kendall_rvec(
 }
 
 static inline double tk_pvec_kendall_weighted_rvec(
-  const tk_pvec_t *ranks_a,
-  const tk_rvec_t *ranks_b
+  tk_pvec_t *ranks_a,
+  tk_rvec_t *ranks_b
 ) {
   if (!ranks_a || !ranks_b || ranks_a->n == 0 || ranks_b->n == 0)
     return 0.0;
@@ -870,8 +892,8 @@ static inline double tk_pvec_kendall_weighted_rvec(
 }
 
 static inline double tk_pvec_spearman_weighted(
-  const tk_pvec_t *ranks_a,
-  const tk_pvec_t *ranks_b
+  tk_pvec_t *ranks_a,
+  tk_pvec_t *ranks_b
 ) {
   if (!ranks_a || !ranks_b || ranks_a->n == 0 || ranks_b->n == 0)
     return 0.0;
@@ -943,8 +965,8 @@ static inline double tk_pvec_spearman_weighted(
 }
 
 static inline double tk_pvec_spearman_weighted_rvec(
-  const tk_pvec_t *ranks_a,
-  const tk_rvec_t *ranks_b
+  tk_pvec_t *ranks_a,
+  tk_rvec_t *ranks_b
 ) {
   if (!ranks_a || !ranks_b || ranks_a->n == 0 || ranks_b->n == 0)
     return 0.0;
@@ -1013,6 +1035,102 @@ static inline double tk_pvec_spearman_weighted_rvec(
     return 1.0;
 
   return cov / sqrt(var_a * var_b);
+}
+
+static inline double tk_rvec_rank_biserial_binary(
+  tk_rvec_t *ranks,
+  tk_iuset_t *group_1,
+  double *out_mean_rank_0,
+  double *out_mean_rank_1
+) {
+  if (!ranks || !group_1 || ranks->n == 0)
+    return 0.0;
+
+  double rank_sum_0 = 0.0, rank_sum_1 = 0.0;
+  uint64_t count_0 = 0, count_1 = 0;
+
+  for (uint64_t i = 0; i < ranks->n; i++) {
+    int64_t id = ranks->a[i].i;
+    double rank = (double)(i + 1);
+
+    if (tk_iuset_get(group_1, id) != tk_iuset_end(group_1)) {
+      rank_sum_1 += rank;
+      count_1++;
+    } else {
+      rank_sum_0 += rank;
+      count_0++;
+    }
+  }
+
+  if (count_0 == 0 || count_1 == 0 || ranks->n == 0)
+    return 0.0;
+
+  double mean_rank_0 = rank_sum_0 / count_0;
+  double mean_rank_1 = rank_sum_1 / count_1;
+
+  if (out_mean_rank_0) *out_mean_rank_0 = mean_rank_0;
+  if (out_mean_rank_1) *out_mean_rank_1 = mean_rank_1;
+
+  return (mean_rank_0 - mean_rank_1) / (ranks->n / 2.0);
+}
+
+static inline double tk_rvec_variance_ratio_binary(
+  tk_rvec_t *values,
+  tk_iuset_t *group_1,
+  double *out_var_0,
+  double *out_var_1
+) {
+  if (!values || !group_1 || values->n == 0)
+    return 0.0;
+
+  double sum_0 = 0.0, sum_1 = 0.0;
+  uint64_t count_0 = 0, count_1 = 0;
+
+  for (uint64_t i = 0; i < values->n; i++) {
+    int64_t id = values->a[i].i;
+    double value = values->a[i].d;
+
+    if (tk_iuset_get(group_1, id) != tk_iuset_end(group_1)) {
+      sum_1 += value;
+      count_1++;
+    } else {
+      sum_0 += value;
+      count_0++;
+    }
+  }
+
+  if (count_0 < 2 || count_1 < 2)
+    return 0.0;
+
+  double mean_0 = sum_0 / count_0;
+  double mean_1 = sum_1 / count_1;
+
+  double var_0 = 0.0, var_1 = 0.0;
+
+  for (uint64_t i = 0; i < values->n; i++) {
+    int64_t id = values->a[i].i;
+    double value = values->a[i].d;
+    double diff;
+
+    if (tk_iuset_get(group_1, id) != tk_iuset_end(group_1)) {
+      diff = value - mean_1;
+      var_1 += diff * diff;
+    } else {
+      diff = value - mean_0;
+      var_0 += diff * diff;
+    }
+  }
+
+  var_0 /= count_0;
+  var_1 /= count_1;
+
+  if (out_var_0) *out_var_0 = var_0;
+  if (out_var_1) *out_var_1 = var_1;
+
+  if (var_1 <= 0.0)
+    return 0.0;
+
+  return var_0 / var_1;
 }
 
 #endif

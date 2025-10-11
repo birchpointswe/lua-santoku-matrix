@@ -1,6 +1,6 @@
+#include <santoku/iuset.h>
 #include <santoku/ivec.h>
 #include <santoku/cvec.h>
-#include <santoku/iuset.h>
 #include <string.h>
 
 static inline int tk_ivec_bits_top_mi_lua (lua_State *L)
@@ -520,6 +520,14 @@ static inline int tk_ivec_lookup_lua (lua_State *L)
   return 0;
 }
 
+static inline int tk_ivec_index_lua (lua_State *L)
+{
+  lua_settop(L, 1);
+  tk_ivec_t *v = tk_ivec_peek(L, 1, "vector");
+  tk_iumap_from_ivec(L, v);
+  return 1;
+}
+
 static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
 {
   { "copy_pkeys", tk_ivec_copy_pkeys_lua },
@@ -547,6 +555,7 @@ static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
   { "set_intersect", tk_ivec_set_intersect_lua },
   { "set_union", tk_ivec_set_union_lua },
   { "lookup", tk_ivec_lookup_lua },
+  { "index", tk_ivec_index_lua },
   { NULL, NULL }
 };
 

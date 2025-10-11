@@ -1603,8 +1603,8 @@ static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
   { "rtable", tk_vec_pfx(rtable_lua) },
   { "each", tk_vec_pfx(each_lua) },
   { "ieach", tk_vec_pfx(ieach_lua) },
-
 #endif
+
   { "shuffle", tk_vec_pfx(shuffle_lua) },
   { "asc", tk_vec_pfx(asc_lua) },
   { "desc", tk_vec_pfx(desc_lua) },

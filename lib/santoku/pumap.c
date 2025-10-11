@@ -1,3 +1,4 @@
+#include <santoku/iuset.h>
 #include <santoku/pumap.h>
 #include <santoku/cvec.h>
 

@@ -59,4 +59,227 @@ static inline tk_dvec_t *tk_dvec_multiply_bits (
   return V;
 }
 
+
+
+static inline size_t tk_dvec_scores_kaiser (
+  double *scores,
+  size_t n
+) {
+  if (n == 0) return 0;
+  if (n == 1) return 1;
+
+
+  double sum = 0.0;
+  for (size_t i = 0; i < n; i++) {
+    sum += scores[i];
+  }
+  double mean = sum / (double)n;
+
+
+  for (size_t i = 0; i < n; i++) {
+    if (scores[i] < mean) {
+      return i;
+    }
+  }
+
+  return n;
+}
+
+
+
+static inline size_t tk_dvec_scores_max_curvature (
+  double *scores,
+  size_t n
+) {
+  if (n < 3) return 0;
+
+  double max_curv = 0.0;
+  size_t max_idx = 1;
+
+  for (size_t i = 1; i < n - 1; i++) {
+    double curv = fabs(scores[i-1] - 2.0 * scores[i] + scores[i+1]);
+    if (curv > max_curv) {
+      max_curv = curv;
+      max_idx = i;
+    }
+  }
+
+  return max_idx;
+}
+
+
+
+static inline size_t tk_dvec_scores_lmethod (
+  double *scores,
+  size_t n
+) {
+  if (n < 3) return 0;
+
+  double best_rmse = DBL_MAX;
+  size_t best_k = 1;
+
+
+  for (size_t k = 1; k < n - 1; k++) {
+
+    double sum_x1 = 0.0, sum_y1 = 0.0, sum_xy1 = 0.0, sum_xx1 = 0.0;
+    for (size_t i = 0; i <= k; i++) {
+      double x = (double)i;
+      double y = scores[i];
+      sum_x1 += x;
+      sum_y1 += y;
+      sum_xy1 += x * y;
+      sum_xx1 += x * x;
+    }
+    size_t n1 = k + 1;
+    double mean_x1 = sum_x1 / (double)n1;
+    double mean_y1 = sum_y1 / (double)n1;
+    double slope1 = (sum_xy1 - (double)n1 * mean_x1 * mean_y1) /
+                    (sum_xx1 - (double)n1 * mean_x1 * mean_x1 + 1e-10);
+    double intercept1 = mean_y1 - slope1 * mean_x1;
+
+
+    double sum_x2 = 0.0, sum_y2 = 0.0, sum_xy2 = 0.0, sum_xx2 = 0.0;
+    for (size_t i = k + 1; i < n; i++) {
+      double x = (double)i;
+      double y = scores[i];
+      sum_x2 += x;
+      sum_y2 += y;
+      sum_xy2 += x * y;
+      sum_xx2 += x * x;
+    }
+    size_t n2 = n - k - 1;
+    double mean_x2 = sum_x2 / (double)n2;
+    double mean_y2 = sum_y2 / (double)n2;
+    double slope2 = (sum_xy2 - (double)n2 * mean_x2 * mean_y2) /
+                    (sum_xx2 - (double)n2 * mean_x2 * mean_x2 + 1e-10);
+    double intercept2 = mean_y2 - slope2 * mean_x2;
+
+
+    double sse = 0.0;
+    for (size_t i = 0; i <= k; i++) {
+      double pred = slope1 * (double)i + intercept1;
+      double err = scores[i] - pred;
+      sse += err * err;
+    }
+    for (size_t i = k + 1; i < n; i++) {
+      double pred = slope2 * (double)i + intercept2;
+      double err = scores[i] - pred;
+      sse += err * err;
+    }
+    double rmse = sqrt(sse / (double)n);
+
+    if (rmse < best_rmse) {
+      best_rmse = rmse;
+      best_k = k;
+    }
+  }
+
+  return best_k;
+}
+
+
+
+static inline size_t tk_dvec_scores_max_gap (
+  double *scores,
+  size_t n
+) {
+  if (n < 2) return 0;
+
+  double max_gap = 0.0;
+  size_t max_idx = 0;
+
+  for (size_t i = 0; i < n - 1; i++) {
+    double gap = scores[i + 1] - scores[i];
+    if (gap > max_gap) {
+      max_gap = gap;
+      max_idx = i;
+    }
+  }
+
+  return max_idx;
+}
+
+
+
+static inline size_t tk_dvec_scores_max_acceleration (
+  double *scores,
+  size_t n
+) {
+  if (n < 3) return 0;
+
+  double max_accel = -DBL_MAX;
+  size_t max_idx = 0;
+
+  for (size_t i = 0; i < n - 2; i++) {
+    double gap1 = scores[i + 1] - scores[i];
+    double gap2 = scores[i + 2] - scores[i + 1];
+    double accel = gap2 - gap1;
+
+    if (accel > max_accel) {
+      max_accel = accel;
+      max_idx = i;
+    }
+  }
+
+  return max_idx;
+}
+
+
+
+static inline void tk_dvec_scores_tolerance (
+  double *scores,
+  size_t n,
+  double tolerance,
+  size_t min_span,
+  size_t *out_start,
+  size_t *out_end
+) {
+  if (n == 0) {
+    *out_start = 0;
+    *out_end = 0;
+    return;
+  }
+
+  if (n == 1 || min_span <= 1) {
+    *out_start = 0;
+    *out_end = 0;
+    return;
+  }
+
+
+  for (size_t i = 0; i < n; i++) {
+    double base = scores[i];
+    size_t span_end = i;
+
+
+    for (size_t j = i + 1; j < n; j++) {
+      if (fabs(scores[j] - base) <= tolerance) {
+        span_end = j;
+      } else {
+        break;
+      }
+    }
+
+    size_t span_len = span_end - i + 1;
+    if (span_len >= min_span) {
+      *out_start = i;
+      *out_end = span_end;
+      return;
+    }
+  }
+
+
+  size_t max_idx = 0;
+  double max_val = scores[0];
+  for (size_t i = 1; i < n; i++) {
+    if (scores[i] > max_val) {
+      max_val = scores[i];
+      max_idx = i;
+    }
+  }
+
+  *out_start = max_idx;
+  *out_end = max_idx;
+}
+
 #endif

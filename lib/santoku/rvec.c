@@ -1,4 +1,16 @@
+#include <santoku/iuset.h>
 #include <santoku/rvec.h>
+
+static inline int tk_rvec_split_lua (lua_State *L) {
+  lua_settop(L, 4);
+  tk_rvec_t *P = tk_rvec_peek(L, 1, "rvec");
+  tk_ivec_t *K = tk_ivec_peek(L, 2, "keys");
+  tk_dvec_t *V = tk_dvec_peek(L, 3, "values");
+  bool append = tk_lua_optboolean(L, 4, "append", true);
+  if (tk_rvec_split(P, K, V, append) != 0)
+    tk_lua_verror(L, 2, "split", "allocation error");
+  return 0;
+}
 
 static inline int tk_rvec_get_lua (lua_State *L) {
   lua_settop(L, 2);
@@ -131,6 +143,7 @@ static luaL_Reg tk_rvec_lua_mt_ext2_fns[] =
   { "set", tk_rvec_set_lua },
   { "push", tk_rvec_push_lua },
   { "keys", tk_rvec_keys_lua },
+  { "split", tk_rvec_split_lua },
   { "values", tk_rvec_values_lua },
   { "each", tk_rvec_each_lua },
   { "ieach", tk_rvec_ieach_lua },
