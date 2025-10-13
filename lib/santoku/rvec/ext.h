@@ -147,16 +147,12 @@ static inline void tk_kendall_merge_sort_weighted(
 ) {
   if (right <= left + 1)
     return;
-
   uint64_t mid = left + (right - left) / 2;
-
   tk_kendall_merge_sort_weighted(items, temp, left, mid, discordant);
   tk_kendall_merge_sort_weighted(items, temp, mid, right, discordant);
-
   uint64_t i = left;
   uint64_t j = mid;
   uint64_t k = left;
-
   while (i < mid && j < right) {
     if (items->a[i].v <= items->a[j].v) {
       temp[k++] = items->a[i++];
@@ -168,10 +164,8 @@ static inline void tk_kendall_merge_sort_weighted(
       temp[k++] = items->a[j++];
     }
   }
-
   while (i < mid) temp[k++] = items->a[i++];
   while (j < right) temp[k++] = items->a[j++];
-
   for (uint64_t idx = left; idx < right; idx++)
     items->a[idx] = temp[idx];
 }
@@ -185,16 +179,12 @@ static inline void tk_kendall_merge_sort_unweighted(
 ) {
   if (right <= left + 1)
     return;
-
   uint64_t mid = left + (right - left) / 2;
-
   tk_kendall_merge_sort_unweighted(items, temp, left, mid, discordant);
   tk_kendall_merge_sort_unweighted(items, temp, mid, right, discordant);
-
   uint64_t i = left;
   uint64_t j = mid;
   uint64_t k = left;
-
   while (i < mid && j < right) {
     if (items->a[i].v <= items->a[j].v) {
       temp[k++] = items->a[i++];
@@ -203,10 +193,8 @@ static inline void tk_kendall_merge_sort_unweighted(
       temp[k++] = items->a[j++];
     }
   }
-
   while (i < mid) temp[k++] = items->a[i++];
   while (j < right) temp[k++] = items->a[j++];
-
   for (uint64_t idx = left; idx < right; idx++)
     items->a[idx] = temp[idx];
 }
@@ -217,23 +205,19 @@ static inline double tk_rvec_kendall(
 ) {
   if (!ranks_a || !ranks_b || ranks_a->n == 0 || ranks_b->n == 0)
     return 0.0;
-
   tk_iumap_t *idx_b = tk_iumap_create(0, ranks_b->n);
   if (!idx_b)
     return 0.0;
-
   for (uint64_t i = 0; i < ranks_b->n; i++) {
     int kha;
     uint32_t khi = tk_iumap_put(idx_b, ranks_b->a[i].i, &kha);
     tk_iumap_setval(idx_b, khi, (int64_t)i);
   }
-
   tk_evec_t *items = tk_evec_create(0, ranks_a->n, 0, 0);
   if (!items) {
     tk_iumap_destroy(idx_b);
     return 0.0;
   }
-
   for (uint64_t i = 0; i < ranks_a->n; i++) {
     uint32_t khi = tk_iumap_get(idx_b, ranks_a->a[i].i);
     if (khi != tk_iumap_end(idx_b)) {
@@ -245,29 +229,22 @@ static inline double tk_rvec_kendall(
       }
     }
   }
-
   tk_iumap_destroy(idx_b);
-
   if (items->n <= 1) {
     tk_evec_destroy(items);
     return 1.0;
   }
-
   uint64_t n = items->n;
   uint64_t total_pairs = (n * (n - 1)) / 2;
-
   tk_edge_t *temp = malloc(n * sizeof(tk_edge_t));
   if (!temp) {
     tk_evec_destroy(items);
     return 0.0;
   }
-
   uint64_t discordant = 0;
   tk_kendall_merge_sort_unweighted(items, temp, 0, n, &discordant);
-
   tk_evec_destroy(items);
   free(temp);
-
   uint64_t concordant = total_pairs - discordant;
   return (double)(concordant - discordant) / (double)total_pairs;
 }
@@ -278,23 +255,19 @@ static inline double tk_rvec_kendall_weighted(
 ) {
   if (!ranks_a || !ranks_b || ranks_a->n == 0 || ranks_b->n == 0)
     return 0.0;
-
   tk_iumap_t *idx_b = tk_iumap_create(0, ranks_b->n);
   if (!idx_b)
     return 0.0;
-
   for (uint64_t i = 0; i < ranks_b->n; i++) {
     int kha;
     uint32_t khi = tk_iumap_put(idx_b, ranks_b->a[i].i, &kha);
     tk_iumap_setval(idx_b, khi, (int64_t)i);
   }
-
   tk_evec_t *items = tk_evec_create(0, ranks_a->n, 0, 0);
   if (!items) {
     tk_iumap_destroy(idx_b);
     return 0.0;
   }
-
   for (uint64_t i = 0; i < ranks_a->n; i++) {
     uint32_t khi = tk_iumap_get(idx_b, ranks_a->a[i].i);
     if (khi != tk_iumap_end(idx_b)) {
@@ -306,14 +279,11 @@ static inline double tk_rvec_kendall_weighted(
       }
     }
   }
-
   tk_iumap_destroy(idx_b);
-
   if (items->n <= 1) {
     tk_evec_destroy(items);
     return 1.0;
   }
-
   double total_weight = 0.0;
   for (uint64_t i = 0; i < items->n; i++) {
     for (uint64_t j = i + 1; j < items->n; j++) {
@@ -321,24 +291,19 @@ static inline double tk_rvec_kendall_weighted(
       total_weight += w_ij;
     }
   }
-
   if (total_weight <= 0.0) {
     tk_evec_destroy(items);
     return 0.0;
   }
-
   tk_edge_t *temp = malloc(items->n * sizeof(tk_edge_t));
   if (!temp) {
     tk_evec_destroy(items);
     return 0.0;
   }
-
   double discordant = 0.0;
   tk_kendall_merge_sort_weighted(items, temp, 0, items->n, &discordant);
-
   tk_evec_destroy(items);
   free(temp);
-
   double concordant = total_weight - discordant;
   return (concordant - discordant) / total_weight;
 }
@@ -349,22 +314,18 @@ static inline double tk_rvec_spearman_weighted(
 ) {
   if (!ranks_a || !ranks_b || ranks_a->n == 0 || ranks_b->n == 0)
     return 0.0;
-
   tk_iumap_t *idx_b = tk_iumap_create(0, ranks_b->n);
   if (!idx_b)
     return 0.0;
-
   for (uint64_t i = 0; i < ranks_b->n; i++) {
     int kha;
     uint32_t khi = tk_iumap_put(idx_b, ranks_b->a[i].i, &kha);
     tk_iumap_setval(idx_b, khi, (int64_t)i);
   }
-
   double sum_w = 0.0;
   double sum_w_ra = 0.0;
   double sum_w_rb = 0.0;
   uint64_t n = 0;
-
   for (uint64_t i = 0; i < ranks_a->n; i++) {
     uint32_t khi = tk_iumap_get(idx_b, ranks_a->a[i].i);
     if (khi != tk_iumap_end(idx_b)) {
@@ -377,19 +338,15 @@ static inline double tk_rvec_spearman_weighted(
       n++;
     }
   }
-
   if (n <= 1 || sum_w <= 0.0) {
     tk_iumap_destroy(idx_b);
     return 1.0;
   }
-
   double mean_a = sum_w_ra / sum_w;
   double mean_b = sum_w_rb / sum_w;
-
   double cov = 0.0;
   double var_a = 0.0;
   double var_b = 0.0;
-
   for (uint64_t i = 0; i < ranks_a->n; i++) {
     uint32_t khi = tk_iumap_get(idx_b, ranks_a->a[i].i);
     if (khi != tk_iumap_end(idx_b)) {
@@ -403,16 +360,12 @@ static inline double tk_rvec_spearman_weighted(
       var_b += weight * db * db;
     }
   }
-
   tk_iumap_destroy(idx_b);
-
   cov /= sum_w;
   var_a /= sum_w;
   var_b /= sum_w;
-
   if (var_a <= 0.0 || var_b <= 0.0)
     return 1.0;
-
   return cov / sqrt(var_a * var_b);
 }
 
@@ -422,23 +375,19 @@ static inline double tk_rvec_kendall_pvec(
 ) {
   if (!ranks_a || !ranks_b || ranks_a->n == 0 || ranks_b->n == 0)
     return 0.0;
-
   tk_iumap_t *idx_b = tk_iumap_create(0, ranks_b->n);
   if (!idx_b)
     return 0.0;
-
   for (uint64_t i = 0; i < ranks_b->n; i++) {
     int kha;
     uint32_t khi = tk_iumap_put(idx_b, ranks_b->a[i].i, &kha);
     tk_iumap_setval(idx_b, khi, (int64_t)i);
   }
-
   tk_evec_t *items = tk_evec_create(0, ranks_a->n, 0, 0);
   if (!items) {
     tk_iumap_destroy(idx_b);
     return 0.0;
   }
-
   for (uint64_t i = 0; i < ranks_a->n; i++) {
     uint32_t khi = tk_iumap_get(idx_b, ranks_a->a[i].i);
     if (khi != tk_iumap_end(idx_b)) {
@@ -454,29 +403,22 @@ static inline double tk_rvec_kendall_pvec(
       }
     }
   }
-
   tk_iumap_destroy(idx_b);
-
   if (items->n <= 1) {
     tk_evec_destroy(items);
     return 1.0;
   }
-
   uint64_t n = items->n;
   uint64_t total_pairs = (n * (n - 1)) / 2;
-
   tk_edge_t *temp = malloc(n * sizeof(tk_edge_t));
   if (!temp) {
     tk_evec_destroy(items);
     return 0.0;
   }
-
   uint64_t discordant = 0;
   tk_kendall_merge_sort_unweighted(items, temp, 0, n, &discordant);
-
   tk_evec_destroy(items);
   free(temp);
-
   uint64_t concordant = total_pairs - discordant;
   return (double)(concordant - discordant) / (double)total_pairs;
 }
@@ -487,23 +429,19 @@ static inline double tk_rvec_kendall_weighted_pvec(
 ) {
   if (!ranks_a || !ranks_b || ranks_a->n == 0 || ranks_b->n == 0)
     return 0.0;
-
   tk_iumap_t *idx_b = tk_iumap_create(0, ranks_b->n);
   if (!idx_b)
     return 0.0;
-
   for (uint64_t i = 0; i < ranks_b->n; i++) {
     int kha;
     uint32_t khi = tk_iumap_put(idx_b, ranks_b->a[i].i, &kha);
     tk_iumap_setval(idx_b, khi, (int64_t)i);
   }
-
   tk_evec_t *items = tk_evec_create(0, ranks_a->n, 0, 0);
   if (!items) {
     tk_iumap_destroy(idx_b);
     return 0.0;
   }
-
   for (uint64_t i = 0; i < ranks_a->n; i++) {
     uint32_t khi = tk_iumap_get(idx_b, ranks_a->a[i].i);
     if (khi != tk_iumap_end(idx_b)) {
@@ -519,14 +457,11 @@ static inline double tk_rvec_kendall_weighted_pvec(
       }
     }
   }
-
   tk_iumap_destroy(idx_b);
-
   if (items->n <= 1) {
     tk_evec_destroy(items);
     return 1.0;
   }
-
   double total_weight = 0.0;
   for (uint64_t i = 0; i < items->n; i++) {
     for (uint64_t j = i + 1; j < items->n; j++) {
@@ -534,24 +469,19 @@ static inline double tk_rvec_kendall_weighted_pvec(
       total_weight += w_ij;
     }
   }
-
   if (total_weight <= 0.0) {
     tk_evec_destroy(items);
     return 0.0;
   }
-
   tk_edge_t *temp = malloc(items->n * sizeof(tk_edge_t));
   if (!temp) {
     tk_evec_destroy(items);
     return 0.0;
   }
-
   double discordant = 0.0;
   tk_kendall_merge_sort_weighted(items, temp, 0, items->n, &discordant);
-
   tk_evec_destroy(items);
   free(temp);
-
   double concordant = total_weight - discordant;
   return (concordant - discordant) / total_weight;
 }
@@ -562,22 +492,18 @@ static inline double tk_rvec_spearman_weighted_pvec(
 ) {
   if (!ranks_a || !ranks_b || ranks_a->n == 0 || ranks_b->n == 0)
     return 0.0;
-
   tk_iumap_t *idx_b = tk_iumap_create(0, ranks_b->n);
   if (!idx_b)
     return 0.0;
-
   for (uint64_t i = 0; i < ranks_b->n; i++) {
     int kha;
     uint32_t khi = tk_iumap_put(idx_b, ranks_b->a[i].i, &kha);
     tk_iumap_setval(idx_b, khi, (int64_t)i);
   }
-
   double sum_w = 0.0;
   double sum_w_ra = 0.0;
   double sum_w_rb = 0.0;
   uint64_t n = 0;
-
   for (uint64_t i = 0; i < ranks_a->n; i++) {
     uint32_t khi = tk_iumap_get(idx_b, ranks_a->a[i].i);
     if (khi != tk_iumap_end(idx_b)) {
@@ -590,19 +516,15 @@ static inline double tk_rvec_spearman_weighted_pvec(
       n++;
     }
   }
-
   if (n <= 1 || sum_w <= 0.0) {
     tk_iumap_destroy(idx_b);
     return 1.0;
   }
-
   double mean_a = sum_w_ra / sum_w;
   double mean_b = sum_w_rb / sum_w;
-
   double cov = 0.0;
   double var_a = 0.0;
   double var_b = 0.0;
-
   for (uint64_t i = 0; i < ranks_a->n; i++) {
     uint32_t khi = tk_iumap_get(idx_b, ranks_a->a[i].i);
     if (khi != tk_iumap_end(idx_b)) {
@@ -616,16 +538,12 @@ static inline double tk_rvec_spearman_weighted_pvec(
       var_b += weight * db * db;
     }
   }
-
   tk_iumap_destroy(idx_b);
-
   cov /= sum_w;
   var_a /= sum_w;
   var_b /= sum_w;
-
   if (var_a <= 0.0 || var_b <= 0.0)
     return 1.0;
-
   return cov / sqrt(var_a * var_b);
 }
 
@@ -635,23 +553,19 @@ static inline double tk_pvec_kendall(
 ) {
   if (!ranks_a || !ranks_b || ranks_a->n == 0 || ranks_b->n == 0)
     return 0.0;
-
   tk_iumap_t *idx_b = tk_iumap_create(0, ranks_b->n);
   if (!idx_b)
     return 0.0;
-
   for (uint64_t i = 0; i < ranks_b->n; i++) {
     int kha;
     uint32_t khi = tk_iumap_put(idx_b, ranks_b->a[i].i, &kha);
     tk_iumap_setval(idx_b, khi, (int64_t)i);
   }
-
   tk_evec_t *items = tk_evec_create(0, ranks_a->n, 0, 0);
   if (!items) {
     tk_iumap_destroy(idx_b);
     return 0.0;
   }
-
   for (uint64_t i = 0; i < ranks_a->n; i++) {
     uint32_t khi = tk_iumap_get(idx_b, ranks_a->a[i].i);
     if (khi != tk_iumap_end(idx_b)) {
@@ -663,14 +577,11 @@ static inline double tk_pvec_kendall(
       }
     }
   }
-
   tk_iumap_destroy(idx_b);
-
   if (items->n <= 1) {
     tk_evec_destroy(items);
     return 1.0;
   }
-
   uint64_t n = items->n;
   uint64_t total_pairs = (n * (n - 1)) / 2;
   tk_edge_t *temp = malloc(n * sizeof(tk_edge_t));
@@ -678,13 +589,10 @@ static inline double tk_pvec_kendall(
     tk_evec_destroy(items);
     return 0.0;
   }
-
   uint64_t discordant = 0;
   tk_kendall_merge_sort_unweighted(items, temp, 0, n, &discordant);
-
   tk_evec_destroy(items);
   free(temp);
-
   uint64_t concordant = total_pairs - discordant;
   return (double)(concordant - discordant) / (double)total_pairs;
 }
@@ -695,23 +603,19 @@ static inline double tk_pvec_kendall_weighted(
 ) {
   if (!ranks_a || !ranks_b || ranks_a->n == 0 || ranks_b->n == 0)
     return 0.0;
-
   tk_iumap_t *idx_b = tk_iumap_create(0, ranks_b->n);
   if (!idx_b)
     return 0.0;
-
   for (uint64_t i = 0; i < ranks_b->n; i++) {
     int kha;
     uint32_t khi = tk_iumap_put(idx_b, ranks_b->a[i].i, &kha);
     tk_iumap_setval(idx_b, khi, (int64_t)i);
   }
-
   tk_evec_t *items = tk_evec_create(0, ranks_a->n, 0, 0);
   if (!items) {
     tk_iumap_destroy(idx_b);
     return 0.0;
   }
-
   for (uint64_t i = 0; i < ranks_a->n; i++) {
     uint32_t khi = tk_iumap_get(idx_b, ranks_a->a[i].i);
     if (khi != tk_iumap_end(idx_b)) {
@@ -723,14 +627,11 @@ static inline double tk_pvec_kendall_weighted(
       }
     }
   }
-
   tk_iumap_destroy(idx_b);
-
   if (items->n <= 1) {
     tk_evec_destroy(items);
     return 1.0;
   }
-
   double total_weight = 0.0;
   for (uint64_t i = 0; i < items->n; i++) {
     for (uint64_t j = i + 1; j < items->n; j++) {
@@ -738,24 +639,19 @@ static inline double tk_pvec_kendall_weighted(
       total_weight += w_ij;
     }
   }
-
   if (total_weight <= 0.0) {
     tk_evec_destroy(items);
     return 0.0;
   }
-
   tk_edge_t *temp = malloc(items->n * sizeof(tk_edge_t));
   if (!temp) {
     tk_evec_destroy(items);
     return 0.0;
   }
-
   double discordant = 0.0;
   tk_kendall_merge_sort_weighted(items, temp, 0, items->n, &discordant);
-
   tk_evec_destroy(items);
   free(temp);
-
   double concordant = total_weight - discordant;
   return (concordant - discordant) / total_weight;
 }
@@ -766,23 +662,19 @@ static inline double tk_pvec_kendall_rvec(
 ) {
   if (!ranks_a || !ranks_b || ranks_a->n == 0 || ranks_b->n == 0)
     return 0.0;
-
   tk_iumap_t *idx_b = tk_iumap_create(0, ranks_b->n);
   if (!idx_b)
     return 0.0;
-
   for (uint64_t i = 0; i < ranks_b->n; i++) {
     int kha;
     uint32_t khi = tk_iumap_put(idx_b, ranks_b->a[i].i, &kha);
     tk_iumap_setval(idx_b, khi, (int64_t)i);
   }
-
   tk_evec_t *items = tk_evec_create(0, ranks_a->n, 0, 0);
   if (!items) {
     tk_iumap_destroy(idx_b);
     return 0.0;
   }
-
   for (uint64_t i = 0; i < ranks_a->n; i++) {
     uint32_t khi = tk_iumap_get(idx_b, ranks_a->a[i].i);
     if (khi != tk_iumap_end(idx_b)) {
@@ -794,14 +686,11 @@ static inline double tk_pvec_kendall_rvec(
       }
     }
   }
-
   tk_iumap_destroy(idx_b);
-
   if (items->n <= 1) {
     tk_evec_destroy(items);
     return 1.0;
   }
-
   uint64_t n = items->n;
   uint64_t total_pairs = (n * (n - 1)) / 2;
   tk_edge_t *temp = malloc(n * sizeof(tk_edge_t));
@@ -809,13 +698,10 @@ static inline double tk_pvec_kendall_rvec(
     tk_evec_destroy(items);
     return 0.0;
   }
-
   uint64_t discordant = 0;
   tk_kendall_merge_sort_unweighted(items, temp, 0, n, &discordant);
-
   tk_evec_destroy(items);
   free(temp);
-
   uint64_t concordant = total_pairs - discordant;
   return (double)(concordant - discordant) / (double)total_pairs;
 }
@@ -826,23 +712,19 @@ static inline double tk_pvec_kendall_weighted_rvec(
 ) {
   if (!ranks_a || !ranks_b || ranks_a->n == 0 || ranks_b->n == 0)
     return 0.0;
-
   tk_iumap_t *idx_b = tk_iumap_create(0, ranks_b->n);
   if (!idx_b)
     return 0.0;
-
   for (uint64_t i = 0; i < ranks_b->n; i++) {
     int kha;
     uint32_t khi = tk_iumap_put(idx_b, ranks_b->a[i].i, &kha);
     tk_iumap_setval(idx_b, khi, (int64_t)i);
   }
-
   tk_evec_t *items = tk_evec_create(0, ranks_a->n, 0, 0);
   if (!items) {
     tk_iumap_destroy(idx_b);
     return 0.0;
   }
-
   for (uint64_t i = 0; i < ranks_a->n; i++) {
     uint32_t khi = tk_iumap_get(idx_b, ranks_a->a[i].i);
     if (khi != tk_iumap_end(idx_b)) {
@@ -854,14 +736,11 @@ static inline double tk_pvec_kendall_weighted_rvec(
       }
     }
   }
-
   tk_iumap_destroy(idx_b);
-
   if (items->n <= 1) {
     tk_evec_destroy(items);
     return 1.0;
   }
-
   double total_weight = 0.0;
   for (uint64_t i = 0; i < items->n; i++) {
     for (uint64_t j = i + 1; j < items->n; j++) {
@@ -869,24 +748,19 @@ static inline double tk_pvec_kendall_weighted_rvec(
       total_weight += w_ij;
     }
   }
-
   if (total_weight <= 0.0) {
     tk_evec_destroy(items);
     return 0.0;
   }
-
   tk_edge_t *temp = malloc(items->n * sizeof(tk_edge_t));
   if (!temp) {
     tk_evec_destroy(items);
     return 0.0;
   }
-
   double discordant = 0.0;
   tk_kendall_merge_sort_weighted(items, temp, 0, items->n, &discordant);
-
   tk_evec_destroy(items);
   free(temp);
-
   double concordant = total_weight - discordant;
   return (concordant - discordant) / total_weight;
 }
@@ -897,22 +771,18 @@ static inline double tk_pvec_spearman_weighted(
 ) {
   if (!ranks_a || !ranks_b || ranks_a->n == 0 || ranks_b->n == 0)
     return 0.0;
-
   tk_iumap_t *idx_b = tk_iumap_create(0, ranks_b->n);
   if (!idx_b)
     return 0.0;
-
   for (uint64_t i = 0; i < ranks_b->n; i++) {
     int kha;
     uint32_t khi = tk_iumap_put(idx_b, ranks_b->a[i].i, &kha);
     tk_iumap_setval(idx_b, khi, (int64_t)i);
   }
-
   double sum_w = 0.0;
   double sum_w_ra = 0.0;
   double sum_w_rb = 0.0;
   uint64_t n = 0;
-
   for (uint64_t i = 0; i < ranks_a->n; i++) {
     uint32_t khi = tk_iumap_get(idx_b, ranks_a->a[i].i);
     if (khi != tk_iumap_end(idx_b)) {
@@ -925,19 +795,15 @@ static inline double tk_pvec_spearman_weighted(
       n++;
     }
   }
-
   if (n <= 1 || sum_w <= 0.0) {
     tk_iumap_destroy(idx_b);
     return 1.0;
   }
-
   double mean_a = sum_w_ra / sum_w;
   double mean_b = sum_w_rb / sum_w;
-
   double cov = 0.0;
   double var_a = 0.0;
   double var_b = 0.0;
-
   for (uint64_t i = 0; i < ranks_a->n; i++) {
     uint32_t khi = tk_iumap_get(idx_b, ranks_a->a[i].i);
     if (khi != tk_iumap_end(idx_b)) {
@@ -951,16 +817,12 @@ static inline double tk_pvec_spearman_weighted(
       var_b += weight * db * db;
     }
   }
-
   tk_iumap_destroy(idx_b);
-
   cov /= sum_w;
   var_a /= sum_w;
   var_b /= sum_w;
-
   if (var_a <= 0.0 || var_b <= 0.0)
     return 1.0;
-
   return cov / sqrt(var_a * var_b);
 }
 
@@ -970,22 +832,18 @@ static inline double tk_pvec_spearman_weighted_rvec(
 ) {
   if (!ranks_a || !ranks_b || ranks_a->n == 0 || ranks_b->n == 0)
     return 0.0;
-
   tk_iumap_t *idx_b = tk_iumap_create(0, ranks_b->n);
   if (!idx_b)
     return 0.0;
-
   for (uint64_t i = 0; i < ranks_b->n; i++) {
     int kha;
     uint32_t khi = tk_iumap_put(idx_b, ranks_b->a[i].i, &kha);
     tk_iumap_setval(idx_b, khi, (int64_t)i);
   }
-
   double sum_w = 0.0;
   double sum_w_ra = 0.0;
   double sum_w_rb = 0.0;
   uint64_t n = 0;
-
   for (uint64_t i = 0; i < ranks_a->n; i++) {
     uint32_t khi = tk_iumap_get(idx_b, ranks_a->a[i].i);
     if (khi != tk_iumap_end(idx_b)) {
@@ -998,19 +856,15 @@ static inline double tk_pvec_spearman_weighted_rvec(
       n++;
     }
   }
-
   if (n <= 1 || sum_w <= 0.0) {
     tk_iumap_destroy(idx_b);
     return 1.0;
   }
-
   double mean_a = sum_w_ra / sum_w;
   double mean_b = sum_w_rb / sum_w;
-
   double cov = 0.0;
   double var_a = 0.0;
   double var_b = 0.0;
-
   for (uint64_t i = 0; i < ranks_a->n; i++) {
     uint32_t khi = tk_iumap_get(idx_b, ranks_a->a[i].i);
     if (khi != tk_iumap_end(idx_b)) {
@@ -1024,16 +878,12 @@ static inline double tk_pvec_spearman_weighted_rvec(
       var_b += weight * db * db;
     }
   }
-
   tk_iumap_destroy(idx_b);
-
   cov /= sum_w;
   var_a /= sum_w;
   var_b /= sum_w;
-
   if (var_a <= 0.0 || var_b <= 0.0)
     return 1.0;
-
   return cov / sqrt(var_a * var_b);
 }
 
@@ -1045,14 +895,11 @@ static inline double tk_rvec_rank_biserial_binary(
 ) {
   if (!ranks || !group_1 || ranks->n == 0)
     return 0.0;
-
   double rank_sum_0 = 0.0, rank_sum_1 = 0.0;
   uint64_t count_0 = 0, count_1 = 0;
-
   for (uint64_t i = 0; i < ranks->n; i++) {
     int64_t id = ranks->a[i].i;
     double rank = (double)(i + 1);
-
     if (tk_iuset_get(group_1, id) != tk_iuset_end(group_1)) {
       rank_sum_1 += rank;
       count_1++;
@@ -1061,16 +908,12 @@ static inline double tk_rvec_rank_biserial_binary(
       count_0++;
     }
   }
-
   if (count_0 == 0 || count_1 == 0 || ranks->n == 0)
     return 0.0;
-
   double mean_rank_0 = rank_sum_0 / count_0;
   double mean_rank_1 = rank_sum_1 / count_1;
-
   if (out_mean_rank_0) *out_mean_rank_0 = mean_rank_0;
   if (out_mean_rank_1) *out_mean_rank_1 = mean_rank_1;
-
   return (mean_rank_0 - mean_rank_1) / (ranks->n / 2.0);
 }
 
@@ -1118,7 +961,8 @@ static inline double tk_rvec_variance_ratio_binary(
   if (out_var_1) *out_var_1 = var_1;
   if (var_1 <= 0.0)
     return 0.0;
-  return var_0 / var_1;
+  double vr = var_0 / var_1;
+  return vr / (1.0 + vr);
 }
 
 static inline double tk_pvec_variance_ratio_binary(
@@ -1165,7 +1009,115 @@ static inline double tk_pvec_variance_ratio_binary(
   if (out_var_1) *out_var_1 = var_1;
   if (var_1 <= 0.0)
     return 0.0;
-  return var_0 / var_1;
+  double vr = var_0 / var_1;
+  return vr / (1.0 + vr);
+}
+
+static inline double tk_rvec_pvec_ndcg(
+  tk_rvec_t *ranks_a,
+  tk_pvec_t *ranks_b
+) {
+  if (!ranks_a || !ranks_b || ranks_a->n == 0 || ranks_b->n == 0)
+    return 0.0;
+  tk_iumap_t *idx_b = tk_iumap_create(0, ranks_b->n);
+  if (!idx_b)
+    return 0.0;
+  for (uint64_t i = 0; i < ranks_b->n; i++) {
+    int kha;
+    uint32_t khi = tk_iumap_put(idx_b, ranks_b->a[i].i, &kha);
+    tk_iumap_setval(idx_b, khi, (int64_t)i);
+  }
+  double dcg = 0.0;
+  double idcg = 0.0;
+  for (uint64_t i = 0; i < ranks_a->n; i++) {
+    double relevance = (double)(ranks_a->n - i);
+    idcg += relevance / log2((double)(i + 2));
+    uint32_t khi = tk_iumap_get(idx_b, ranks_a->a[i].i);
+    if (khi != tk_iumap_end(idx_b)) {
+      int64_t hamming_rank = tk_iumap_val(idx_b, khi);
+      dcg += relevance / log2((double)(hamming_rank + 2));
+    }
+  }
+  tk_iumap_destroy(idx_b);
+  return idcg > 0.0 ? dcg / idcg : 0.0;
+}
+
+static inline double tk_rvec_ndcg_binary(
+  tk_rvec_t *ranks,
+  tk_iuset_t *group_1
+) {
+  if (!ranks || !group_1 || ranks->n == 0)
+    return 0.0;
+  uint64_t relevant_count = 0;
+  for (uint64_t i = 0; i < ranks->n; i++) {
+    if (tk_iuset_get(group_1, ranks->a[i].i) != tk_iuset_end(group_1))
+      relevant_count++;
+  }
+  if (relevant_count == 0 || relevant_count == ranks->n)
+    return 0.0;
+  double idcg = 0.0;
+  for (uint64_t i = 0; i < relevant_count; i++) {
+    idcg += 1.0 / log2((double)(i + 2));
+  }
+  double dcg = 0.0;
+  for (uint64_t i = 0; i < ranks->n; i++) {
+    bool is_relevant = tk_iuset_get(group_1, ranks->a[i].i) != tk_iuset_end(group_1);
+    if (is_relevant) {
+      dcg += 1.0 / log2((double)(i + 2));
+    }
+  }
+  return idcg > 0.0 ? dcg / idcg : 0.0;
+}
+
+static inline double tk_rvec_pvec_rank_diff_cv(
+  tk_rvec_t *ranks_a,
+  tk_pvec_t *ranks_b
+) {
+  if (!ranks_a || !ranks_b || ranks_a->n == 0 || ranks_b->n == 0)
+    return 0.0;
+  tk_iumap_t *idx_b = tk_iumap_create(0, ranks_b->n);
+  if (!idx_b)
+    return 0.0;
+  for (uint64_t i = 0; i < ranks_b->n; i++) {
+    int kha;
+    uint32_t khi = tk_iumap_put(idx_b, ranks_b->a[i].i, &kha);
+    tk_iumap_setval(idx_b, khi, (int64_t)i);
+  }
+  double sum_diffs = 0.0;
+  uint64_t count = 0;
+  for (uint64_t i = 0; i < ranks_a->n; i++) {
+    uint32_t khi = tk_iumap_get(idx_b, ranks_a->a[i].i);
+    if (khi != tk_iumap_end(idx_b)) {
+      int64_t rank_b = tk_iumap_val(idx_b, khi);
+      double diff = fabs((double)i - (double)rank_b);
+      sum_diffs += diff;
+      count++;
+    }
+  }
+  if (count < 2) {
+    tk_iumap_destroy(idx_b);
+    return 1.0;
+  }
+  double mean = sum_diffs / count;
+  if (mean <= 0.0) {
+    tk_iumap_destroy(idx_b);
+    return 1.0;
+  }
+  double sum_sq_dev = 0.0;
+  for (uint64_t i = 0; i < ranks_a->n; i++) {
+    uint32_t khi = tk_iumap_get(idx_b, ranks_a->a[i].i);
+    if (khi != tk_iumap_end(idx_b)) {
+      int64_t rank_b = tk_iumap_val(idx_b, khi);
+      double diff = fabs((double)i - (double)rank_b);
+      double dev = diff - mean;
+      sum_sq_dev += dev * dev;
+    }
+  }
+  tk_iumap_destroy(idx_b);
+  double variance = sum_sq_dev / count;
+  double std_dev = sqrt(variance);
+  double cv = std_dev / mean;
+  return 1.0 / (1.0 + cv);
 }
 
 #endif
