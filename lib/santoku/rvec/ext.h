@@ -274,36 +274,4 @@ static inline double tk_csr_variance_ratio(
   return vr / (1.0 + vr);
 }
 
-static inline double tk_csr_precision(
-  tk_ivec_t *neighbors_a,
-  int64_t start_a,
-  int64_t end_a,
-  tk_iuset_t *relevant_set
-) {
-  uint64_t n_a = (uint64_t)(end_a - start_a);
-  if (n_a == 0 || !relevant_set)
-    return 0.0;
-  double sum_precision = 0.0;
-  uint64_t n_relevant_seen = 0;
-  uint64_t n_relevant_total = 0;
-  for (int64_t j = start_a; j < end_a; j++) {
-    int64_t neighbor = neighbors_a->a[j];
-    if (tk_iuset_get(relevant_set, neighbor) != tk_iuset_end(relevant_set)) {
-      n_relevant_total++;
-    }
-  }
-  if (n_relevant_total == 0)
-    return 0.0;
-  for (int64_t j = start_a; j < end_a; j++) {
-    int64_t neighbor = neighbors_a->a[j];
-    if (tk_iuset_get(relevant_set, neighbor) != tk_iuset_end(relevant_set)) {
-      n_relevant_seen++;
-      uint64_t position = (uint64_t)(j - start_a + 1);
-      double precision_at_k = (double)n_relevant_seen / (double)position;
-      sum_precision += precision_at_k;
-    }
-  }
-  return sum_precision / (double)n_relevant_total;
-}
-
 #endif
