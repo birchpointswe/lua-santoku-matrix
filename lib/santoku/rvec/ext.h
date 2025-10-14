@@ -889,9 +889,7 @@ static inline double tk_pvec_spearman_weighted_rvec(
 
 static inline double tk_rvec_rank_biserial_binary(
   tk_rvec_t *ranks,
-  tk_iuset_t *group_1,
-  double *out_mean_rank_0,
-  double *out_mean_rank_1
+  tk_iuset_t *group_1
 ) {
   if (!ranks || !group_1 || ranks->n == 0)
     return 0.0;
@@ -912,16 +910,38 @@ static inline double tk_rvec_rank_biserial_binary(
     return 0.0;
   double mean_rank_0 = rank_sum_0 / count_0;
   double mean_rank_1 = rank_sum_1 / count_1;
-  if (out_mean_rank_0) *out_mean_rank_0 = mean_rank_0;
-  if (out_mean_rank_1) *out_mean_rank_1 = mean_rank_1;
   return (mean_rank_0 - mean_rank_1) / (ranks->n / 2.0);
+}
+
+static inline double tk_rvec_weight_biserial_binary(
+  tk_rvec_t *ranks,
+  tk_iuset_t *group_1
+) {
+  if (!ranks || !group_1 || ranks->n == 0)
+    return 0.0;
+  double weight_sum_0 = 0.0, weight_sum_1 = 0.0;
+  uint64_t count_0 = 0, count_1 = 0;
+  for (uint64_t i = 0; i < ranks->n; i++) {
+    int64_t id = ranks->a[i].i;
+    double weight = ranks->a[i].d;
+    if (tk_iuset_get(group_1, id) != tk_iuset_end(group_1)) {
+      weight_sum_1 += weight;
+      count_1++;
+    } else {
+      weight_sum_0 += weight;
+      count_0++;
+    }
+  }
+  if (count_0 == 0 || count_1 == 0)
+    return 0.0;
+  double mean_weight_0 = weight_sum_0 / count_0;
+  double mean_weight_1 = weight_sum_1 / count_1;
+  return mean_weight_1 - mean_weight_0;
 }
 
 static inline double tk_rvec_variance_ratio_binary(
   tk_rvec_t *ranks,
-  tk_iuset_t *group_1,
-  double *out_var_0,
-  double *out_var_1
+  tk_iuset_t *group_1
 ) {
   if (!ranks || !group_1 || ranks->n == 0)
     return 0.0;
@@ -957,8 +977,50 @@ static inline double tk_rvec_variance_ratio_binary(
   }
   var_0 /= count_0;
   var_1 /= count_1;
-  if (out_var_0) *out_var_0 = var_0;
-  if (out_var_1) *out_var_1 = var_1;
+  if (var_1 <= 0.0)
+    return 0.0;
+  double vr = var_0 / var_1;
+  return vr / (1.0 + vr);
+}
+
+static inline double tk_rvec_weight_variance_ratio_binary(
+  tk_rvec_t *ranks,
+  tk_iuset_t *group_1
+) {
+  if (!ranks || !group_1 || ranks->n == 0)
+    return 0.0;
+  double weight_sum_0 = 0.0, weight_sum_1 = 0.0;
+  uint64_t count_0 = 0, count_1 = 0;
+  for (uint64_t i = 0; i < ranks->n; i++) {
+    int64_t id = ranks->a[i].i;
+    double weight = ranks->a[i].d;
+    if (tk_iuset_get(group_1, id) != tk_iuset_end(group_1)) {
+      weight_sum_1 += weight;
+      count_1++;
+    } else {
+      weight_sum_0 += weight;
+      count_0++;
+    }
+  }
+  if (count_0 < 2 || count_1 < 2)
+    return 0.0;
+  double mean_weight_0 = weight_sum_0 / count_0;
+  double mean_weight_1 = weight_sum_1 / count_1;
+  double var_0 = 0.0, var_1 = 0.0;
+  for (uint64_t i = 0; i < ranks->n; i++) {
+    int64_t id = ranks->a[i].i;
+    double weight = ranks->a[i].d;
+    double diff;
+    if (tk_iuset_get(group_1, id) != tk_iuset_end(group_1)) {
+      diff = weight - mean_weight_1;
+      var_1 += diff * diff;
+    } else {
+      diff = weight - mean_weight_0;
+      var_0 += diff * diff;
+    }
+  }
+  var_0 /= count_0;
+  var_1 /= count_1;
   if (var_1 <= 0.0)
     return 0.0;
   double vr = var_0 / var_1;
@@ -967,9 +1029,7 @@ static inline double tk_rvec_variance_ratio_binary(
 
 static inline double tk_pvec_variance_ratio_binary(
   tk_pvec_t *ranks,
-  tk_iuset_t *group_1,
-  double *out_var_0,
-  double *out_var_1
+  tk_iuset_t *group_1
 ) {
   if (!ranks || !group_1 || ranks->n == 0)
     return 0.0;
@@ -1005,8 +1065,6 @@ static inline double tk_pvec_variance_ratio_binary(
   }
   var_0 /= count_0;
   var_1 /= count_1;
-  if (out_var_0) *out_var_0 = var_0;
-  if (out_var_1) *out_var_1 = var_1;
   if (var_1 <= 0.0)
     return 0.0;
   double vr = var_0 / var_1;
@@ -1069,6 +1127,36 @@ static inline double tk_rvec_ndcg_binary(
   return idcg > 0.0 ? dcg / idcg : 0.0;
 }
 
+static inline double tk_rvec_weight_ndcg_binary(
+  tk_rvec_t *ranks,
+  tk_iuset_t *group_1
+) {
+  if (!ranks || !group_1 || ranks->n == 0)
+    return 0.0;
+  double idcg = 0.0;
+  double dcg = 0.0;
+  for (uint64_t i = 0; i < ranks->n; i++) {
+    int64_t id = ranks->a[i].i;
+    double weight = ranks->a[i].d;
+    bool is_relevant = tk_iuset_get(group_1, id) != tk_iuset_end(group_1);
+    if (is_relevant) {
+      dcg += weight / log2((double)(i + 2));
+    }
+  }
+  uint64_t relevant_pos = 0;
+  for (uint64_t i = 0; i < ranks->n; i++) {
+    int64_t id = ranks->a[i].i;
+    double weight = ranks->a[i].d;
+    bool is_relevant = tk_iuset_get(group_1, id) != tk_iuset_end(group_1);
+    if (is_relevant) {
+      idcg += weight / log2((double)(relevant_pos + 2));
+      relevant_pos++;
+    }
+  }
+
+  return idcg > 0.0 ? dcg / idcg : 0.0;
+}
+
 static inline double tk_rvec_pvec_rank_diff_cv(
   tk_rvec_t *ranks_a,
   tk_pvec_t *ranks_b
@@ -1114,6 +1202,199 @@ static inline double tk_rvec_pvec_rank_diff_cv(
     }
   }
   tk_iumap_destroy(idx_b);
+  double variance = sum_sq_dev / count;
+  double std_dev = sqrt(variance);
+  double cv = std_dev / mean;
+  return 1.0 / (1.0 + cv);
+}
+
+static inline double tk_csr_pvec_spearman_streaming(
+  tk_ivec_t *neighbors_a,
+  tk_dvec_t *weights_a,
+  int64_t start_a,
+  int64_t end_a,
+  tk_pvec_t *ranks_b,
+  tk_dumap_t *rank_buffer_a,
+  tk_dumap_t *rank_buffer_b
+) {
+  uint64_t n_a = (uint64_t)(end_a - start_a);
+  if (n_a == 0 || !ranks_b || ranks_b->n == 0)
+    return 0.0;
+  tk_dumap_clear(rank_buffer_b);
+  int kha;
+  for (uint64_t i = 0; i < ranks_b->n; i++) {
+    double rank = (double)i;
+    uint64_t count = 1;
+    int64_t hamming = ranks_b->a[i].p;
+    while (i + 1 < ranks_b->n && ranks_b->a[i + 1].p == hamming) {
+      count++;
+      i++;
+    }
+    double average_rank = (rank + (rank + count - 1)) / 2.0;
+    for (uint64_t j = 0; j < count; j++) {
+      uint32_t khi = tk_dumap_put(rank_buffer_b, ranks_b->a[i - j].i, &kha);
+      tk_dumap_setval(rank_buffer_b, khi, average_rank);
+    }
+  }
+  tk_dumap_clear(rank_buffer_a);
+  for (int64_t j = start_a; j < end_a; j++) {
+    double rank = (double)(j - start_a);
+    uint64_t count = 1;
+    double weight = weights_a->a[j];
+    while (j + 1 < end_a && weights_a->a[j + 1] == weight) {
+      count++;
+      j++;
+    }
+    double average_rank = (rank + (rank + count - 1)) / 2.0;
+    for (uint64_t k = 0; k < count; k++) {
+      uint32_t khi = tk_dumap_put(rank_buffer_a, neighbors_a->a[(uint64_t) j - k], &kha);
+      tk_dumap_setval(rank_buffer_a, khi, average_rank);
+    }
+  }
+  double sum_squared_diff = 0.0;
+  uint64_t n = 0;
+  int64_t neighbor;
+  double ra;
+  tk_umap_foreach(rank_buffer_a, neighbor, ra, ({
+    uint32_t khi = tk_dumap_get(rank_buffer_b, neighbor);
+    if (khi != tk_dumap_end(rank_buffer_b)) {
+      double rb = tk_dumap_val(rank_buffer_b, khi);
+      double diff = ra - rb;
+      sum_squared_diff += diff * diff;
+      n++;
+    }
+  }))
+
+  if (n <= 1)
+    return 1.0;
+
+  double n_double = (double)n;
+  return 1.0 - (6.0 * sum_squared_diff) / (n_double * (n_double * n_double - 1.0));
+}
+
+static inline double tk_csr_pvec_ndcg_streaming(
+  tk_ivec_t *neighbors_a,
+  int64_t start_a,
+  int64_t end_a,
+  tk_pvec_t *ranks_b,
+  tk_iumap_t *reverse_idx_buffer
+) {
+  uint64_t n_a = (uint64_t)(end_a - start_a);
+  if (n_a == 0 || !ranks_b || ranks_b->n == 0)
+    return 0.0;
+
+  tk_iumap_clear(reverse_idx_buffer);
+  int kha;
+  for (uint64_t i = 0; i < ranks_b->n; i++) {
+    uint32_t khi = tk_iumap_put(reverse_idx_buffer, ranks_b->a[i].i, &kha);
+    tk_iumap_setval(reverse_idx_buffer, khi, (int64_t)i);
+  }
+
+  double dcg = 0.0;
+  double idcg = 0.0;
+  for (int64_t j = start_a; j < end_a; j++) {
+    uint64_t rank_a = (uint64_t)(j - start_a);
+    int64_t neighbor = neighbors_a->a[j];
+    double relevance = (double)(n_a - rank_a);
+    idcg += relevance / log2((double)(rank_a + 2));
+    uint32_t khi = tk_iumap_get(reverse_idx_buffer, neighbor);
+    if (khi != tk_iumap_end(reverse_idx_buffer)) {
+      int64_t hamming_rank = tk_iumap_val(reverse_idx_buffer, khi);
+      dcg += relevance / log2((double)(hamming_rank + 2));
+    }
+  }
+
+  return idcg > 0.0 ? dcg / idcg : 0.0;
+}
+
+static inline double tk_csr_weight_ndcg_streaming(
+  tk_ivec_t *neighbors_a,
+  tk_dvec_t *weights_a,
+  int64_t start_a,
+  int64_t end_a,
+  tk_pvec_t *ranks_b,
+  tk_iumap_t *reverse_idx_buffer
+) {
+  uint64_t n_a = (uint64_t)(end_a - start_a);
+  if (n_a == 0 || !ranks_b || ranks_b->n == 0)
+    return 0.0;
+
+  tk_iumap_clear(reverse_idx_buffer);
+  int kha;
+  for (uint64_t i = 0; i < ranks_b->n; i++) {
+    uint32_t khi = tk_iumap_put(reverse_idx_buffer, ranks_b->a[i].i, &kha);
+    tk_iumap_setval(reverse_idx_buffer, khi, (int64_t)i);
+  }
+
+  double dcg = 0.0;
+  double idcg = 0.0;
+  for (int64_t j = start_a; j < end_a; j++) {
+    uint64_t rank_a = (uint64_t)(j - start_a);
+    int64_t neighbor = neighbors_a->a[j];
+    double relevance = weights_a->a[j];
+    idcg += relevance / log2((double)(rank_a + 2));
+    uint32_t khi = tk_iumap_get(reverse_idx_buffer, neighbor);
+    if (khi != tk_iumap_end(reverse_idx_buffer)) {
+      int64_t hamming_rank = tk_iumap_val(reverse_idx_buffer, khi);
+      dcg += relevance / log2((double)(hamming_rank + 2));
+    }
+  }
+
+  return idcg > 0.0 ? dcg / idcg : 0.0;
+}
+
+static inline double tk_csr_pvec_rank_diff_cv_streaming(
+  tk_ivec_t *neighbors_a,
+  int64_t start_a,
+  int64_t end_a,
+  tk_pvec_t *ranks_b,
+  tk_iumap_t *reverse_idx_buffer
+) {
+  uint64_t n_a = (uint64_t)(end_a - start_a);
+  if (n_a == 0 || !ranks_b || ranks_b->n == 0)
+    return 0.0;
+
+  tk_iumap_clear(reverse_idx_buffer);
+  int kha;
+  for (uint64_t i = 0; i < ranks_b->n; i++) {
+    uint32_t khi = tk_iumap_put(reverse_idx_buffer, ranks_b->a[i].i, &kha);
+    tk_iumap_setval(reverse_idx_buffer, khi, (int64_t)i);
+  }
+
+  double sum_diffs = 0.0;
+  uint64_t count = 0;
+  for (int64_t j = start_a; j < end_a; j++) {
+    int64_t neighbor = neighbors_a->a[j];
+    uint32_t khi = tk_iumap_get(reverse_idx_buffer, neighbor);
+    if (khi != tk_iumap_end(reverse_idx_buffer)) {
+      double rank_a = (double)(j - start_a);
+      int64_t rank_b = tk_iumap_val(reverse_idx_buffer, khi);
+      double diff = fabs(rank_a - (double)rank_b);
+      sum_diffs += diff;
+      count++;
+    }
+  }
+
+  if (count < 2)
+    return 1.0;
+
+  double mean = sum_diffs / count;
+  if (mean <= 0.0)
+    return 1.0;
+
+  double sum_sq_dev = 0.0;
+  for (int64_t j = start_a; j < end_a; j++) {
+    int64_t neighbor = neighbors_a->a[j];
+    uint32_t khi = tk_iumap_get(reverse_idx_buffer, neighbor);
+    if (khi != tk_iumap_end(reverse_idx_buffer)) {
+      double rank_a = (double)(j - start_a);
+      int64_t rank_b = tk_iumap_val(reverse_idx_buffer, khi);
+      double diff = fabs(rank_a - (double)rank_b);
+      double dev = diff - mean;
+      sum_sq_dev += dev * dev;
+    }
+  }
+
   double variance = sum_sq_dev / count;
   double std_dev = sqrt(variance);
   double cv = std_dev / mean;
