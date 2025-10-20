@@ -358,8 +358,10 @@ static inline int tk_umap_pfx(get_lua) (lua_State *L)
 {
   tk_umap_pfx(t) *h = tk_umap_pfx(peek)(L, 1, "umap");
   tk_umap_key k = tk_umap_peekkey(L, 2, "key");
-  lua_pushinteger(L, tk_umap_pfx(get)(h, k));
-  return 1;
+  uint32_t i = tk_umap_pfx(get)(h, k);
+  lua_pushinteger(L, i);
+  lua_pushboolean(L, i != tk_umap_pfx(end)(h));
+  return 2;
 }
 #endif
 
@@ -371,7 +373,8 @@ static inline int tk_umap_pfx(put_lua) (lua_State *L)
   int absent;
   uint32_t iter = tk_umap_pfx(put)(h, k, &absent);
   lua_pushinteger(L, iter);
-  return 1;
+  lua_pushboolean(L, !absent);
+  return 2;
 }
 #endif
 
