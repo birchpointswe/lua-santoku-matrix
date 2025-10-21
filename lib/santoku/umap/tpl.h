@@ -171,10 +171,6 @@ static inline void tk_umap_pfx(destroy) (tk_umap_pfx(t) *h)
   tk_umap_destroy(tk_umap_name, h);
   if (!lua_managed)
     free(h);
-  else {
-    memset(h, 0, sizeof(tk_umap_pfx(t)));
-    h->lua_managed = lua_managed;
-  }
 }
 
 static inline uint32_t tk_umap_pfx(size) (tk_umap_pfx(t) *h)
