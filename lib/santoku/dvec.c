@@ -129,11 +129,66 @@ static inline int tk_dvec_scores_plateau_lua (lua_State *L)
   return 2;
 }
 
+static inline int tk_dvec_multiply_lua (lua_State *L)
+{
+  lua_settop(L, 6);
+  tk_dvec_t *a = tk_dvec_peek(L, 1, "a");
+  tk_dvec_t *b = tk_dvec_peek(L, 2, "b");
+  tk_dvec_t *c = tk_dvec_peek(L, 3, "c");
+  uint64_t k = tk_lua_checkunsigned(L, 4, "k");
+  bool transpose_a = lua_toboolean(L, 5);
+  bool transpose_b = lua_toboolean(L, 6);
+  tk_dvec_multiply_override(a, b, c, k, transpose_a, transpose_b);
+  lua_pushvalue(L, 3);
+  return 1;
+}
+
+static inline int tk_dvec_rsums_lua (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_dvec_t *m = tk_dvec_peek(L, 1, "dvec");
+  uint64_t cols = tk_lua_checkunsigned(L, 2, "cols");
+  tk_dvec_rsums_override(L, m, cols);
+  return 1;
+}
+
+static inline int tk_dvec_csums_lua (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_dvec_t *m = tk_dvec_peek(L, 1, "dvec");
+  uint64_t cols = tk_lua_checkunsigned(L, 2, "cols");
+  tk_dvec_csums_override(L, m, cols);
+  return 1;
+}
+
+static inline int tk_dvec_rmags_lua (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_dvec_t *m = tk_dvec_peek(L, 1, "dvec");
+  uint64_t cols = tk_lua_checkunsigned(L, 2, "cols");
+  tk_dvec_rmags_override(L, m, cols);
+  return 1;
+}
+
+static inline int tk_dvec_cmags_lua (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_dvec_t *m = tk_dvec_peek(L, 1, "dvec");
+  uint64_t cols = tk_lua_checkunsigned(L, 2, "cols");
+  tk_dvec_cmags_override(L, m, cols);
+  return 1;
+}
+
 static luaL_Reg tk_dvec_lua_mt_ext2_fns[] =
 {
   { "multiply_bits", tk_dvec_multiply_bits_lua },
   { "center", tk_dvec_center_lua },
   { "rnorml2", tk_dvec_rnorml2_lua },
+  { "multiply", tk_dvec_multiply_lua },
+  { "rsums", tk_dvec_rsums_lua },
+  { "csums", tk_dvec_csums_lua },
+  { "rmags", tk_dvec_rmags_lua },
+  { "cmags", tk_dvec_cmags_lua },
   { "scores_kaiser", tk_dvec_scores_kaiser_lua },
   { "scores_max_curvature", tk_dvec_scores_max_curvature_lua },
   { "scores_lmethod", tk_dvec_scores_lmethod_lua },
