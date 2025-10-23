@@ -129,7 +129,7 @@ static inline int tk_dvec_scores_plateau_lua (lua_State *L)
   return 2;
 }
 
-static inline int tk_dvec_multiply_lua (lua_State *L)
+static inline int tk_dvec_multiply_blas_lua (lua_State *L)
 {
   lua_settop(L, 6);
   tk_dvec_t *a = tk_dvec_peek(L, 1, "a");
@@ -143,7 +143,7 @@ static inline int tk_dvec_multiply_lua (lua_State *L)
   return 1;
 }
 
-static inline int tk_dvec_rsums_lua (lua_State *L)
+static inline int tk_dvec_rsums_blas_lua (lua_State *L)
 {
   lua_settop(L, 2);
   tk_dvec_t *m = tk_dvec_peek(L, 1, "dvec");
@@ -152,7 +152,7 @@ static inline int tk_dvec_rsums_lua (lua_State *L)
   return 1;
 }
 
-static inline int tk_dvec_csums_lua (lua_State *L)
+static inline int tk_dvec_csums_blas_lua (lua_State *L)
 {
   lua_settop(L, 2);
   tk_dvec_t *m = tk_dvec_peek(L, 1, "dvec");
@@ -161,7 +161,7 @@ static inline int tk_dvec_csums_lua (lua_State *L)
   return 1;
 }
 
-static inline int tk_dvec_rmags_lua (lua_State *L)
+static inline int tk_dvec_rmags_blas_lua (lua_State *L)
 {
   lua_settop(L, 2);
   tk_dvec_t *m = tk_dvec_peek(L, 1, "dvec");
@@ -170,7 +170,7 @@ static inline int tk_dvec_rmags_lua (lua_State *L)
   return 1;
 }
 
-static inline int tk_dvec_cmags_lua (lua_State *L)
+static inline int tk_dvec_cmags_blas_lua (lua_State *L)
 {
   lua_settop(L, 2);
   tk_dvec_t *m = tk_dvec_peek(L, 1, "dvec");
@@ -184,11 +184,11 @@ static luaL_Reg tk_dvec_lua_mt_ext2_fns[] =
   { "multiply_bits", tk_dvec_multiply_bits_lua },
   { "center", tk_dvec_center_lua },
   { "rnorml2", tk_dvec_rnorml2_lua },
-  { "multiply", tk_dvec_multiply_lua },
-  { "rsums", tk_dvec_rsums_lua },
-  { "csums", tk_dvec_csums_lua },
-  { "rmags", tk_dvec_rmags_lua },
-  { "cmags", tk_dvec_cmags_lua },
+  { "multiply", tk_dvec_multiply_blas_lua },
+  { "rsums", tk_dvec_rsums_blas_lua },
+  { "csums", tk_dvec_csums_blas_lua },
+  { "rmags", tk_dvec_rmags_blas_lua },
+  { "cmags", tk_dvec_cmags_blas_lua },
   { "scores_kaiser", tk_dvec_scores_kaiser_lua },
   { "scores_max_curvature", tk_dvec_scores_max_curvature_lua },
   { "scores_lmethod", tk_dvec_scores_lmethod_lua },
