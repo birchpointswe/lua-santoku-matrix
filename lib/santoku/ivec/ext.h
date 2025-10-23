@@ -3,7 +3,6 @@
 
 #include <omp.h>
 #include <santoku/rvec.h>
-#include <santoku/threads.h>
 #include <santoku/dvec.h>
 #include <santoku/iumap.h>
 #include <stdatomic.h>
@@ -72,6 +71,7 @@ static inline void tk_ivec_copy_rvalues (tk_ivec_t *m0, tk_rvec_t *m1, int64_t s
 
 static inline tk_ivec_t *tk_ivec_from_rvec (lua_State *L, tk_rvec_t *R) {
   tk_ivec_t *result = tk_ivec_create(L, R->n, 0, 0);
+  #pragma omp parallel for
   for (int64_t i = 0; i < (int64_t) R->n; i ++)
     result->a[i] = R->a[i].i;
   return result;
@@ -230,6 +230,7 @@ static inline void tk_ivec_bits_extend (tk_ivec_t *base, tk_ivec_t *ext, uint64_
   tk_ivec_asc(ext, 0, ext->n);
   size_t total = base->n + ext->n;
   tk_ivec_ensure(base, total);
+  #pragma omp parallel for
   for (size_t i = 0; i < base->n; i ++) {
     uint64_t bit = (uint64_t) base->a[i];
     uint64_t sample = bit / n_feat;
@@ -237,6 +238,7 @@ static inline void tk_ivec_bits_extend (tk_ivec_t *base, tk_ivec_t *ext, uint64_
     uint64_t new_off = sample * (n_feat + n_extfeat);
     base->a[i] = (int64_t) (bit - old_off + new_off);
   }
+  #pragma omp parallel for
   for (size_t i = 0; i < ext->n; i ++) {
     uint64_t bit = (uint64_t) ext->a[i];
     uint64_t sample = bit / n_extfeat;
@@ -264,6 +266,7 @@ static inline int tk_ivec_bits_extend_mapped (tk_ivec_t *base, tk_ivec_t *ext, t
     tk_iumap_destroy(a_id_to_pos);
     return -1;
   }
+  #pragma omp parallel for
   for (size_t i = 0; i < aids->n; i++)
     a_to_final[i] = (int64_t)i;
   int64_t next_pos = (int64_t)aids->n;
@@ -296,12 +299,14 @@ static inline int tk_ivec_bits_extend_mapped (tk_ivec_t *base, tk_ivec_t *ext, t
     }
   }
   size_t max_bits = 0;
+  #pragma omp parallel for reduction(+:max_bits)
   for (size_t i = 0; i < base->n; i++) {
     uint64_t bit = (uint64_t)base->a[i];
     uint64_t sample = bit / n_feat;
     if (sample < old_aids_n)
       max_bits++;
   }
+  #pragma omp parallel for reduction(+:max_bits)
   for (size_t i = 0; i < ext->n; i++) {
     uint64_t bit = (uint64_t)ext->a[i];
     uint64_t sample = bit / n_extfeat;
@@ -314,6 +319,7 @@ static inline int tk_ivec_bits_extend_mapped (tk_ivec_t *base, tk_ivec_t *ext, t
     tk_iumap_destroy(a_id_to_pos);
     return -1;
   }
+  #pragma omp parallel for
   for (int64_t i = (int64_t)base->n - 1; i >= 0; i--) {
     uint64_t bit = (uint64_t)base->a[i];
     uint64_t sample = bit / n_feat;

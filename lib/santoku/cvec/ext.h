@@ -7,7 +7,6 @@
 #include <santoku/dvec.h>
 #include <santoku/rvec.h>
 #include <santoku/iumap.h>
-#include <santoku/threads.h>
 #include <string.h>
 #include <limits.h>
 #include <stdlib.h>
@@ -444,6 +443,7 @@ static inline int tk_cvec_bits_extend_mapped (
     tk_iumap_destroy(b_id_to_pos);
     return -1;
   }
+  #pragma omp parallel for
   for (size_t ai = 0; ai < old_aids_n; ai++) {
     uint64_t dest_offset = ai * total_bytes_per_sample;
     uint64_t src_offset = ai * base_bytes_per_sample;
@@ -470,6 +470,7 @@ static inline int tk_cvec_bits_extend_mapped (
       }
     }
   }
+  #pragma omp parallel for
   for (size_t bi = 0; bi < bids->n; bi++) {
     int64_t final_pos = b_to_final[bi];
     if (final_pos >= (int64_t)old_aids_n) {
@@ -512,6 +513,7 @@ static inline void tk_cvec_bits_to_ascii (
   tk_cvec_t *ascii = tk_cvec_create(L, n_bits + 1, 0, 0);
   const uint8_t *data = (const uint8_t *)bitmap->a;
   char *out = ascii->a;
+  #pragma omp parallel for
   for (uint64_t i = 0; i < n_bits; i++) {
     uint64_t bit_pos = start_bit + i;
     uint64_t byte_idx = bit_pos / 8;
