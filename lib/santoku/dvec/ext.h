@@ -13,6 +13,7 @@ static inline void tk_dvec_center (
   size_t N,
   size_t K
 ) {
+
   #pragma omp parallel for
   for (size_t j = 0; j < K; j ++) {
     double mu = 0.0;
@@ -29,16 +30,10 @@ static inline void tk_dvec_rnorml2 (
 ) {
   #pragma omp parallel for
   for (size_t i = 0; i < N; i++) {
-    double sum = 0.0;
-    for (size_t j = 0; j < K; j++) {
-      double val = M[i * K + j];
-      sum += val * val;
-    }
-    double norm = sqrt(sum);
+    double *row = M + i * K;
+    double norm = cblas_dnrm2(K, row, 1);
     if (norm > 0.0) {
-      for (size_t j = 0; j < K; j++) {
-        M[i * K + j] /= norm;
-      }
+      cblas_dscal(K, 1.0 / norm, row, 1);
     }
   }
 }
@@ -337,6 +332,165 @@ static inline void tk_dvec_scores_tolerance (
   }
   *out_start = best_start;
   *out_end = best_end;
+}
+
+
+
+
+
+
+static inline void tk_dvec_gemv(
+  bool transpose,
+  uint64_t rows,
+  uint64_t cols,
+  double alpha,
+  double *A,
+  double *x,
+  double beta,
+  double *y
+) {
+  cblas_dgemv(CblasRowMajor,
+              transpose ? CblasTrans : CblasNoTrans,
+              rows, cols, alpha, A, cols, x, 1, beta, y, 1);
+}
+
+
+static inline void tk_dvec_gemm(
+  bool transpose_a,
+  bool transpose_b,
+  uint64_t m,
+  uint64_t n,
+  uint64_t k,
+  double alpha,
+  double *A,
+  double *B,
+  double beta,
+  double *C
+) {
+  cblas_dgemm(CblasRowMajor,
+              transpose_a ? CblasTrans : CblasNoTrans,
+              transpose_b ? CblasTrans : CblasNoTrans,
+              m, n, k,
+              alpha, A, transpose_a ? m : k,
+              B, transpose_b ? k : n,
+              beta, C, n);
+}
+
+
+static inline double tk_dvec_blas_dot(double *x, double *y, uint64_t n) {
+  return cblas_ddot(n, x, 1, y, 1);
+}
+
+
+static inline void tk_dvec_blas_scal(double alpha, double *x, uint64_t n) {
+  cblas_dscal(n, alpha, x, 1);
+}
+
+
+static inline void tk_dvec_blas_axpy(double alpha, double *x, double *y, uint64_t n) {
+  cblas_daxpy(n, alpha, x, 1, y, 1);
+}
+
+
+static inline void tk_dvec_blas_copy(double *x, double *y, uint64_t n) {
+  cblas_dcopy(n, x, 1, y, 1);
+}
+
+
+static inline double tk_dvec_blas_nrm2(double *x, uint64_t n) {
+  return cblas_dnrm2(n, x, 1);
+}
+
+
+static inline double tk_dvec_blas_dot_full(tk_dvec_t *a, tk_dvec_t *b) {
+  uint64_t n = a->n < b->n ? a->n : b->n;
+  return cblas_ddot(n, a->a, 1, b->a, 1);
+}
+
+static inline void tk_dvec_blas_scale_full(tk_dvec_t *v, double scale, uint64_t start, uint64_t end) {
+  if (end > v->n) {
+    tk_dvec_ensure(v, end);
+    v->n = end;
+  }
+  if (end <= start) return;
+  cblas_dscal(end - start, scale, v->a + start, 1);
+}
+
+static inline void tk_dvec_blas_addv_full(tk_dvec_t *a, tk_dvec_t *b, uint64_t start, uint64_t end) {
+  if (end > a->n) {
+    tk_dvec_ensure(a, end);
+    a->n = end;
+  }
+  if (end > b->n || end <= start) return;
+  cblas_daxpy(end - start, 1.0, b->a + start, 1, a->a + start, 1);
+}
+
+static inline void tk_dvec_blas_multiply_full(tk_dvec_t *a, tk_dvec_t *b, tk_dvec_t *c, uint64_t k, bool transpose_a, bool transpose_b) {
+  size_t m = transpose_a ? k : a->n / k;
+  size_t n = transpose_b ? k : b->n / k;
+  tk_dvec_ensure(c, m * n);
+  c->n = m * n;
+  cblas_dgemm(CblasRowMajor,
+              transpose_a ? CblasTrans : CblasNoTrans,
+              transpose_b ? CblasTrans : CblasNoTrans,
+              m, n, k,
+              1.0, a->a, transpose_a ? m : k,
+              b->a, transpose_b ? k : n,
+              0.0, c->a, n);
+}
+
+static inline void tk_dvec_blas_scale_fullv(tk_dvec_t *a, tk_dvec_t *b, uint64_t start, uint64_t end) {
+  if (end > a->n) {
+    tk_dvec_ensure(a, end);
+    a->n = end;
+  }
+  if (end > b->n || end <= start) return;
+  for (size_t i = start; i < end; i++)
+    a->a[i] *= b->a[i];
+}
+
+static inline tk_dvec_t *tk_dvec_blas_rmags(lua_State *L, tk_dvec_t *m0, uint64_t cols) {
+  uint64_t rows = m0->n / cols;
+  tk_dvec_t *out = tk_dvec_create(L, rows, 0, 0);
+  for (uint64_t r = 0; r < rows; r++) {
+    out->a[r] = cblas_dnrm2(cols, m0->a + r * cols, 1);
+  }
+  out->n = rows;
+  return out;
+}
+
+static inline tk_dvec_t *tk_dvec_blas_cmags(lua_State *L, tk_dvec_t *m0, uint64_t cols) {
+  uint64_t rows = m0->n / cols;
+  tk_dvec_t *out = tk_dvec_create(L, cols, 0, 0);
+  for (uint64_t c = 0; c < cols; c++) {
+    out->a[c] = cblas_dnrm2(rows, m0->a + c, cols);
+  }
+  out->n = cols;
+  return out;
+}
+
+static inline tk_dvec_t *tk_dvec_blas_rsums(lua_State *L, tk_dvec_t *m0, uint64_t cols) {
+  uint64_t rows = m0->n / cols;
+  tk_dvec_t *out = tk_dvec_create(L, rows, 0, 0);
+  tk_dvec_t *ones = tk_dvec_create(NULL, cols, 0, 0);
+  for (uint64_t i = 0; i < cols; i++) ones->a[i] = 1.0;
+  ones->n = cols;
+  cblas_dgemv(CblasRowMajor, CblasNoTrans, rows, cols, 1.0, m0->a, cols, ones->a, 1, 0.0, out->a, 1);
+  out->n = rows;
+  tk_dvec_destroy(ones);
+  return out;
+}
+
+static inline tk_dvec_t *tk_dvec_blas_csums(lua_State *L, tk_dvec_t *m0, uint64_t cols) {
+  uint64_t rows = m0->n / cols;
+  tk_dvec_t *out = tk_dvec_create(L, cols, 0, 0);
+  tk_dvec_t *ones = tk_dvec_create(NULL, rows, 0, 0);
+  for (uint64_t i = 0; i < rows; i++) ones->a[i] = 1.0;
+  ones->n = rows;
+  cblas_dgemv(CblasRowMajor, CblasTrans, rows, cols, 1.0, m0->a, cols, ones->a, 1, 0.0, out->a, 1);
+  out->n = cols;
+  tk_dvec_destroy(ones);
+  return out;
 }
 
 #endif
