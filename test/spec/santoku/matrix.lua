@@ -1,8 +1,8 @@
 local it  = require("santoku.iter")
 local err = require("santoku.error")
+local dvec = require("santoku.dvec")
 local ivec = require("santoku.ivec")
 local rvec = require("santoku.rvec")
-local dvec = require("santoku.dvec")
 local tbl = require("santoku.table")
 
 for _, vec in ipairs({ ivec, dvec }) do

@@ -1,6 +1,7 @@
 #ifndef TK_RVEC_EXT_H
 #define TK_RVEC_EXT_H
 
+#include <omp.h>
 #include <santoku/dumap.h>
 #include <santoku/iumap.h>
 #include <santoku/pvec.h>
@@ -44,14 +45,14 @@ static inline tk_ivec_t *tk_rvec_keys (
   tk_rvec_t *P,
   tk_ivec_t *out
 ) {
-  tk_ivec_t *I = out ? out : tk_ivec_create(L, P->n, 0, 0);
+  tk_ivec_t *result = out ? out : tk_ivec_create(L, P->n, 0, 0);
   if (out)
-    tk_ivec_ensure(I, P->n);
+    tk_ivec_ensure(result, P->n);
   for (uint64_t i = 0; i < P->n; i ++)
-    I->a[i] = P->a[i].i;
+    result->a[i] = P->a[i].i;
   if (out)
-    I->n = P->n;
-  return I;
+    result->n = P->n;
+  return result;
 }
 
 static inline tk_dvec_t *tk_rvec_values (
@@ -59,14 +60,14 @@ static inline tk_dvec_t *tk_rvec_values (
   tk_rvec_t *P,
   tk_dvec_t *out
 ) {
-  tk_dvec_t *I = out ? out : tk_dvec_create(L, P->n, 0, 0);
+  tk_dvec_t *result = out ? out : tk_dvec_create(L, P->n, 0, 0);
   if (out)
-    tk_dvec_ensure(I, P->n);
+    tk_dvec_ensure(result, P->n);
   for (uint64_t i = 0; i < P->n; i ++)
-    I->a[i] = P->a[i].d;
+    result->a[i] = P->a[i].d;
   if (out)
-    I->n = P->n;
-  return I;
+    result->n = P->n;
+  return result;
 }
 
 static inline int tk_rvec_each_lua_iter (lua_State *L)
@@ -157,10 +158,13 @@ static inline double tk_csr_spearman(
   for (uint64_t h = 0; h <= max_hamming && h < count_buffer->m; h++)
     count_buffer->a[h] = 0;
 
+  #pragma omp parallel for
   for (uint64_t i = 0; i < bin_ranks->n; i++) {
     uint64_t hamming = (uint64_t)bin_ranks->a[i].p;
-    if (hamming <= max_hamming && hamming < count_buffer->m)
+    if (hamming <= max_hamming && hamming < count_buffer->m) {
+      #pragma omp atomic
       count_buffer->a[hamming]++;
+    }
   }
 
 

@@ -1,3 +1,5 @@
+#include <omp.h>
+
 #define tk_vec_pfx(name) tk_pp_strcat(tk_vec_name, name)
 
 static inline void tk_vec_pfx(copy_indexed) (
@@ -6,6 +8,7 @@ static inline void tk_vec_pfx(copy_indexed) (
   tk_ivec_t *indices
 ) {
   tk_vec_pfx(ensure)(m0, indices->n);
+  #pragma omp parallel for
   for (uint64_t i = 0; i < indices->n; i++) {
     int64_t idx = indices->a[i];
     if (idx >= 0 && idx < (int64_t)m1->n) {
@@ -39,17 +42,22 @@ static inline tk_ivec_t *tk_vec_pfx(rasc) (
   uint64_t cols
 ) {
   tk_ivec_t *out = tk_ivec_create(L, m0->n, NULL, NULL);
-  tk_rvec_t *ranks = tk_rvec_create(L, cols, NULL, NULL);
-  for (uint64_t r = 0; r < m0->n / cols; r ++) {
-    for (size_t c = 0; c < cols; c ++) {
-      ranks->a[c].i = (int64_t) c;
-      ranks->a[c].d = m0->a[r * cols + c];
+  uint64_t rows = m0->n / cols;
+  #pragma omp parallel
+  {
+    tk_rvec_t *ranks = tk_rvec_create(NULL, cols, 0, 0);
+    #pragma omp for
+    for (uint64_t r = 0; r < rows; r ++) {
+      for (size_t c = 0; c < cols; c ++) {
+        ranks->a[c].i = (int64_t) c;
+        ranks->a[c].d = m0->a[r * cols + c];
+      }
+      tk_rvec_asc(ranks, 0, ranks->n);
+      for (size_t c = 0; c < cols; c ++)
+        out->a[r * cols + c] = ranks->a[c].i;
     }
-    tk_rvec_asc(ranks, 0, ranks->n);
-    for (size_t c = 0; c < cols; c ++)
-      out->a[r * cols + c] = ranks->a[c].i;
+    tk_rvec_destroy(ranks);
   }
-  lua_pop(L, 1);
   return out;
 }
 
@@ -59,17 +67,22 @@ static inline tk_ivec_t *tk_vec_pfx(rdesc) (
   uint64_t cols
 ) {
   tk_ivec_t *out = tk_ivec_create(L, m0->n, NULL, NULL);
-  tk_rvec_t *ranks = tk_rvec_create(L, cols, NULL, NULL);
-  for (uint64_t r = 0; r < m0->n / cols; r ++) {
-    for (size_t c = 0; c < cols; c ++) {
-      ranks->a[c].i = (int64_t) c;
-      ranks->a[c].d = m0->a[r * cols + c];
+  uint64_t rows = m0->n / cols;
+  #pragma omp parallel
+  {
+    tk_rvec_t *ranks = tk_rvec_create(NULL, cols, 0, 0);
+    #pragma omp for
+    for (uint64_t r = 0; r < rows; r ++) {
+      for (size_t c = 0; c < cols; c ++) {
+        ranks->a[c].i = (int64_t) c;
+        ranks->a[c].d = m0->a[r * cols + c];
+      }
+      tk_rvec_desc(ranks, 0, ranks->n);
+      for (size_t c = 0; c < cols; c ++)
+        out->a[r * cols + c] = ranks->a[c].i;
     }
-    tk_rvec_desc(ranks, 0, ranks->n);
-    for (size_t c = 0; c < cols; c ++)
-      out->a[r * cols + c] = ranks->a[c].i;
+    tk_rvec_destroy(ranks);
   }
-  lua_pop(L, 1);
   return out;
 }
 
@@ -80,17 +93,21 @@ static inline tk_ivec_t *tk_vec_pfx(casc) (
 ) {
   uint64_t rows = m0->n / cols;
   tk_ivec_t *out = tk_ivec_create(L, m0->n, NULL, NULL);
-  tk_rvec_t *ranks = tk_rvec_create(L, rows, NULL, NULL);
-  for (size_t c = 0; c < cols; c ++) {
-    for (uint64_t r = 0; r < rows ; r ++) {
-      ranks->a[r].i = (int64_t) r;
-      ranks->a[r].d = m0->a[c * rows + r];
+  #pragma omp parallel
+  {
+    tk_rvec_t *ranks = tk_rvec_create(NULL, rows, 0, 0);
+    #pragma omp for
+    for (size_t c = 0; c < cols; c ++) {
+      for (uint64_t r = 0; r < rows ; r ++) {
+        ranks->a[r].i = (int64_t) r;
+        ranks->a[r].d = m0->a[c * rows + r];
+      }
+      tk_rvec_asc(ranks, 0, ranks->n);
+      for (size_t r = 0; r < rows; r ++)
+        out->a[c * rows + r] = ranks->a[r].i;
     }
-    tk_rvec_asc(ranks, 0, ranks->n);
-    for (size_t r = 0; r < rows; r ++)
-      out->a[c * rows + r] = ranks->a[r].i;
+    tk_rvec_destroy(ranks);
   }
-  lua_pop(L, 1);
   return out;
 }
 
@@ -101,17 +118,21 @@ static inline tk_ivec_t *tk_vec_pfx(cdesc) (
 ) {
   uint64_t rows = m0->n / cols;
   tk_ivec_t *out = tk_ivec_create(L, m0->n, NULL, NULL);
-  tk_rvec_t *ranks = tk_rvec_create(L, rows, NULL, NULL);
-  for (size_t c = 0; c < cols; c ++) {
-    for (uint64_t r = 0; r < rows ; r ++) {
-      ranks->a[r].i = (int64_t) r;
-      ranks->a[r].d = m0->a[c * rows + r];
+  #pragma omp parallel
+  {
+    tk_rvec_t *ranks = tk_rvec_create(NULL, rows, 0, 0);
+    #pragma omp for
+    for (size_t c = 0; c < cols; c ++) {
+      for (uint64_t r = 0; r < rows ; r ++) {
+        ranks->a[r].i = (int64_t) r;
+        ranks->a[r].d = m0->a[c * rows + r];
+      }
+      tk_rvec_desc(ranks, 0, ranks->n);
+      for (size_t r = 0; r < rows; r ++)
+        out->a[c * rows + r] = ranks->a[r].i;
     }
-    tk_rvec_desc(ranks, 0, ranks->n);
-    for (size_t r = 0; r < rows; r ++)
-      out->a[c * rows + r] = ranks->a[r].i;
+    tk_rvec_destroy(ranks);
   }
-  lua_pop(L, 1);
   return out;
 }
 
@@ -121,9 +142,11 @@ static inline tk_dvec_t *tk_vec_pfx(cmagnitudes) (
   uint64_t cols
 ) {
   tk_dvec_t *out = tk_dvec_create(L, cols, NULL, NULL);
+  uint64_t rows = m0->n / cols;
+  #pragma omp parallel for
   for (uint64_t c = 0; c < cols; c ++) {
     tk_vec_base sum = 0.0;
-    for (uint64_t r = 0; r < m0->n / cols; r ++) {
+    for (uint64_t r = 0; r < rows; r ++) {
       tk_vec_base val = m0->a[r * cols + c];
       sum += val * val;
     }
@@ -137,8 +160,10 @@ static inline tk_dvec_t *tk_vec_pfx(rmagnitudes) (
   tk_vec_pfx(t) *m0,
   uint64_t cols
 ) {
-  tk_dvec_t *out = tk_dvec_create(L, m0->n / cols, NULL, NULL);
-  for (uint64_t r = 0; r < m0->n / cols; r ++) {
+  uint64_t rows = m0->n / cols;
+  tk_dvec_t *out = tk_dvec_create(L, rows, NULL, NULL);
+  #pragma omp parallel for
+  for (uint64_t r = 0; r < rows; r ++) {
     tk_vec_base sum = 0.0;
     for (uint64_t c = 0; c < cols; c ++) {
       tk_vec_base val = m0->a[r * cols + c];
@@ -155,10 +180,12 @@ static inline tk_ivec_t *tk_vec_pfx(cmaxargs) (
   uint64_t cols
 ) {
   tk_ivec_t *out = tk_ivec_create(L, cols, NULL, NULL);
+  uint64_t rows = m0->n / cols;
+  #pragma omp parallel for
   for (uint64_t c = 0; c < cols; c ++) {
     uint64_t maxr = 0;
     tk_vec_base maxv = m0->a[0 * cols + c];
-    for (size_t r = 1; r < m0->n / cols; r ++) {
+    for (size_t r = 1; r < rows; r ++) {
       if (m0->a[r * cols + c] > maxv) {
         maxr = r;
         maxv = m0->a[r * cols + c];
@@ -174,8 +201,10 @@ static inline tk_ivec_t *tk_vec_pfx(rmaxargs) (
   tk_vec_pfx(t) *m0,
   uint64_t cols
 ) {
-  tk_ivec_t *out = tk_ivec_create(L, m0->n / cols, NULL, NULL);
-  for (uint64_t r = 0; r < m0->n / cols; r ++) {
+  uint64_t rows = m0->n / cols;
+  tk_ivec_t *out = tk_ivec_create(L, rows, NULL, NULL);
+  #pragma omp parallel for
+  for (uint64_t r = 0; r < rows; r ++) {
     tk_vec_base sum = 0.0;
     for (uint64_t c = 0; c < cols; c ++) {
       tk_vec_base val = m0->a[r * cols + c];
@@ -201,10 +230,12 @@ static inline tk_ivec_t *tk_vec_pfx(cminargs) (
   uint64_t cols
 ) {
   tk_ivec_t *out = tk_ivec_create(L, cols, NULL, NULL);
+  uint64_t rows = m0->n / cols;
+  #pragma omp parallel for
   for (uint64_t c = 0; c < cols; c ++) {
     uint64_t minr = 0;
     tk_vec_base minv = m0->a[0 * cols + c];
-    for (size_t r = 1; r < m0->n / cols; r ++) {
+    for (size_t r = 1; r < rows; r ++) {
       if (m0->a[r * cols + c] < minv) {
         minr = r;
         minv = m0->a[r * cols + c];
@@ -220,8 +251,10 @@ static inline tk_ivec_t *tk_vec_pfx(rminargs) (
   tk_vec_pfx(t) *m0,
   uint64_t cols
 ) {
-  tk_ivec_t *out = tk_ivec_create(L, m0->n / cols, NULL, NULL);
-  for (uint64_t r = 0; r < m0->n / cols; r ++) {
+  uint64_t rows = m0->n / cols;
+  tk_ivec_t *out = tk_ivec_create(L, rows, NULL, NULL);
+  #pragma omp parallel for
+  for (uint64_t r = 0; r < rows; r ++) {
     tk_vec_base sum = 0.0;
     for (uint64_t c = 0; c < cols; c ++) {
       tk_vec_base val = m0->a[r * cols + c];

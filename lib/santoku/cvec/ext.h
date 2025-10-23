@@ -1,6 +1,7 @@
 #ifndef TK_CVEC_EXT_H
 #define TK_CVEC_EXT_H
 
+#include <omp.h>
 #include <santoku/cvec/base.h>
 #include <santoku/ivec.h>
 #include <santoku/dvec.h>
@@ -120,6 +121,7 @@ static inline uint64_t tk_cvec_bits_popcount (
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
   uint64_t count = 0;
 
+  #pragma omp parallel for reduction(+:count)
   for (uint64_t i = 0; i < full_bytes - (rem_bits > 0); i ++)
     count += (uint64_t) tk_cvec_byte_popcount(data[i]);
 
@@ -140,6 +142,7 @@ static inline uint64_t tk_cvec_bits_hamming (
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
   uint64_t dist = 0;
 
+  #pragma omp parallel for reduction(+:dist)
   for (uint64_t i = 0; i < full_bytes - (rem_bits > 0); i ++)
     dist += (uint64_t) tk_cvec_byte_popcount(a[i] ^ b[i]);
 
@@ -162,6 +165,7 @@ static inline uint64_t tk_cvec_bits_hamming_mask (
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
   uint64_t dist = 0;
 
+  #pragma omp parallel for reduction(+:dist)
   for (uint64_t i = 0; i < full_bytes - (rem_bits > 0); i ++)
     dist += (uint64_t) tk_cvec_byte_popcount((a[i] ^ b[i]) & mask[i]);
 
@@ -183,6 +187,7 @@ static inline void tk_cvec_bits_and (
   uint64_t full_bytes = TK_CVEC_BITS_BYTES(n_bits);
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
 
+  #pragma omp parallel for
   for (uint64_t i = 0; i < full_bytes - (rem_bits > 0); i ++)
     out[i] = a[i] & b[i];
 
@@ -201,6 +206,7 @@ static inline void tk_cvec_bits_or (
   uint64_t full_bytes = TK_CVEC_BITS_BYTES(n_bits);
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
 
+  #pragma omp parallel for
   for (uint64_t i = 0; i < full_bytes - (rem_bits > 0); i ++)
     out[i] = a[i] | b[i];
 
@@ -219,6 +225,7 @@ static inline void tk_cvec_bits_xor (
   uint64_t full_bytes = TK_CVEC_BITS_BYTES(n_bits);
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
 
+  #pragma omp parallel for
   for (uint64_t i = 0; i < full_bytes - (rem_bits > 0); i ++)
     out[i] = a[i] ^ b[i];
 
@@ -238,26 +245,53 @@ static inline tk_ivec_t *tk_cvec_bits_to_ivec (
   uint64_t n_samples = bitmap->n / bytes_per_sample;
 
   uint64_t total_bits = 0;
+  #pragma omp parallel for reduction(+:total_bits)
   for (uint64_t s = 0; s < n_samples; s++) {
     uint64_t offset = s * bytes_per_sample;
     total_bits += tk_cvec_bits_popcount(data + offset, n_features);
   }
 
   tk_ivec_t *out = tk_ivec_create(L, total_bits, 0, 0);
-  uint64_t idx = 0;
 
+
+  uint64_t *sample_counts = (uint64_t *)calloc(n_samples, sizeof(uint64_t));
+  if (!sample_counts) {
+    tk_ivec_destroy(out);
+    return NULL;
+  }
+
+  #pragma omp parallel for
   for (uint64_t s = 0; s < n_samples; s++) {
     uint64_t offset = s * bytes_per_sample;
+    sample_counts[s] = tk_cvec_bits_popcount(data + offset, n_features);
+  }
+
+  uint64_t *offsets = (uint64_t *)malloc((n_samples + 1) * sizeof(uint64_t));
+  if (!offsets) {
+    free(sample_counts);
+    tk_ivec_destroy(out);
+    return NULL;
+  }
+  offsets[0] = 0;
+  for (uint64_t s = 0; s < n_samples; s++)
+    offsets[s + 1] = offsets[s] + sample_counts[s];
+
+  #pragma omp parallel for
+  for (uint64_t s = 0; s < n_samples; s++) {
+    uint64_t offset = s * bytes_per_sample;
+    uint64_t write_pos = offsets[s];
     for (uint64_t f = 0; f < n_features; f++) {
       uint64_t byte_idx = f / CHAR_BIT;
       uint8_t bit_idx = f % CHAR_BIT;
       if (data[offset + byte_idx] & (1u << bit_idx)) {
-        out->a[idx++] = (int64_t) (s * n_features + f);
+        out->a[write_pos++] = (int64_t) (s * n_features + f);
       }
     }
   }
 
-  out->n = idx;
+  out->n = total_bits;
+  free(sample_counts);
+  free(offsets);
   return out;
 }
 
@@ -274,6 +308,7 @@ static inline tk_cvec_t *tk_cvec_bits_from_ivec (
   uint8_t *data = (uint8_t *)out->a;
   memset(data, 0, total_bytes);
 
+  #pragma omp parallel for
   for (size_t i = 0; i < set_bits->n; i++) {
     int64_t bit_idx = set_bits->a[i];
     uint64_t sample = (uint64_t) bit_idx / n_features;
@@ -283,6 +318,7 @@ static inline tk_cvec_t *tk_cvec_bits_from_ivec (
       uint64_t offset = sample * bytes_per_sample;
       uint64_t byte_idx = feature / CHAR_BIT;
       uint8_t bit_pos = feature % CHAR_BIT;
+      #pragma omp atomic
       data[offset + byte_idx] |= (1u << bit_pos);
     }
   }

@@ -5,11 +5,11 @@
 
 static inline tk_pvec_t *tk_pvec_from_ivec (
   lua_State *L,
-  tk_ivec_t *I
+  tk_ivec_t *ivec
 ) {
-  tk_pvec_t *P = tk_pvec_create(L, I->n, 0, 0);
-  for (int64_t i = 0; i < (int64_t) I->n; i ++)
-    P->a[i] = tk_pair(i, I->a[i]);
+  tk_pvec_t *P = tk_pvec_create(L, ivec->n, 0, 0);
+  for (int64_t i = 0; i < (int64_t) ivec->n; i ++)
+    P->a[i] = tk_pair(i, ivec->a[i]);
   return P;
 }
 
@@ -18,14 +18,14 @@ static inline tk_ivec_t *tk_pvec_keys (
   tk_pvec_t *P,
   tk_ivec_t *out
 ) {
-  tk_ivec_t *I = out ? out : tk_ivec_create(L, P->n, 0, 0);
+  tk_ivec_t *result = out ? out : tk_ivec_create(L, P->n, 0, 0);
   if (out)
-    tk_ivec_ensure(I, P->n);
+    tk_ivec_ensure(result, P->n);
   for (uint64_t i = 0; i < P->n; i ++)
-    I->a[i] = P->a[i].i;
+    result->a[i] = P->a[i].i;
   if (out)
-    I->n = P->n;
-  return I;
+    result->n = P->n;
+  return result;
 }
 
 static inline tk_ivec_t *tk_pvec_values (
@@ -33,14 +33,14 @@ static inline tk_ivec_t *tk_pvec_values (
   tk_pvec_t *P,
   tk_ivec_t *out
 ) {
-  tk_ivec_t *I = out ? out : tk_ivec_create(L, P->n, 0, 0);
+  tk_ivec_t *result = out ? out : tk_ivec_create(L, P->n, 0, 0);
   if (out)
-    tk_ivec_ensure(I, P->n);
+    tk_ivec_ensure(result, P->n);
   for (uint64_t i = 0; i < P->n; i ++)
-    I->a[i] = P->a[i].p;
+    result->a[i] = P->a[i].p;
   if (out)
-    I->n = P->n;
-  return I;
+    result->n = P->n;
+  return result;
 }
 
 static inline int tk_pvec_each_lua_iter (lua_State *L)
