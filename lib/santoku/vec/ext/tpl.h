@@ -1,5 +1,4 @@
 #include <omp.h>
-#include <santoku/vec/tpl.h>
 
 #define tk_vec_pfx(name) tk_pp_strcat(tk_vec_name, name)
 
