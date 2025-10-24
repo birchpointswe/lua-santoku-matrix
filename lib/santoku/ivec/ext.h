@@ -71,7 +71,6 @@ static inline void tk_ivec_copy_rvalues (tk_ivec_t *m0, tk_rvec_t *m1, int64_t s
 
 static inline tk_ivec_t *tk_ivec_from_rvec (lua_State *L, tk_rvec_t *R) {
   tk_ivec_t *result = tk_ivec_create(L, R->n, 0, 0);
-  #pragma omp parallel for
   for (int64_t i = 0; i < (int64_t) R->n; i ++)
     result->a[i] = R->a[i].i;
   return result;
@@ -90,11 +89,9 @@ static inline void tk_ivec_lookup (tk_ivec_t *indices, tk_ivec_t *source) {
 
 static inline tk_rvec_t *tk_rvec_rankings (lua_State *L, tk_dvec_t *scores, uint64_t n_visible, uint64_t n_hidden) {
   tk_rvec_t *rankings = tk_rvec_create(L, n_hidden * n_visible, NULL, NULL);
-  #pragma omp parallel for collapse(2)
   for (uint64_t h = 0; h < n_hidden; h ++)
     for (uint64_t v = 0; v < n_visible; v ++)
       rankings->a[h * n_visible + v] = tk_rank((int64_t) v, scores->a[h * n_visible + v]);
-  #pragma omp parallel for
   for (uint64_t j = 0; j < n_hidden; j ++)
     tk_rvec_desc(rankings, j * n_visible, (j + 1) * n_visible);
   return rankings;
@@ -161,7 +158,6 @@ static inline tk_cvec_t *tk_ivec_bits_to_cvec (lua_State *L, tk_ivec_t *set_bits
 }
 static inline tk_ivec_t *tk_ivec_bits_from_cvec (lua_State *L, const char *bm, uint64_t n_samples, uint64_t n_features) {
   tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
-
   uint64_t total_bits = 0;
   #pragma omp parallel for reduction(+:total_bits)
   for (uint64_t i = 0; i < n_samples; i ++)
@@ -173,12 +169,10 @@ static inline tk_ivec_t *tk_ivec_bits_from_cvec (lua_State *L, const char *bm, u
         total_bits++;
       }
     }
-
   if (tk_ivec_ensure(out, total_bits) != 0) {
     tk_ivec_destroy(out);
     return NULL;
   }
-
   uint64_t *sample_counts = (uint64_t *)calloc(n_samples, sizeof(uint64_t));
   if (!sample_counts) {
     tk_ivec_destroy(out);
@@ -195,7 +189,6 @@ static inline tk_ivec_t *tk_ivec_bits_from_cvec (lua_State *L, const char *bm, u
       }
     }
   }
-
   uint64_t *offsets = (uint64_t *)malloc((n_samples + 1) * sizeof(uint64_t));
   if (!offsets) {
     free(sample_counts);
@@ -205,7 +198,6 @@ static inline tk_ivec_t *tk_ivec_bits_from_cvec (lua_State *L, const char *bm, u
   offsets[0] = 0;
   for (uint64_t i = 0; i < n_samples; i++)
     offsets[i + 1] = offsets[i] + sample_counts[i];
-
   #pragma omp parallel for
   for (uint64_t i = 0; i < n_samples; i ++) {
     uint64_t write_pos = offsets[i];
@@ -492,14 +484,12 @@ static inline void tk_ivec_set_weights_by_rank (
 ) {
   for (uint64_t r = 0; r < n_ranks; r ++)
     weights_by_rank[r] = 0.0;
-  #pragma omp parallel for
   for (size_t i = 0; i < n_features; i ++) {
     int64_t fid = features[i];
     if (fid >= 0) {
       double w = (weights && fid < (int64_t)weights->n) ? weights->a[fid] : 1.0;
       int64_t rank = (ranks && fid < (int64_t)ranks->n) ? ranks->a[fid] : 0;
       if (rank >= 0 && rank < (int64_t)n_ranks) {
-        #pragma omp atomic
         weights_by_rank[rank] += w;
       }
     }

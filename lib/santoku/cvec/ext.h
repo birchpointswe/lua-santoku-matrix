@@ -120,7 +120,7 @@ static inline uint64_t tk_cvec_bits_popcount (
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
   uint64_t count = 0;
 
-  #pragma omp parallel for reduction(+:count)
+
   for (uint64_t i = 0; i < full_bytes - (rem_bits > 0); i ++)
     count += (uint64_t) tk_cvec_byte_popcount(data[i]);
 
@@ -141,7 +141,7 @@ static inline uint64_t tk_cvec_bits_hamming (
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
   uint64_t dist = 0;
 
-  #pragma omp parallel for reduction(+:dist)
+
   for (uint64_t i = 0; i < full_bytes - (rem_bits > 0); i ++)
     dist += (uint64_t) tk_cvec_byte_popcount(a[i] ^ b[i]);
 
@@ -164,7 +164,7 @@ static inline uint64_t tk_cvec_bits_hamming_mask (
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
   uint64_t dist = 0;
 
-  #pragma omp parallel for reduction(+:dist)
+
   for (uint64_t i = 0; i < full_bytes - (rem_bits > 0); i ++)
     dist += (uint64_t) tk_cvec_byte_popcount((a[i] ^ b[i]) & mask[i]);
 
@@ -186,7 +186,7 @@ static inline void tk_cvec_bits_and (
   uint64_t full_bytes = TK_CVEC_BITS_BYTES(n_bits);
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
 
-  #pragma omp parallel for
+
   for (uint64_t i = 0; i < full_bytes - (rem_bits > 0); i ++)
     out[i] = a[i] & b[i];
 
@@ -205,7 +205,7 @@ static inline void tk_cvec_bits_or (
   uint64_t full_bytes = TK_CVEC_BITS_BYTES(n_bits);
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
 
-  #pragma omp parallel for
+
   for (uint64_t i = 0; i < full_bytes - (rem_bits > 0); i ++)
     out[i] = a[i] | b[i];
 
@@ -224,7 +224,7 @@ static inline void tk_cvec_bits_xor (
   uint64_t full_bytes = TK_CVEC_BITS_BYTES(n_bits);
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
 
-  #pragma omp parallel for
+
   for (uint64_t i = 0; i < full_bytes - (rem_bits > 0); i ++)
     out[i] = a[i] ^ b[i];
 

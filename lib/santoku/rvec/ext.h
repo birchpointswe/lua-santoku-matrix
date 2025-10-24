@@ -153,21 +153,14 @@ static inline double tk_csr_spearman(
   uint64_t m = (uint64_t)(end_a - start_a);
   if (m == 0 || !bin_ranks || bin_ranks->n == 0)
     return 0.0;
-
-
   for (uint64_t h = 0; h <= max_hamming && h < count_buffer->m; h++)
     count_buffer->a[h] = 0;
-
-  #pragma omp parallel for
   for (uint64_t i = 0; i < bin_ranks->n; i++) {
     uint64_t hamming = (uint64_t)bin_ranks->a[i].p;
     if (hamming <= max_hamming && hamming < count_buffer->m) {
-      #pragma omp atomic
       count_buffer->a[hamming]++;
     }
   }
-
-
   uint64_t cumulative = 0;
   for (uint64_t h = 0; h <= max_hamming && h < avgrank_buffer->m; h++) {
     if (count_buffer->a[h] > 0) {
@@ -178,8 +171,6 @@ static inline double tk_csr_spearman(
       cumulative += count;
     }
   }
-
-
   tk_dumap_clear(rank_buffer_b);
   int kha;
   for (uint64_t i = 0; i < bin_ranks->n; i++) {
@@ -190,25 +181,16 @@ static inline double tk_csr_spearman(
       tk_dumap_setval(rank_buffer_b, khi, avgrank_buffer->a[hamming]);
     }
   }
-
-
   double sum_squared_diff = 0.0;
   uint64_t n = 0;
-
   int64_t j = start_a;
   while (j < end_a) {
     double weight = weights_a->a[j];
     int64_t tie_start = j;
-
-
     while (j + 1 < end_a && weights_a->a[j + 1] == weight)
       j++;
     int64_t tie_end = j;
-
-
     double avg_adj_rank = ((double)(tie_start - start_a) + (double)(tie_end - start_a)) / 2.0;
-
-
     for (int64_t t = tie_start; t <= tie_end; t++) {
       int64_t neighbor_pos = neighbors_a->a[t];
       uint32_t khi = tk_dumap_get(rank_buffer_b, neighbor_pos);
@@ -221,7 +203,6 @@ static inline double tk_csr_spearman(
     }
     j++;
   }
-
   if (n <= 1)
     return 1.0;
   double n_d = (double)n;
@@ -238,8 +219,6 @@ static inline double tk_csr_position(
   uint64_t m = (uint64_t)(end_a - start_a);
   if (m <= 1 || !bin_ranks || bin_ranks->n == 0)
     return 1.0;
-
-
   tk_dumap_clear(pos_buffer);
   int kha;
   for (int64_t j = start_a; j < end_a; j++) {
@@ -248,11 +227,8 @@ static inline double tk_csr_position(
     uint32_t khi = tk_dumap_put(pos_buffer, neighbor_pos, &kha);
     tk_dumap_setval(pos_buffer, khi, position);
   }
-
-
   double sum_y = 0.0, sum_xy = 0.0, sum_y2 = 0.0;
   uint64_t n = 0;
-
   for (uint64_t i = 0; i < bin_ranks->n; i++) {
     int64_t neighbor_pos = bin_ranks->a[i].i;
     uint32_t khi = tk_dumap_get(pos_buffer, neighbor_pos);
@@ -265,20 +241,15 @@ static inline double tk_csr_position(
       n++;
     }
   }
-
   if (n <= 1) return 1.0;
-
-
   double n_d = (double)n;
   double sum_x = n_d * (n_d - 1.0) / 2.0;
   double sum_x2 = n_d * (n_d - 1.0) * (2.0 * n_d - 1.0) / 6.0;
-
   double mean_x = sum_x / n_d;
   double mean_y = sum_y / n_d;
   double cov = (sum_xy / n_d) - (mean_x * mean_y);
   double var_x = (sum_x2 / n_d) - (mean_x * mean_x);
   double var_y = (sum_y2 / n_d) - (mean_y * mean_y);
-
   if (var_x <= 0.0 || var_y <= 0.0) return 0.0;
   return cov / sqrt(var_x * var_y);
 }

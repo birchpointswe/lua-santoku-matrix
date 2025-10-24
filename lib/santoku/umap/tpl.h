@@ -3,7 +3,6 @@
 
 #include <santoku/lua/utils.h>
 #include <santoku/klib.h>
-#include <assert.h>
 
 #define tk_umap_foreach(...) kh_foreach(__VA_ARGS__)
 
@@ -457,7 +456,6 @@ static inline tk_umap_pfx(t) *tk_umap_pfx(load) (lua_State *L, FILE *fh)
     tk_lua_fread(L, &k, sizeof(tk_umap_key), 1, fh);
     tk_lua_fread(L, &v, sizeof(tk_umap_value), 1, fh);
     khi = tk_umap_pfx(put)(h, k, &a);
-    assert(a);
     tk_umap_pfx(setval)(h, khi, v);
   }
 #else
@@ -466,7 +464,6 @@ static inline tk_umap_pfx(t) *tk_umap_pfx(load) (lua_State *L, FILE *fh)
   for (uint32_t i = 0; i < n; i ++) {
     tk_lua_fread(L, &k, sizeof(tk_umap_key), 1, fh);
     tk_umap_pfx(put)(h, k, &a);
-    assert(a);
   }
 #endif
   return h;

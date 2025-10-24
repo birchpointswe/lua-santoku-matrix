@@ -38,32 +38,6 @@ static inline void tk_dvec_rnorml2 (
   }
 }
 
-static inline tk_dvec_t *tk_dvec_multiply_bits (
-  lua_State *L,
-  tk_dvec_t *P,
-  tk_ivec_t *raw_features,
-  uint64_t n_samples,
-  uint64_t n_features,
-  uint64_t n_hidden
-) {
-  tk_dvec_t *V = tk_dvec_create(L, n_samples * n_hidden, 0, 0);
-  tk_dvec_zero(V);
-  #pragma omp parallel for
-  for (size_t i = 0; i < raw_features->n; i ++) {
-    int64_t b = raw_features->a[i];
-    int64_t s = b / (int64_t) n_features;
-    int64_t f = b % (int64_t) n_features;
-    double *pa = P->a + f * (int64_t) n_hidden;
-    double *va = V->a + s * (int64_t) n_hidden;
-    #pragma omp critical
-    for (uint64_t k = 0; k < n_hidden; k ++)
-      va[k] += pa[k];
-  }
-  return V;
-}
-
-
-
 static inline size_t tk_dvec_scores_kaiser (
   double *scores,
   size_t n,
@@ -91,8 +65,6 @@ static inline size_t tk_dvec_scores_kaiser (
   return n;
 }
 
-
-
 static inline size_t tk_dvec_scores_max_curvature (
   double *scores,
   size_t n,
@@ -115,8 +87,6 @@ static inline size_t tk_dvec_scores_max_curvature (
   return max_idx;
 }
 
-
-
 static inline size_t tk_dvec_scores_lmethod (
   double *scores,
   size_t n,
@@ -128,10 +98,7 @@ static inline size_t tk_dvec_scores_lmethod (
   }
   double best_rmse = DBL_MAX;
   size_t best_k = 1;
-
-
   for (size_t k = 1; k < n - 1; k++) {
-
     double sum_x1 = 0.0, sum_y1 = 0.0, sum_xy1 = 0.0, sum_xx1 = 0.0;
     for (size_t i = 0; i <= k; i++) {
       double x = (double)i;
@@ -144,11 +111,8 @@ static inline size_t tk_dvec_scores_lmethod (
     size_t n1 = k + 1;
     double mean_x1 = sum_x1 / (double)n1;
     double mean_y1 = sum_y1 / (double)n1;
-    double slope1 = (sum_xy1 - (double)n1 * mean_x1 * mean_y1) /
-                    (sum_xx1 - (double)n1 * mean_x1 * mean_x1 + 1e-10);
+    double slope1 = (sum_xy1 - (double)n1 * mean_x1 * mean_y1) / (sum_xx1 - (double)n1 * mean_x1 * mean_x1 + 1e-10);
     double intercept1 = mean_y1 - slope1 * mean_x1;
-
-
     double sum_x2 = 0.0, sum_y2 = 0.0, sum_xy2 = 0.0, sum_xx2 = 0.0;
     for (size_t i = k + 1; i < n; i++) {
       double x = (double)i;
@@ -161,11 +125,8 @@ static inline size_t tk_dvec_scores_lmethod (
     size_t n2 = n - k - 1;
     double mean_x2 = sum_x2 / (double)n2;
     double mean_y2 = sum_y2 / (double)n2;
-    double slope2 = (sum_xy2 - (double)n2 * mean_x2 * mean_y2) /
-                    (sum_xx2 - (double)n2 * mean_x2 * mean_x2 + 1e-10);
+    double slope2 = (sum_xy2 - (double)n2 * mean_x2 * mean_y2) / (sum_xx2 - (double)n2 * mean_x2 * mean_x2 + 1e-10);
     double intercept2 = mean_y2 - slope2 * mean_x2;
-
-
     double sse = 0.0;
     for (size_t i = 0; i <= k; i++) {
       double pred = slope1 * (double)i + intercept1;
@@ -178,7 +139,6 @@ static inline size_t tk_dvec_scores_lmethod (
       sse += err * err;
     }
     double rmse = sqrt(sse / (double)n);
-
     if (rmse < best_rmse) {
       best_rmse = rmse;
       best_k = k;
@@ -187,8 +147,6 @@ static inline size_t tk_dvec_scores_lmethod (
   if (out_val) *out_val = scores[best_k];
   return best_k;
 }
-
-
 
 static inline size_t tk_dvec_scores_max_gap (
   double *scores,
@@ -212,8 +170,6 @@ static inline size_t tk_dvec_scores_max_gap (
   return max_idx;
 }
 
-
-
 static inline size_t tk_dvec_scores_max_drop (
   double *scores,
   size_t n,
@@ -235,8 +191,6 @@ static inline size_t tk_dvec_scores_max_drop (
   if (out_val) *out_val = scores[max_idx];
   return max_idx;
 }
-
-
 
 static inline size_t tk_dvec_scores_plateau (
   double *scores,
@@ -265,8 +219,6 @@ static inline size_t tk_dvec_scores_plateau (
   return end_idx;
 }
 
-
-
 static inline size_t tk_dvec_scores_max_acceleration (
   double *scores,
   size_t n,
@@ -290,8 +242,6 @@ static inline size_t tk_dvec_scores_max_acceleration (
   if (out_val) *out_val = scores[max_idx];
   return max_idx;
 }
-
-
 
 static inline void tk_dvec_scores_tolerance (
   double *scores,
@@ -334,11 +284,6 @@ static inline void tk_dvec_scores_tolerance (
   *out_end = best_end;
 }
 
-
-
-
-
-
 static inline void tk_dvec_gemv(
   bool transpose,
   uint64_t rows,
@@ -349,11 +294,8 @@ static inline void tk_dvec_gemv(
   double beta,
   double *y
 ) {
-  cblas_dgemv(CblasRowMajor,
-              transpose ? CblasTrans : CblasNoTrans,
-              rows, cols, alpha, A, cols, x, 1, beta, y, 1);
+  cblas_dgemv(CblasRowMajor, transpose ? CblasTrans : CblasNoTrans, rows, cols, alpha, A, cols, x, 1, beta, y, 1);
 }
-
 
 static inline void tk_dvec_gemm(
   bool transpose_a,
@@ -367,41 +309,28 @@ static inline void tk_dvec_gemm(
   double beta,
   double *C
 ) {
-  cblas_dgemm(CblasRowMajor,
-              transpose_a ? CblasTrans : CblasNoTrans,
-              transpose_b ? CblasTrans : CblasNoTrans,
-              m, n, k,
-              alpha, A, transpose_a ? m : k,
-              B, transpose_b ? k : n,
-              beta, C, n);
+  cblas_dgemm(CblasRowMajor, transpose_a ? CblasTrans : CblasNoTrans, transpose_b ? CblasTrans : CblasNoTrans, m, n, k, alpha, A, transpose_a ? m : k, B, transpose_b ? k : n, beta, C, n);
 }
-
 
 static inline double tk_dvec_blas_dot(double *x, double *y, uint64_t n) {
   return cblas_ddot(n, x, 1, y, 1);
 }
 
-
 static inline void tk_dvec_blas_scal(double alpha, double *x, uint64_t n) {
   cblas_dscal(n, alpha, x, 1);
 }
-
 
 static inline void tk_dvec_blas_axpy(double alpha, double *x, double *y, uint64_t n) {
   cblas_daxpy(n, alpha, x, 1, y, 1);
 }
 
-
 static inline void tk_dvec_blas_copy(double *x, double *y, uint64_t n) {
   cblas_dcopy(n, x, 1, y, 1);
 }
 
-
 static inline double tk_dvec_blas_nrm2(double *x, uint64_t n) {
   return cblas_dnrm2(n, x, 1);
 }
-
-
 
 static inline double tk_dvec_dot_override(tk_dvec_t *a, tk_dvec_t *b) {
   uint64_t n = a->n < b->n ? a->n : b->n;
