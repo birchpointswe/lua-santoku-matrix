@@ -1,6 +1,7 @@
 #ifndef TK_IUSET_EXT_H
 #define TK_IUSET_EXT_H
 
+#include <omp.h>
 #include <santoku/klib.h>
 #include <santoku/ivec.h>
 #include <santoku/cvec.h>
@@ -458,6 +459,7 @@ static inline tk_ivec_t *tk_ivec_bits_top_mi (
     tk_iuset_destroy(sample_features);
 
     tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+    #pragma omp parallel for
     for (uint64_t f = 0; f < n_visible; f++) {
       double max_mi = 0.0;
       for (uint64_t j = 0; j < n_hidden; j++) {
@@ -485,6 +487,7 @@ static inline tk_ivec_t *tk_ivec_bits_top_mi (
         if (mi > max_mi) max_mi = mi;
       }
       tk_rank_t r = { (int64_t)f, max_mi };
+      #pragma omp critical
       tk_rvec_hmin(top_heap, top_k, r);
     }
 
@@ -595,9 +598,11 @@ static inline tk_ivec_t *tk_ivec_bits_top_mi (
       }
     }));
 
+    #pragma omp parallel for
     for (uint64_t f = 0; f < n_visible; f++) {
       if (feat_max_mi->a[f] > 0) {
         tk_rank_t r = { (int64_t)f, feat_max_mi->a[f] };
+        #pragma omp critical
         tk_rvec_hmin(top_heap, top_k, r);
       }
     }
@@ -681,6 +686,7 @@ static inline tk_ivec_t *tk_ivec_bits_top_chi2 (
     }
 
     tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+    #pragma omp parallel for
     for (uint64_t f = 0; f < n_visible; f++) {
       double max_chi2 = 0.0;
       for (uint64_t b = 0; b < n_hidden; b++) {
@@ -705,6 +711,7 @@ static inline tk_ivec_t *tk_ivec_bits_top_chi2 (
         if (chi2 > max_chi2) max_chi2 = chi2;
       }
       tk_rank_t r = { (int64_t)f, max_chi2 };
+      #pragma omp critical
       tk_rvec_hmin(top_heap, top_k, r);
     }
 
@@ -808,9 +815,11 @@ static inline tk_ivec_t *tk_ivec_bits_top_chi2 (
         feat_max_chi2->a[f] = chi2;
     }));
 
+    #pragma omp parallel for
     for (uint64_t f = 0; f < n_visible; f++) {
       if (feat_max_chi2->a[f] > 0) {
         tk_rank_t r = { (int64_t)f, feat_max_chi2->a[f] };
+        #pragma omp critical
         tk_rvec_hmin(top_heap, top_k, r);
       }
     }
@@ -858,12 +867,14 @@ static inline tk_ivec_t *tk_ivec_bits_top_entropy (
     bit_counts->a[hidden_idx]++;
   }
   tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+  #pragma omp parallel for
   for (uint64_t h = 0; h < n_hidden; h++) {
     double p = (double)bit_counts->a[h] / (double)n_samples;
     double entropy = 0.0;
     if (p > 0.0 && p < 1.0)
       entropy = -(p * log2(p) + (1.0 - p) * log2(1.0 - p));
     tk_rank_t r = { (int64_t)h, entropy };
+    #pragma omp critical
     tk_rvec_hmin(top_heap, top_k, r);
   }
   tk_ivec_destroy(bit_counts);
@@ -909,6 +920,7 @@ static inline tk_ivec_t *tk_cvec_bits_top_mi (
       }
     }
     tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+    #pragma omp parallel for
     for (uint64_t f = 0; f < n_features; f++) {
       double max_mi = 0.0;
       for (uint64_t j = 0; j < n_hidden; j++) {
@@ -937,6 +949,7 @@ static inline tk_ivec_t *tk_cvec_bits_top_mi (
         if (mi > max_mi) max_mi = mi;
       }
       tk_rank_t r = { (int64_t)f, max_mi };
+      #pragma omp critical
       tk_rvec_hmin(top_heap, top_k, r);
     }
 
@@ -1042,9 +1055,11 @@ static inline tk_ivec_t *tk_cvec_bits_top_mi (
       }
     }));
 
+    #pragma omp parallel for
     for (uint64_t f = 0; f < n_features; f++) {
       if (feat_max_mi->a[f] > 0) {
         tk_rank_t r = { (int64_t)f, feat_max_mi->a[f] };
+        #pragma omp critical
         tk_rvec_hmin(top_heap, top_k, r);
       }
     }
@@ -1124,6 +1139,7 @@ static inline tk_ivec_t *tk_cvec_bits_top_chi2 (
     }
 
     tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+    #pragma omp parallel for
     for (uint64_t f = 0; f < n_features; f++) {
       double max_chi2 = 0.0;
       for (uint64_t b = 0; b < n_hidden; b++) {
@@ -1148,6 +1164,7 @@ static inline tk_ivec_t *tk_cvec_bits_top_chi2 (
         if (chi2 > max_chi2) max_chi2 = chi2;
       }
       tk_rank_t r = { (int64_t)f, max_chi2 };
+      #pragma omp critical
       tk_rvec_hmin(top_heap, top_k, r);
     }
 
@@ -1251,9 +1268,11 @@ static inline tk_ivec_t *tk_cvec_bits_top_chi2 (
         feat_max_chi2->a[f] = chi2;
     }));
 
+    #pragma omp parallel for
     for (uint64_t f = 0; f < n_features; f++) {
       if (feat_max_chi2->a[f] > 0) {
         tk_rank_t r = { (int64_t)f, feat_max_chi2->a[f] };
+        #pragma omp critical
         tk_rvec_hmin(top_heap, top_k, r);
       }
     }
@@ -1335,6 +1354,7 @@ static inline tk_ivec_t *tk_ivec_bits_top_lift (
     }
 
     tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+    #pragma omp parallel for
     for (uint64_t f = 0; f < n_visible; f++) {
       double max_score = 0.0;
       int64_t feat_total = feat_counts->a[f];
@@ -1356,6 +1376,7 @@ static inline tk_ivec_t *tk_ivec_bits_top_lift (
       }
       if (max_score > 0) {
         tk_rank_t r = { (int64_t)f, max_score };
+        #pragma omp critical
         tk_rvec_hmin(top_heap, top_k, r);
       }
     }
@@ -1446,9 +1467,11 @@ static inline tk_ivec_t *tk_ivec_bits_top_lift (
       if (weighted_lift > feat_max_score->a[f])
         feat_max_score->a[f] = weighted_lift;
     }));
+    #pragma omp parallel for
     for (uint64_t f = 0; f < n_visible; f++) {
       if (feat_max_score->a[f] > 0) {
         tk_rank_t r = { (int64_t)f, feat_max_score->a[f] };
+        #pragma omp critical
         tk_rvec_hmin(top_heap, top_k, r);
       }
     }
@@ -1493,12 +1516,14 @@ static inline tk_ivec_t *tk_cvec_bits_top_entropy (
     }
   }
   tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+  #pragma omp parallel for
   for (uint64_t h = 0; h < n_hidden; h++) {
     double p = (double)bit_counts->a[h] / (double)n_samples;
     double entropy = 0.0;
     if (p > 0.0 && p < 1.0)
       entropy = -(p * log2(p) + (1.0 - p) * log2(1.0 - p));
     tk_rank_t r = { (int64_t)h, entropy };
+    #pragma omp critical
     tk_rvec_hmin(top_heap, top_k, r);
   }
   tk_ivec_destroy(bit_counts);
@@ -1540,11 +1565,13 @@ static inline tk_ivec_t *tk_ivec_bits_top_df (
   tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
   double min_df_abs = min_df < 0 ? -min_df : min_df * n_samples;
   double max_df_abs = max_df < 0 ? -max_df : max_df * n_samples;
+  #pragma omp parallel for
   for (uint64_t i = 0; i < n_visible; i++) {
     double df_count = (double)tk_iuset_size(feature_docs[i]);
     double idf = log((double)(n_samples + 1) / (df_count + 1));
     if (df_count >= min_df_abs && df_count <= max_df_abs) {
       tk_rank_t r = { (int64_t)i, idf };
+      #pragma omp critical
       tk_rvec_hmin(top_heap, top_k, r);
     }
   }
@@ -1644,9 +1671,11 @@ static inline tk_ivec_t *tk_cvec_bits_top_lift (
         feat_max_score->a[f] = weighted_lift;
     }));
 
+    #pragma omp parallel for
     for (uint64_t f = 0; f < n_features; f++) {
       if (feat_max_score->a[f] > 0) {
         tk_rank_t r = { (int64_t)f, feat_max_score->a[f] };
+        #pragma omp critical
         tk_rvec_hmin(top_heap, top_k, r);
       }
     }
@@ -1735,9 +1764,11 @@ static inline tk_ivec_t *tk_cvec_bits_top_lift (
         feat_max_score->a[f] = weighted_lift;
     }));
 
+    #pragma omp parallel for
     for (uint64_t f = 0; f < n_features; f++) {
       if (feat_max_score->a[f] > 0) {
         tk_rank_t r = { (int64_t)f, feat_max_score->a[f] };
+        #pragma omp critical
         tk_rvec_hmin(top_heap, top_k, r);
       }
     }
@@ -1796,11 +1827,13 @@ static inline tk_ivec_t *tk_cvec_bits_top_df (
   tk_rvec_t *top_heap = tk_rvec_create(L, 0, 0, 0);
   double min_df_abs = min_df < 0 ? -min_df : min_df * n_samples;
   double max_df_abs = max_df < 0 ? -max_df : max_df * n_samples;
+  #pragma omp parallel for
   for (uint64_t i = 0; i < n_features; i++) {
     double df_count = (double)tk_iuset_size(feature_docs[i]);
     double idf = log((double)(n_samples + 1) / (df_count + 1));
     if (df_count >= min_df_abs && df_count <= max_df_abs) {
       tk_rank_t r = { (int64_t)i, idf };
+      #pragma omp critical
       tk_rvec_hmin(top_heap, top_k, r);
     }
   }

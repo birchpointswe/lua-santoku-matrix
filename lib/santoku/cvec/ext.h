@@ -119,16 +119,12 @@ static inline uint64_t tk_cvec_bits_popcount (
   uint64_t full_bytes = TK_CVEC_BITS_BYTES(n_bits);
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
   uint64_t count = 0;
-
-
   for (uint64_t i = 0; i < full_bytes - (rem_bits > 0); i ++)
     count += (uint64_t) tk_cvec_byte_popcount(data[i]);
-
   if (rem_bits > 0) {
     uint8_t mask = (1U << rem_bits) - 1;
     count += (uint64_t) tk_cvec_byte_popcount(data[full_bytes - 1] & mask);
   }
-
   return count;
 }
 
@@ -140,17 +136,13 @@ static inline uint64_t tk_cvec_bits_hamming (
   uint64_t full_bytes = TK_CVEC_BITS_BYTES(n_bits);
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
   uint64_t dist = 0;
-
-
   for (uint64_t i = 0; i < full_bytes - (rem_bits > 0); i ++)
     dist += (uint64_t) tk_cvec_byte_popcount(a[i] ^ b[i]);
-
   if (rem_bits > 0) {
     uint8_t x = a[full_bytes - 1] ^ b[full_bytes - 1];
     uint8_t mask = (1U << rem_bits) - 1;
     dist += (uint64_t) tk_cvec_byte_popcount(x & mask);
   }
-
   return dist;
 }
 
@@ -163,17 +155,13 @@ static inline uint64_t tk_cvec_bits_hamming_mask (
   uint64_t full_bytes = TK_CVEC_BITS_BYTES(n_bits);
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
   uint64_t dist = 0;
-
-
   for (uint64_t i = 0; i < full_bytes - (rem_bits > 0); i ++)
     dist += (uint64_t) tk_cvec_byte_popcount((a[i] ^ b[i]) & mask[i]);
-
   if (rem_bits > 0) {
     uint8_t x = (a[full_bytes - 1] ^ b[full_bytes - 1]) & mask[full_bytes - 1];
     uint8_t bit_mask = (1U << rem_bits) - 1;
     dist += (uint64_t) tk_cvec_byte_popcount(x & bit_mask);
   }
-
   return dist;
 }
 
@@ -185,11 +173,8 @@ static inline void tk_cvec_bits_and (
 ) {
   uint64_t full_bytes = TK_CVEC_BITS_BYTES(n_bits);
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
-
-
   for (uint64_t i = 0; i < full_bytes - (rem_bits > 0); i ++)
     out[i] = a[i] & b[i];
-
   if (rem_bits > 0) {
     uint8_t mask = (1U << rem_bits) - 1;
     out[full_bytes - 1] = (a[full_bytes - 1] & b[full_bytes - 1]) & mask;
@@ -204,11 +189,8 @@ static inline void tk_cvec_bits_or (
 ) {
   uint64_t full_bytes = TK_CVEC_BITS_BYTES(n_bits);
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
-
-
   for (uint64_t i = 0; i < full_bytes - (rem_bits > 0); i ++)
     out[i] = a[i] | b[i];
-
   if (rem_bits > 0) {
     uint8_t mask = (1U << rem_bits) - 1;
     out[full_bytes - 1] = (a[full_bytes - 1] | b[full_bytes - 1]) & mask;
@@ -223,11 +205,8 @@ static inline void tk_cvec_bits_xor (
 ) {
   uint64_t full_bytes = TK_CVEC_BITS_BYTES(n_bits);
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
-
-
   for (uint64_t i = 0; i < full_bytes - (rem_bits > 0); i ++)
     out[i] = a[i] ^ b[i];
-
   if (rem_bits > 0) {
     uint8_t mask = (1U << rem_bits) - 1;
     out[full_bytes - 1] = (a[full_bytes - 1] ^ b[full_bytes - 1]) & mask;
@@ -242,17 +221,13 @@ static inline tk_ivec_t *tk_cvec_bits_to_ivec (
   uint8_t *data = (uint8_t *)bitmap->a;
   uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
   uint64_t n_samples = bitmap->n / bytes_per_sample;
-
   uint64_t total_bits = 0;
   #pragma omp parallel for reduction(+:total_bits)
   for (uint64_t s = 0; s < n_samples; s++) {
     uint64_t offset = s * bytes_per_sample;
     total_bits += tk_cvec_bits_popcount(data + offset, n_features);
   }
-
   tk_ivec_t *out = tk_ivec_create(L, total_bits, 0, 0);
-
-
   uint64_t *sample_counts = (uint64_t *)calloc(n_samples, sizeof(uint64_t));
   if (!sample_counts) {
     tk_ivec_destroy(out);
