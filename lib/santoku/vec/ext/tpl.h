@@ -45,7 +45,7 @@ static inline tk_ivec_t *tk_vec_pfx(rasc) (
   uint64_t rows = m0->n / cols;
   #pragma omp parallel
   {
-    tk_rvec_t *ranks = tk_rvec_create(L, cols, NULL, NULL);
+    tk_rvec_t *ranks = tk_rvec_create(NULL, cols, NULL, NULL);
     #pragma omp for
     for (uint64_t r = 0; r < rows; r ++) {
       for (size_t c = 0; c < cols; c ++) {
@@ -56,6 +56,7 @@ static inline tk_ivec_t *tk_vec_pfx(rasc) (
       for (size_t c = 0; c < cols; c ++)
         out->a[r * cols + c] = ranks->a[c].i;
     }
+    tk_rvec_destroy(ranks);
   }
   return out;
 }
@@ -69,7 +70,7 @@ static inline tk_ivec_t *tk_vec_pfx(rdesc) (
   uint64_t rows = m0->n / cols;
   #pragma omp parallel
   {
-    tk_rvec_t *ranks = tk_rvec_create(L, cols, NULL, NULL);
+    tk_rvec_t *ranks = tk_rvec_create(NULL, cols, NULL, NULL);
     #pragma omp for
     for (uint64_t r = 0; r < rows; r ++) {
       for (size_t c = 0; c < cols; c ++) {
@@ -80,6 +81,7 @@ static inline tk_ivec_t *tk_vec_pfx(rdesc) (
       for (size_t c = 0; c < cols; c ++)
         out->a[r * cols + c] = ranks->a[c].i;
     }
+    tk_rvec_destroy(ranks);
   }
   return out;
 }
@@ -93,7 +95,7 @@ static inline tk_ivec_t *tk_vec_pfx(casc) (
   tk_ivec_t *out = tk_ivec_create(L, m0->n, NULL, NULL);
   #pragma omp parallel
   {
-    tk_rvec_t *ranks = tk_rvec_create(L, rows, NULL, NULL);
+    tk_rvec_t *ranks = tk_rvec_create(0, rows, NULL, NULL);
     #pragma omp for
     for (size_t c = 0; c < cols; c ++) {
       for (uint64_t r = 0; r < rows ; r ++) {
@@ -104,6 +106,7 @@ static inline tk_ivec_t *tk_vec_pfx(casc) (
       for (size_t r = 0; r < rows; r ++)
         out->a[c * rows + r] = ranks->a[r].i;
     }
+    tk_rvec_destroy(ranks);
   }
   return out;
 }
@@ -117,7 +120,7 @@ static inline tk_ivec_t *tk_vec_pfx(cdesc) (
   tk_ivec_t *out = tk_ivec_create(L, m0->n, NULL, NULL);
   #pragma omp parallel
   {
-    tk_rvec_t *ranks = tk_rvec_create(L, rows, NULL, NULL);
+    tk_rvec_t *ranks = tk_rvec_create(0, rows, NULL, NULL);
     #pragma omp for
     for (size_t c = 0; c < cols; c ++) {
       for (uint64_t r = 0; r < rows ; r ++) {
@@ -128,6 +131,7 @@ static inline tk_ivec_t *tk_vec_pfx(cdesc) (
       for (size_t r = 0; r < rows; r ++)
         out->a[c * rows + r] = ranks->a[r].i;
     }
+    tk_rvec_destroy(ranks);
   }
   return out;
 }

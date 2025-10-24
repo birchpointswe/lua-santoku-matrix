@@ -27,12 +27,8 @@ static inline void tk_iuset_union (tk_iuset_t *a, tk_iuset_t *b)
 
 static inline double tk_iuset_jaccard (tk_iuset_t *a, tk_iuset_t *b)
 {
-  uint64_t intersection = 0;
+  uint64_t intersection = tk_iuset_size(a);
   uint64_t union_count = 0;
-  int64_t x;
-  tk_umap_foreach_keys(a, x, ({
-    intersection ++;
-  }));
   union_count = tk_iuset_size(a) + tk_iuset_size(b) - intersection;
   if (union_count == 0)
     return 0.0;
