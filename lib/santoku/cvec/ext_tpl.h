@@ -6,72 +6,134 @@
 #endif
 
 static inline uint64_t tk_parallel_sfx(tk_cvec_bits_popcount) (
-  const uint8_t *data,
+  const uint8_t * __restrict__ data,
   uint64_t n_bits
 ) {
   uint64_t full_bytes = TK_CVEC_BITS_BYTES(n_bits);
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
+  uint64_t main_bytes = full_bytes - (rem_bits > 0 ? 1 : 0);
   uint64_t count = 0;
+
+
+  uint64_t n_chunks = main_bytes / 8;
+  uint64_t remaining = main_bytes % 8;
+  const uint64_t *data64 = (const uint64_t *)data;
+
   TK_PARALLEL_FOR(reduction(+:count))
-  for (uint64_t i = 0; i < full_bytes - (rem_bits > 0); i ++)
-    count += (uint64_t) tk_cvec_byte_popcount(data[i]);
+  for (uint64_t i = 0; i < n_chunks; i ++)
+    count += (uint64_t) __builtin_popcountll(data64[i]);
+
+
+  for (uint64_t i = n_chunks * 8; i < n_chunks * 8 + remaining; i ++)
+    count += (uint64_t) __builtin_popcount(data[i]);
+
+
   if (rem_bits > 0) {
     uint8_t mask = (1U << rem_bits) - 1;
-    count += (uint64_t) tk_cvec_byte_popcount(data[full_bytes - 1] & mask);
+    count += (uint64_t) __builtin_popcount(data[full_bytes - 1] & mask);
   }
   return count;
 }
 
 static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming) (
-  const uint8_t *a,
-  const uint8_t *b,
+  const uint8_t * __restrict__ a,
+  const uint8_t * __restrict__ b,
   uint64_t n_bits
 ) {
   uint64_t full_bytes = TK_CVEC_BITS_BYTES(n_bits);
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
+  uint64_t main_bytes = full_bytes - (rem_bits > 0 ? 1 : 0);
   uint64_t dist = 0;
+
+
+  uint64_t n_chunks = main_bytes / 8;
+  uint64_t remaining = main_bytes % 8;
+  const uint64_t *a64 = (const uint64_t *)a;
+  const uint64_t *b64 = (const uint64_t *)b;
+
   TK_PARALLEL_FOR(reduction(+:dist))
-  for (uint64_t i = 0; i < full_bytes - (rem_bits > 0); i ++)
-    dist += (uint64_t) tk_cvec_byte_popcount(a[i] ^ b[i]);
+  for (uint64_t i = 0; i < n_chunks; i ++) {
+    uint64_t xor_val = a64[i] ^ b64[i];
+    dist += (uint64_t) __builtin_popcountll(xor_val);
+  }
+
+
+  for (uint64_t i = n_chunks * 8; i < n_chunks * 8 + remaining; i ++) {
+    dist += (uint64_t) __builtin_popcount(a[i] ^ b[i]);
+  }
+
+
   if (rem_bits > 0) {
     uint8_t x = a[full_bytes - 1] ^ b[full_bytes - 1];
     uint8_t mask = (1U << rem_bits) - 1;
-    dist += (uint64_t) tk_cvec_byte_popcount(x & mask);
+    dist += (uint64_t) __builtin_popcount(x & mask);
   }
   return dist;
 }
 
 static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming_mask) (
-  const uint8_t *a,
-  const uint8_t *b,
-  const uint8_t *mask,
+  const uint8_t * __restrict__ a,
+  const uint8_t * __restrict__ b,
+  const uint8_t * __restrict__ mask,
   uint64_t n_bits
 ) {
   uint64_t full_bytes = TK_CVEC_BITS_BYTES(n_bits);
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
+  uint64_t main_bytes = full_bytes - (rem_bits > 0 ? 1 : 0);
   uint64_t dist = 0;
+
+
+  uint64_t n_chunks = main_bytes / 8;
+  uint64_t remaining = main_bytes % 8;
+  const uint64_t *a64 = (const uint64_t *)a;
+  const uint64_t *b64 = (const uint64_t *)b;
+  const uint64_t *mask64 = (const uint64_t *)mask;
+
   TK_PARALLEL_FOR(reduction(+:dist))
-  for (uint64_t i = 0; i < full_bytes - (rem_bits > 0); i ++)
-    dist += (uint64_t) tk_cvec_byte_popcount((a[i] ^ b[i]) & mask[i]);
+  for (uint64_t i = 0; i < n_chunks; i ++) {
+    uint64_t masked_xor = (a64[i] ^ b64[i]) & mask64[i];
+    dist += (uint64_t) __builtin_popcountll(masked_xor);
+  }
+
+
+  for (uint64_t i = n_chunks * 8; i < n_chunks * 8 + remaining; i ++)
+    dist += (uint64_t) __builtin_popcount((a[i] ^ b[i]) & mask[i]);
+
+
   if (rem_bits > 0) {
     uint8_t x = a[full_bytes - 1] ^ b[full_bytes - 1];
     uint8_t m = mask[full_bytes - 1] & ((1U << rem_bits) - 1);
-    dist += (uint64_t) tk_cvec_byte_popcount(x & m);
+    dist += (uint64_t) __builtin_popcount(x & m);
   }
   return dist;
 }
 
 static inline void tk_parallel_sfx(tk_cvec_bits_and) (
-  uint8_t *out,
-  const uint8_t *a,
-  const uint8_t *b,
+  uint8_t * __restrict__ out,
+  const uint8_t * __restrict__ a,
+  const uint8_t * __restrict__ b,
   uint64_t n_bits
 ) {
   uint64_t full_bytes = TK_CVEC_BITS_BYTES(n_bits);
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
+  uint64_t main_bytes = full_bytes - (rem_bits > 0 ? 1 : 0);
+
+
+  uint64_t n_chunks = main_bytes / 8;
+  uint64_t remaining = main_bytes % 8;
+  uint64_t *out64 = (uint64_t *)out;
+  const uint64_t *a64 = (const uint64_t *)a;
+  const uint64_t *b64 = (const uint64_t *)b;
+
   TK_PARALLEL_FOR(schedule(static))
-  for (uint64_t i = 0; i < full_bytes - (rem_bits > 0); i ++)
+  for (uint64_t i = 0; i < n_chunks; i ++)
+    out64[i] = a64[i] & b64[i];
+
+
+  for (uint64_t i = n_chunks * 8; i < n_chunks * 8 + remaining; i ++)
     out[i] = a[i] & b[i];
+
+
   if (rem_bits > 0) {
     uint8_t mask = (1U << rem_bits) - 1;
     out[full_bytes - 1] = (a[full_bytes - 1] & b[full_bytes - 1]) & mask;
@@ -79,16 +141,31 @@ static inline void tk_parallel_sfx(tk_cvec_bits_and) (
 }
 
 static inline void tk_parallel_sfx(tk_cvec_bits_or) (
-  uint8_t *out,
-  const uint8_t *a,
-  const uint8_t *b,
+  uint8_t * __restrict__ out,
+  const uint8_t * __restrict__ a,
+  const uint8_t * __restrict__ b,
   uint64_t n_bits
 ) {
   uint64_t full_bytes = TK_CVEC_BITS_BYTES(n_bits);
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
+  uint64_t main_bytes = full_bytes - (rem_bits > 0 ? 1 : 0);
+
+
+  uint64_t n_chunks = main_bytes / 8;
+  uint64_t remaining = main_bytes % 8;
+  uint64_t *out64 = (uint64_t *)out;
+  const uint64_t *a64 = (const uint64_t *)a;
+  const uint64_t *b64 = (const uint64_t *)b;
+
   TK_PARALLEL_FOR(schedule(static))
-  for (uint64_t i = 0; i < full_bytes - (rem_bits > 0); i ++)
+  for (uint64_t i = 0; i < n_chunks; i ++)
+    out64[i] = a64[i] | b64[i];
+
+
+  for (uint64_t i = n_chunks * 8; i < n_chunks * 8 + remaining; i ++)
     out[i] = a[i] | b[i];
+
+
   if (rem_bits > 0) {
     uint8_t mask = (1U << rem_bits) - 1;
     out[full_bytes - 1] = (a[full_bytes - 1] | b[full_bytes - 1]) & mask;
@@ -96,16 +173,31 @@ static inline void tk_parallel_sfx(tk_cvec_bits_or) (
 }
 
 static inline void tk_parallel_sfx(tk_cvec_bits_xor) (
-  uint8_t *out,
-  const uint8_t *a,
-  const uint8_t *b,
+  uint8_t * __restrict__ out,
+  const uint8_t * __restrict__ a,
+  const uint8_t * __restrict__ b,
   uint64_t n_bits
 ) {
   uint64_t full_bytes = TK_CVEC_BITS_BYTES(n_bits);
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
+  uint64_t main_bytes = full_bytes - (rem_bits > 0 ? 1 : 0);
+
+
+  uint64_t n_chunks = main_bytes / 8;
+  uint64_t remaining = main_bytes % 8;
+  uint64_t *out64 = (uint64_t *)out;
+  const uint64_t *a64 = (const uint64_t *)a;
+  const uint64_t *b64 = (const uint64_t *)b;
+
   TK_PARALLEL_FOR(schedule(static))
-  for (uint64_t i = 0; i < full_bytes - (rem_bits > 0); i ++)
+  for (uint64_t i = 0; i < n_chunks; i ++)
+    out64[i] = a64[i] ^ b64[i];
+
+
+  for (uint64_t i = n_chunks * 8; i < n_chunks * 8 + remaining; i ++)
     out[i] = a[i] ^ b[i];
+
+
   if (rem_bits > 0) {
     uint8_t mask = (1U << rem_bits) - 1;
     out[full_bytes - 1] = (a[full_bytes - 1] ^ b[full_bytes - 1]) & mask;
