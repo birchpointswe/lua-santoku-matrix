@@ -45,6 +45,30 @@ tk_vec_ksort(tk_vec_pfx(xdesc), tk_vec_base, tk_vec_gtx)
 #define tk_vec_introsort(...) ks_introsort(__VA_ARGS__)
 #define tk_vec_ksmall(...) ks_ksmall(__VA_ARGS__)
 
+
+static inline void tk_vec_pfx(transpose) (tk_vec_pfx(t) *m0, tk_vec_pfx(t) *m1, uint64_t cols);
+#ifndef tk_vec_limited
+static inline tk_vec_pfx(t) *tk_vec_pfx(csums) (lua_State *L, tk_vec_pfx(t) *m0, uint64_t cols);
+static inline tk_vec_pfx(t) *tk_vec_pfx(rsums) (lua_State *L, tk_vec_pfx(t) *m0, uint64_t cols);
+static inline tk_vec_pfx(t) *tk_vec_pfx(cmaxs) (lua_State *L, tk_vec_pfx(t) *m0, uint64_t cols);
+static inline tk_vec_pfx(t) *tk_vec_pfx(rmaxs) (lua_State *L, tk_vec_pfx(t) *m0, uint64_t cols);
+static inline tk_vec_pfx(t) *tk_vec_pfx(cmins) (lua_State *L, tk_vec_pfx(t) *m0, uint64_t cols);
+static inline tk_vec_pfx(t) *tk_vec_pfx(rmins) (lua_State *L, tk_vec_pfx(t) *m0, uint64_t cols);
+static inline void tk_vec_pfx(scale) (tk_vec_pfx(t) *m0, tk_vec_base scale, uint64_t start, uint64_t end);
+static inline void tk_vec_pfx(add) (tk_vec_pfx(t) *m0, tk_vec_base add, uint64_t start, uint64_t end);
+static inline void tk_vec_pfx(add_scaled) (tk_vec_pfx(t) *m0, tk_vec_base add, uint64_t start, uint64_t end);
+static inline void tk_vec_pfx(scalev) (tk_vec_pfx(t) *m0, tk_vec_pfx(t) *m1, uint64_t start, uint64_t end);
+static inline void tk_vec_pfx(addv) (tk_vec_pfx(t) *m0, tk_vec_pfx(t) *m1, uint64_t start, uint64_t end);
+static inline void tk_vec_pfx(abs) (tk_vec_pfx(t) *m0, uint64_t start, uint64_t end);
+static inline double tk_vec_pfx(dot) (tk_vec_pfx(t) *a, tk_vec_pfx(t) *b);
+static inline void tk_vec_pfx(fill) (tk_vec_pfx(t) *v, tk_vec_base x, uint64_t start, uint64_t end);
+static inline void tk_vec_pfx(multiply) (tk_vec_pfx(t) *a, tk_vec_pfx(t) *b, tk_vec_pfx(t) *c, uint64_t k, bool transpose_a, bool transpose_b);
+static inline void tk_vec_pfx(pow) (tk_vec_pfx(t) *v, double exponent, uint64_t start, uint64_t end);
+static inline void tk_vec_pfx(log) (tk_vec_pfx(t) *v, uint64_t start, uint64_t end);
+static inline void tk_vec_pfx(exp) (tk_vec_pfx(t) *v, uint64_t start, uint64_t end);
+static inline void tk_vec_pfx(fill_indices) (tk_vec_pfx(t) *v);
+#endif
+
 static inline tk_vec_pfx(t) tk_vec_name (tk_vec_base *a, uint64_t n)
 {
   return (tk_vec_pfx(t)) { .a = a, .n = n, .m = n };
@@ -152,18 +176,6 @@ static inline int tk_vec_pfx(copy) (
   return 0;
 }
 
-static inline void tk_vec_pfx(transpose) (
-  tk_vec_pfx(t) *m0,
-  tk_vec_pfx(t) *m1,
-  uint64_t cols
-) {
-  tk_vec_pfx(ensure)(0, m1->n);
-  uint64_t rows = m1->n / cols;
-  #pragma omp parallel for collapse(2)
-  for (uint64_t r = 0; r < rows; r ++)
-    for (uint64_t c = 0; c < cols; c ++)
-      m0->a[c * rows + r] = m1->a[r * cols + c];
-}
 
 static inline uint64_t tk_vec_pfx(capacity) (tk_vec_pfx(t) *m0)
 {
@@ -424,41 +436,7 @@ static inline tk_vec_base tk_vec_pfx(sum) (
   return sum;
 }
 
-static inline tk_vec_pfx(t) *tk_vec_pfx(csums) (
-  lua_State *L,
-  tk_vec_pfx(t) *m0,
-  uint64_t cols
-) {
-  tk_vec_pfx(t) *out = tk_vec_pfx(create)(L, cols, NULL, NULL);
-  #pragma omp parallel for
-  for (uint64_t c = 0; c < cols; c ++) {
-    tk_vec_base sum = 0;
-    for (uint64_t r = 0; r < m0->n / cols; r ++) {
-      tk_vec_base val = m0->a[r * cols + c];
-      sum += val;
-    }
-    out->a[c] = sum;
-  }
-  return out;
-}
 
-static inline tk_vec_pfx(t) *tk_vec_pfx(rsums) (
-  lua_State *L,
-  tk_vec_pfx(t) *m0,
-  uint64_t cols
-) {
-  tk_vec_pfx(t) *out = tk_vec_pfx(create)(L, m0->n / cols, NULL, NULL);
-#pragma omp parallel for
-  for (uint64_t r = 0; r < m0->n / cols; r ++) {
-    tk_vec_base sum = 0.0;
-    for (uint64_t c = 0; c < cols; c ++) {
-      tk_vec_base val = m0->a[r * cols + c];
-      sum += val;
-    }
-    out->a[r] = sum;
-  }
-  return out;
-}
 
 static inline tk_vec_base tk_vec_pfx(max) (
   tk_vec_pfx(t) *m0,
@@ -478,49 +456,7 @@ static inline tk_vec_base tk_vec_pfx(max) (
   return maxval;
 }
 
-static inline tk_vec_pfx(t) *tk_vec_pfx(cmaxs) (
-  lua_State *L,
-  tk_vec_pfx(t) *m0,
-  uint64_t cols
-) {
-  tk_vec_pfx(t) *out = tk_vec_pfx(create)(L, cols, NULL, NULL);
-#pragma omp parallel for
-  for (uint64_t c = 0; c < cols; c ++) {
-    tk_vec_base maxv = m0->a[0 * cols + c];
-    for (size_t r = 1; r < m0->n / cols; r ++) {
-      if (m0->a[r * cols + c] > maxv) {
-        maxv = m0->a[r * cols + c];
-      }
-    }
-    out->a[c] = maxv;
-  }
-  return out;
-}
 
-static inline tk_vec_pfx(t) *tk_vec_pfx(rmaxs) (
-  lua_State *L,
-  tk_vec_pfx(t) *m0,
-  uint64_t cols
-) {
-  tk_vec_pfx(t) *out = tk_vec_pfx(create)(L, m0->n / cols, NULL, NULL);
-  #pragma omp parallel for
-  for (uint64_t r = 0; r < m0->n / cols; r ++) {
-    tk_vec_base sum = 0.0;
-    for (uint64_t c = 0; c < cols; c ++) {
-      tk_vec_base val = m0->a[r * cols + c];
-      sum += val;
-    }
-    out->a[r] = sum;
-    tk_vec_base maxv = m0->a[r * cols + 0];
-    for (uint64_t c = 1; c < cols; c ++) {
-      if (m0->a[r * cols + c] > maxv) {
-        maxv = m0->a[r * cols + c];
-      }
-    }
-    out->a[r] = maxv;
-  }
-  return out;
-}
 
 static inline tk_vec_base tk_vec_pfx(min) (
   tk_vec_pfx(t) *m0,
@@ -540,244 +476,21 @@ static inline tk_vec_base tk_vec_pfx(min) (
   return minval;
 }
 
-static inline tk_vec_pfx(t) *tk_vec_pfx(cmins) (
-  lua_State *L,
-  tk_vec_pfx(t) *m0,
-  uint64_t cols
-) {
-  tk_vec_pfx(t) *out = tk_vec_pfx(create)(L, cols, NULL, NULL);
-  #pragma omp parallel for
-  for (uint64_t c = 0; c < cols; c ++) {
-    tk_vec_base minv = m0->a[0 * cols + c];
-    for (size_t r = 1; r < m0->n / cols; r ++) {
-      if (m0->a[r * cols + c] < minv) {
-        minv = m0->a[r * cols + c];
-      }
-    }
-    out->a[c] = minv;
-  }
-  return out;
-}
 
-static inline tk_vec_pfx(t) *tk_vec_pfx(rmins) (
-  lua_State *L,
-  tk_vec_pfx(t) *m0,
-  uint64_t cols
-) {
-  tk_vec_pfx(t) *out = tk_vec_pfx(create)(L, m0->n / cols, NULL, NULL);
-  #pragma omp parallel for
-  for (uint64_t r = 0; r < m0->n / cols; r ++) {
-    tk_vec_base sum = 0.0;
-    for (uint64_t c = 0; c < cols; c ++) {
-      tk_vec_base val = m0->a[r * cols + c];
-      sum += val;
-    }
-    out->a[r] = sum;
-    tk_vec_base minv = m0->a[r * cols + 0];
-    for (uint64_t c = 1; c < cols; c ++) {
-      if (m0->a[r * cols + c] < minv) {
-        minv = m0->a[r * cols + c];
-      }
-    }
-    out->a[r] = minv;
-  }
-  return out;
-}
 
-static inline void tk_vec_pfx(scale) (
-  tk_vec_pfx(t) *m0,
-  tk_vec_base scale,
-  uint64_t start,
-  uint64_t end
-) {
-  if (!m0->n || start >= end || start >= m0->n)
-    return;
-  if (end > m0->n)
-    end = m0->n;
-  #pragma omp parallel for
-  for (size_t i = start; i < end; i ++)
-    m0->a[i] *= scale;
-}
 
-static inline void tk_vec_pfx(add) (
-  tk_vec_pfx(t) *m0,
-  tk_vec_base add,
-  uint64_t start,
-  uint64_t end
-) {
-  if (!m0->n || start >= end || start >= m0->n)
-    return;
-  if (end > m0->n)
-    end = m0->n;
-  #pragma omp parallel for
-  for (size_t i = start; i < end; i ++) {
-    m0->a[i] += add;
-  }
-}
 
-static inline void tk_vec_pfx(add_scaled) (
-  tk_vec_pfx(t) *m0,
-  tk_vec_base add,
-  uint64_t start,
-  uint64_t end
-) {
-  if (!m0->n || start >= end || start >= m0->n)
-    return;
-  if (end > m0->n)
-    end = m0->n;
-  #pragma omp parallel for
-  for (size_t i = start; i < end; i ++) {
-    m0->a[i] += add * (tk_vec_base) i;
-  }
-}
 
-static inline void tk_vec_pfx(scalev) (
-  tk_vec_pfx(t) *m0,
-  tk_vec_pfx(t) *m1,
-  uint64_t start,
-  uint64_t end
-) {
-  if (!m0->n || !m1->n)
-    return;
-  if (start >= end)
-    return;
-  if (start >= m0->n || start >= m1->n)
-    return;
-  uint64_t lim0 = m0->n;
-  uint64_t lim1 = m1->n;
-  uint64_t lim = lim0 < lim1 ? lim0 : lim1;
-  if (end > lim)
-    end = lim;
-  #pragma omp parallel for
-  for (size_t i = start; i < end; i ++) {
-    m0->a[i] *= m1->a[i];
-  }
-}
 
-static inline void tk_vec_pfx(addv) (
-  tk_vec_pfx(t) *m0,
-  tk_vec_pfx(t) *m1,
-  uint64_t start,
-  uint64_t end
-) {
-  if (!m0->n || !m1->n)
-    return;
-  if (start >= end)
-    return;
-  if (start >= m0->n || start >= m1->n)
-    return;
-  uint64_t lim0 = m0->n;
-  uint64_t lim1 = m1->n;
-  uint64_t lim = lim0 < lim1 ? lim0 : lim1;
-  if (end > lim)
-    end = lim;
-  #pragma omp parallel for
-  for (size_t i = start; i < end; i ++) {
-    m0->a[i] += m1->a[i];
-  }
-}
 
 #ifdef tk_vec_abs
-static inline void tk_vec_pfx(abs) (
-  tk_vec_pfx(t) *m0,
-  uint64_t start,
-  uint64_t end
-) {
-  if (!m0->n || start >= end || start >= m0->n)
-    return;
-  if (end > m0->n)
-    end = m0->n;
-  #pragma omp parallel for
-  for (size_t i = start; i < end; i ++)
-    m0->a[i] = tk_vec_abs(m0->a[i]);
-}
 #endif
 
-static inline double tk_vec_pfx(dot) (tk_vec_pfx(t) *a, tk_vec_pfx(t) *b) {
-  if (a->n != b->n)
-    return 0;
-  size_t n = a->n;
-  double sum = 0.0;
-  #pragma omp parallel for reduction(+:sum)
-  for (size_t i = 0; i < n; i ++)
-    sum += a->a[i] * b->a[i];
-  return sum;
-}
 
-static inline void tk_vec_pfx(fill) (tk_vec_pfx(t) *v, tk_vec_base x, uint64_t start, uint64_t end) {
-  if (end <= start)
-    return;
-  if (end > v->n) {
-    tk_vec_pfx(ensure)(v, end);
-    v->n = end;
-  }
-  #pragma omp parallel for
-  for (uint64_t i = start; i < end; i ++)
-    v->a[i] = x;
-}
 
-static inline void tk_vec_pfx(multiply) (tk_vec_pfx(t) *a, tk_vec_pfx(t) *b, tk_vec_pfx(t) *c, uint64_t k, bool transpose_a, bool transpose_b) {
-  size_t m = transpose_a ? k : a->n / k;
-  size_t n = transpose_b ? k : b->n / k;
-  tk_vec_pfx(ensure)(a, transpose_a ? k * m : m * k);
-  tk_vec_pfx(ensure)(b, transpose_b ? k * n : k * n);
-  tk_vec_pfx(ensure)(c, m * n);
-  #pragma omp parallel for collapse(2)
-  for (size_t i = 0; i < m; i ++) {
-    for (size_t j = 0; j < n; j ++) {
-      double sum = 0.0;
-      for (size_t l = 0; l < k; l ++) {
-        size_t a_idx = transpose_a ? l * m + i : i * k + l;
-        size_t b_idx = transpose_b ? j * k + l : l * n + j;
-        sum += a->a[a_idx] * b->a[b_idx];
-      }
-      c->a[i * n + j] = sum;
-    }
-  }
-}
 
-static inline void tk_vec_pfx(pow) (
-  tk_vec_pfx(t) *m0,
-  double e,
-  uint64_t start,
-  uint64_t end
-) {
-  if (!m0->n || start > end || start >= m0->n)
-    return;
-  if (end > m0->n - 1)
-    end = m0->n - 1;
-  #pragma omp parallel for
-  for (size_t i = start; i <= end; i ++)
-    m0->a[i] = pow(m0->a[i], e);
-}
 
-static inline void tk_vec_pfx(log) (
-  tk_vec_pfx(t) *m0,
-  uint64_t start,
-  uint64_t end
-) {
-  if (!m0->n || start > end || start >= m0->n)
-    return;
-  if (end > m0->n - 1)
-    end = m0->n - 1;
-  #pragma omp parallel for
-  for (size_t i = start; i <= end; i ++)
-    m0->a[i] = log(m0->a[i]);
-}
 
-static inline void tk_vec_pfx(exp) (
-  tk_vec_pfx(t) *m0,
-  uint64_t start,
-  uint64_t end
-) {
-  if (!m0->n || start > end || start >= m0->n)
-    return;
-  if (end > m0->n - 1)
-    end = m0->n - 1;
-  #pragma omp parallel for
-  for (size_t i = start; i <= end; i ++)
-    m0->a[i] = exp(m0->a[i]);
-}
 
 static inline const char *tk_vec_pfx(raw) (
   lua_State *L,
@@ -850,12 +563,6 @@ cleanup:
   return NULL;
 }
 
-static inline void tk_vec_pfx(fill_indices) (tk_vec_pfx(t) *v)
-{
-  #pragma omp parallel for
-  for (uint64_t i = 0; i < v->n; i ++)
-    v->a[i] = (tk_vec_base) i;
-}
 
 #endif
 
@@ -1719,5 +1426,16 @@ static luaL_Reg tk_vec_pfx(lua_fns)[] =
 
 static inline void tk_vec_pfx(suppress_unused_lua_fns) (void)
   { (void) tk_vec_pfx(lua_fns); }
+
+
+
+#include <santoku/parallel/tpl.h>
+#include <santoku/vec/tpl_para.h>
+
+
+#define TK_GENERATE_SINGLE
+#include <santoku/parallel/tpl.h>
+#include <santoku/vec/tpl_para.h>
+#undef TK_GENERATE_SINGLE
 
 #include <santoku/vec/undef.h>

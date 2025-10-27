@@ -1,5 +1,7 @@
 # Next
 
+- Parallel sorts
+
 - tk_cvec_t
     - Implement cvec to/from string
 

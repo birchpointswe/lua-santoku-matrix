@@ -13,6 +13,15 @@
 #define TK_CVEC_BITS_BYTES(n) (((n) + CHAR_BIT - 1) / CHAR_BIT)
 #endif
 
+
+
+static inline tk_ivec_t *tk_ivec_bits_from_cvec(lua_State *L, const char *bm, uint64_t n_samples, uint64_t n_features);
+static inline tk_ivec_t *tk_ivec_bits_from_cvec_serial(lua_State *L, const char *bm, uint64_t n_samples, uint64_t n_features);
+static inline void tk_ivec_bits_extend(tk_ivec_t *base, tk_ivec_t *ext, uint64_t n_feat, uint64_t n_extfeat);
+static inline void tk_ivec_bits_extend_serial(tk_ivec_t *base, tk_ivec_t *ext, uint64_t n_feat, uint64_t n_extfeat);
+static inline int tk_ivec_bits_extend_mapped(tk_ivec_t *base, tk_ivec_t *ext, tk_ivec_t *aids, tk_ivec_t *bids, uint64_t n_feat, uint64_t n_extfeat, bool project);
+static inline int tk_ivec_bits_extend_mapped_serial(tk_ivec_t *base, tk_ivec_t *ext, tk_ivec_t *aids, tk_ivec_t *bids, uint64_t n_feat, uint64_t n_extfeat, bool project);
+
 static inline void tk_ivec_copy_pkeys (tk_ivec_t *m0, tk_pvec_t *m1, int64_t start, int64_t end, int64_t dest) {
   if (start < 0 || start >= end || start >= (int64_t) m1->n)
     return;
@@ -97,7 +106,6 @@ static inline tk_rvec_t *tk_rvec_rankings (lua_State *L, tk_dvec_t *scores, uint
   return rankings;
 }
 
-
 static inline tk_cvec_t *tk_ivec_bits_to_cvec (lua_State *L, tk_ivec_t *set_bits, uint64_t n_samples, uint64_t n_features, bool flip_interleave) {
   uint64_t output_features = flip_interleave ? (n_features * 2) : n_features;
   uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(output_features);
@@ -156,188 +164,7 @@ static inline tk_cvec_t *tk_ivec_bits_to_cvec (lua_State *L, tk_ivec_t *set_bits
   }
   return out_cvec;
 }
-static inline tk_ivec_t *tk_ivec_bits_from_cvec (lua_State *L, const char *bm, uint64_t n_samples, uint64_t n_features) {
-  tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
-  uint64_t total_bits = 0;
-  #pragma omp parallel for reduction(+:total_bits)
-  for (uint64_t i = 0; i < n_samples; i ++)
-    for (uint64_t j = 0; j < n_features; j ++) {
-      uint64_t bit = i * n_features + j;
-      uint64_t chunk = bit / CHAR_BIT;
-      uint64_t pos = bit % CHAR_BIT;
-      if (bm[chunk] & (1 << pos)) {
-        total_bits++;
-      }
-    }
-  if (tk_ivec_ensure(out, total_bits) != 0) {
-    tk_ivec_destroy(out);
-    return NULL;
-  }
-  uint64_t *sample_counts = (uint64_t *)calloc(n_samples, sizeof(uint64_t));
-  if (!sample_counts) {
-    tk_ivec_destroy(out);
-    return NULL;
-  }
-  #pragma omp parallel for
-  for (uint64_t i = 0; i < n_samples; i ++) {
-    for (uint64_t j = 0; j < n_features; j ++) {
-      uint64_t bit = i * n_features + j;
-      uint64_t chunk = bit / CHAR_BIT;
-      uint64_t pos = bit % CHAR_BIT;
-      if (bm[chunk] & (1 << pos)) {
-        sample_counts[i]++;
-      }
-    }
-  }
-  uint64_t *offsets = (uint64_t *)malloc((n_samples + 1) * sizeof(uint64_t));
-  if (!offsets) {
-    free(sample_counts);
-    tk_ivec_destroy(out);
-    return NULL;
-  }
-  offsets[0] = 0;
-  for (uint64_t i = 0; i < n_samples; i++)
-    offsets[i + 1] = offsets[i] + sample_counts[i];
-  #pragma omp parallel for
-  for (uint64_t i = 0; i < n_samples; i ++) {
-    uint64_t write_pos = offsets[i];
-    for (uint64_t j = 0; j < n_features; j ++) {
-      uint64_t bit = i * n_features + j;
-      uint64_t chunk = bit / CHAR_BIT;
-      uint64_t pos = bit % CHAR_BIT;
-      if (bm[chunk] & (1 << pos)) {
-        out->a[write_pos++] = (int64_t) bit;
-      }
-    }
-  }
-  out->n = total_bits;
-  free(sample_counts);
-  free(offsets);
-  tk_ivec_shrink(out);
-  return out;
-}
 
-static inline void tk_ivec_bits_extend (tk_ivec_t *base, tk_ivec_t *ext, uint64_t n_feat, uint64_t n_extfeat) {
-  tk_ivec_asc(base, 0, base->n);
-  tk_ivec_asc(ext, 0, ext->n);
-  size_t total = base->n + ext->n;
-  tk_ivec_ensure(base, total);
-  #pragma omp parallel for
-  for (size_t i = 0; i < base->n; i ++) {
-    uint64_t bit = (uint64_t) base->a[i];
-    uint64_t sample = bit / n_feat;
-    uint64_t old_off = sample * n_feat;
-    uint64_t new_off = sample * (n_feat + n_extfeat);
-    base->a[i] = (int64_t) (bit - old_off + new_off);
-  }
-  #pragma omp parallel for
-  for (size_t i = 0; i < ext->n; i ++) {
-    uint64_t bit = (uint64_t) ext->a[i];
-    uint64_t sample = bit / n_extfeat;
-    uint64_t old_off = sample * n_extfeat;
-    uint64_t new_off = sample * (n_feat + n_extfeat);
-    base->a[base->n + i] = (int64_t) (bit - old_off + new_off + n_feat);
-  }
-  base->n = total;
-  tk_ivec_asc(base, 0, base->n);
-}
-
-static inline int tk_ivec_bits_extend_mapped (tk_ivec_t *base, tk_ivec_t *ext, tk_ivec_t *aids, tk_ivec_t *bids, uint64_t n_feat, uint64_t n_extfeat, bool project) {
-  tk_ivec_asc(base, 0, base->n);
-  tk_ivec_asc(ext, 0, ext->n);
-  tk_iumap_t *a_id_to_pos = tk_iumap_from_ivec(0, aids);
-  if (!a_id_to_pos)
-    return -1;
-  uint64_t n_only_b = 0;
-  int64_t *b_to_final = (int64_t *)calloc(bids->n, sizeof(int64_t));
-  int64_t *a_to_final = (int64_t *)calloc(aids->n, sizeof(int64_t));
-
-  if (!b_to_final || !a_to_final) {
-    free(b_to_final);
-    free(a_to_final);
-    tk_iumap_destroy(a_id_to_pos);
-    return -1;
-  }
-  #pragma omp parallel for
-  for (size_t i = 0; i < aids->n; i++)
-    a_to_final[i] = (int64_t)i;
-  int64_t next_pos = (int64_t)aids->n;
-  for (size_t bi = 0; bi < bids->n; bi++) {
-    khint_t khi = tk_iumap_get(a_id_to_pos, bids->a[bi]);
-    if (khi != tk_iumap_end(a_id_to_pos)) {
-      b_to_final[bi] = tk_iumap_val(a_id_to_pos, khi);
-    } else {
-      if (!project) {
-        b_to_final[bi] = next_pos++;
-        n_only_b++;
-      } else {
-        b_to_final[bi] = -1;
-      }
-    }
-  }
-  uint64_t final_n_samples = project ? aids->n : (aids->n + n_only_b);
-  uint64_t n_total_feat = n_feat + n_extfeat;
-  size_t old_aids_n = aids->n;
-  if (!project) {
-    if (tk_ivec_ensure(aids, final_n_samples) != 0) {
-      free(b_to_final);
-      free(a_to_final);
-      tk_iumap_destroy(a_id_to_pos);
-      return -1;
-    }
-    for (size_t i = 0; i < bids->n; i++) {
-      if (b_to_final[i] >= (int64_t)old_aids_n)
-        aids->a[aids->n++] = bids->a[i];
-    }
-  }
-  size_t max_bits = 0;
-  #pragma omp parallel for reduction(+:max_bits)
-  for (size_t i = 0; i < base->n; i++) {
-    uint64_t bit = (uint64_t)base->a[i];
-    uint64_t sample = bit / n_feat;
-    if (sample < old_aids_n)
-      max_bits++;
-  }
-  #pragma omp parallel for reduction(+:max_bits)
-  for (size_t i = 0; i < ext->n; i++) {
-    uint64_t bit = (uint64_t)ext->a[i];
-    uint64_t sample = bit / n_extfeat;
-    if (sample < bids->n && b_to_final[sample] >= 0)
-      max_bits++;
-  }
-  if (tk_ivec_ensure(base, max_bits) != 0) {
-    free(b_to_final);
-    free(a_to_final);
-    tk_iumap_destroy(a_id_to_pos);
-    return -1;
-  }
-  #pragma omp parallel for
-  for (int64_t i = (int64_t)base->n - 1; i >= 0; i--) {
-    uint64_t bit = (uint64_t)base->a[i];
-    uint64_t sample = bit / n_feat;
-    uint64_t feature = bit % n_feat;
-    if (sample < old_aids_n) {
-      uint64_t new_sample_pos = (uint64_t)a_to_final[sample];
-      base->a[i] = (int64_t)(new_sample_pos * n_total_feat + feature);
-    }
-  }
-  size_t insert_pos = base->n;
-  for (size_t i = 0; i < ext->n; i++) {
-    uint64_t bit = (uint64_t)ext->a[i];
-    uint64_t b_sample = bit / n_extfeat;
-    uint64_t feature = bit % n_extfeat;
-    if (b_sample < bids->n && b_to_final[b_sample] >= 0) {
-      uint64_t final_sample = (uint64_t)b_to_final[b_sample];
-      base->a[insert_pos++] = (int64_t)(final_sample * n_total_feat + n_feat + feature);
-    }
-  }
-  base->n = insert_pos;
-  tk_ivec_asc(base, 0, base->n);
-  free(b_to_final);
-  free(a_to_final);
-  tk_iumap_destroy(a_id_to_pos);
-  return 0;
-}
 typedef enum { TK_IVEC_JACCARD, TK_IVEC_OVERLAP, TK_IVEC_DICE, TK_IVEC_TVERSKY } tk_ivec_sim_type_t;
 
 static inline double tk_ivec_set_jaccard (double inter_w, double sum_a, double sum_b)
@@ -632,5 +459,16 @@ static inline tk_ivec_t *tk_ivec_set_union (lua_State *L, tk_ivec_t *a, tk_ivec_
   tk_ivec_shrink(out);
   return out;
 }
+
+
+
+#include <santoku/parallel/tpl.h>
+#include <santoku/ivec/ext_tpl.h>
+
+
+#define TK_GENERATE_SINGLE
+#include <santoku/parallel/tpl.h>
+#include <santoku/ivec/ext_tpl.h>
+#undef TK_GENERATE_SINGLE
 
 #endif
