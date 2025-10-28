@@ -1,9 +1,16 @@
-
-
-
 #ifndef tk_parallel_sfx
 #error "Must include santoku/parallel/tpl.h before this template"
 #endif
+
+#if defined(__AVX512F__) && defined(__AVX512VPOPCNTDQ__)
+  #include <immintrin.h>
+#elif defined(__AVX2__)
+  #include <immintrin.h>
+#elif defined(__ARM_NEON)
+  #include <arm_neon.h>
+#endif
+
+static inline uint64_t tk_cvec_bits_popcount_serial(const uint8_t *data, uint64_t n_bits);
 
 static inline uint64_t tk_parallel_sfx(tk_cvec_bits_popcount) (
   const uint8_t * __restrict__ data,
@@ -14,7 +21,6 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_popcount) (
   uint64_t main_bytes = full_bytes - (rem_bits > 0 ? 1 : 0);
   uint64_t count = 0;
 
-
   uint64_t n_chunks = main_bytes / 8;
   uint64_t remaining = main_bytes % 8;
   const uint64_t *data64 = (const uint64_t *)data;
@@ -23,10 +29,8 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_popcount) (
   for (uint64_t i = 0; i < n_chunks; i ++)
     count += (uint64_t) __builtin_popcountll(data64[i]);
 
-
   for (uint64_t i = n_chunks * 8; i < n_chunks * 8 + remaining; i ++)
     count += (uint64_t) __builtin_popcount(data[i]);
-
 
   if (rem_bits > 0) {
     uint8_t mask = (1U << rem_bits) - 1;
@@ -45,23 +49,80 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming) (
   uint64_t main_bytes = full_bytes - (rem_bits > 0 ? 1 : 0);
   uint64_t dist = 0;
 
-
   uint64_t n_chunks = main_bytes / 8;
   uint64_t remaining = main_bytes % 8;
   const uint64_t *a64 = (const uint64_t *)a;
   const uint64_t *b64 = (const uint64_t *)b;
 
+#if defined(__AVX512F__) && defined(__AVX512VPOPCNTDQ__)
+  uint64_t i = 0;
+  uint64_t vec_chunks = n_chunks / 8;
+
+  TK_PARALLEL_FOR(reduction(+:dist))
+  for (uint64_t v = 0; v < vec_chunks; v++) {
+    __m512i va = _mm512_loadu_si512(&a64[v * 8]);
+    __m512i vb = _mm512_loadu_si512(&b64[v * 8]);
+    __m512i vxor = _mm512_xor_si512(va, vb);
+    __m512i vpop = _mm512_popcnt_epi64(vxor);
+    dist += _mm512_reduce_add_epi64(vpop);
+  }
+
+  for (i = vec_chunks * 8; i < n_chunks; i++) {
+    uint64_t xor_val = a64[i] ^ b64[i];
+    dist += (uint64_t) __builtin_popcountll(xor_val);
+  }
+
+#elif defined(__AVX2__)
+  uint64_t i = 0;
+  uint64_t vec_chunks = n_chunks / 4;
+
+  TK_PARALLEL_FOR(reduction(+:dist))
+  for (uint64_t v = 0; v < vec_chunks; v++) {
+    __m256i va = _mm256_loadu_si256((__m256i*)&a64[v * 4]);
+    __m256i vb = _mm256_loadu_si256((__m256i*)&b64[v * 4]);
+    __m256i vxor = _mm256_xor_si256(va, vb);
+
+    dist += (uint64_t) __builtin_popcountll((uint64_t) _mm256_extract_epi64(vxor, 0));
+    dist += (uint64_t) __builtin_popcountll((uint64_t) _mm256_extract_epi64(vxor, 1));
+    dist += (uint64_t) __builtin_popcountll((uint64_t) _mm256_extract_epi64(vxor, 2));
+    dist += (uint64_t) __builtin_popcountll((uint64_t) _mm256_extract_epi64(vxor, 3));
+  }
+
+  for (i = vec_chunks * 4; i < n_chunks; i++) {
+    uint64_t xor_val = a64[i] ^ b64[i];
+    dist += (uint64_t) __builtin_popcountll(xor_val);
+  }
+
+#elif defined(__ARM_NEON)
+  uint64_t i = 0;
+  uint64_t vec_chunks = n_chunks / 2;
+
+  TK_PARALLEL_FOR(reduction(+:dist))
+  for (uint64_t v = 0; v < vec_chunks; v++) {
+    uint64x2_t va = vld1q_u64(&a64[v * 2]);
+    uint64x2_t vb = vld1q_u64(&b64[v * 2]);
+    uint64x2_t vxor = veorq_u64(va, vb);
+
+    uint8x16_t vcnt = vcntq_u8(vreinterpretq_u8_u64(vxor));
+    dist += vaddlvq_u8(vcnt);
+  }
+
+  for (i = vec_chunks * 2; i < n_chunks; i++) {
+    uint64_t xor_val = a64[i] ^ b64[i];
+    dist += (uint64_t) __builtin_popcountll(xor_val);
+  }
+
+#else
   TK_PARALLEL_FOR(reduction(+:dist))
   for (uint64_t i = 0; i < n_chunks; i ++) {
     uint64_t xor_val = a64[i] ^ b64[i];
     dist += (uint64_t) __builtin_popcountll(xor_val);
   }
-
+#endif
 
   for (uint64_t i = n_chunks * 8; i < n_chunks * 8 + remaining; i ++) {
     dist += (uint64_t) __builtin_popcount(a[i] ^ b[i]);
   }
-
 
   if (rem_bits > 0) {
     uint8_t x = a[full_bytes - 1] ^ b[full_bytes - 1];
@@ -82,7 +143,6 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming_mask) (
   uint64_t main_bytes = full_bytes - (rem_bits > 0 ? 1 : 0);
   uint64_t dist = 0;
 
-
   uint64_t n_chunks = main_bytes / 8;
   uint64_t remaining = main_bytes % 8;
   const uint64_t *a64 = (const uint64_t *)a;
@@ -95,10 +155,8 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming_mask) (
     dist += (uint64_t) __builtin_popcountll(masked_xor);
   }
 
-
   for (uint64_t i = n_chunks * 8; i < n_chunks * 8 + remaining; i ++)
     dist += (uint64_t) __builtin_popcount((a[i] ^ b[i]) & mask[i]);
-
 
   if (rem_bits > 0) {
     uint8_t x = a[full_bytes - 1] ^ b[full_bytes - 1];
@@ -118,21 +176,70 @@ static inline void tk_parallel_sfx(tk_cvec_bits_and) (
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
   uint64_t main_bytes = full_bytes - (rem_bits > 0 ? 1 : 0);
 
-
   uint64_t n_chunks = main_bytes / 8;
   uint64_t remaining = main_bytes % 8;
   uint64_t *out64 = (uint64_t *)out;
   const uint64_t *a64 = (const uint64_t *)a;
   const uint64_t *b64 = (const uint64_t *)b;
 
+
+#if defined(__AVX512F__)
+
+  uint64_t vec_chunks = n_chunks / 8;
+
+  TK_PARALLEL_FOR(schedule(static))
+  for (uint64_t v = 0; v < vec_chunks; v++) {
+    __m512i va = _mm512_loadu_si512(&a64[v * 8]);
+    __m512i vb = _mm512_loadu_si512(&b64[v * 8]);
+    __m512i vout = _mm512_and_si512(va, vb);
+    _mm512_storeu_si512(&out64[v * 8], vout);
+  }
+
+
+  for (uint64_t i = vec_chunks * 8; i < n_chunks; i++)
+    out64[i] = a64[i] & b64[i];
+
+#elif defined(__AVX2__)
+
+  uint64_t vec_chunks = n_chunks / 4;
+
+  TK_PARALLEL_FOR(schedule(static))
+  for (uint64_t v = 0; v < vec_chunks; v++) {
+    __m256i va = _mm256_loadu_si256((__m256i*)&a64[v * 4]);
+    __m256i vb = _mm256_loadu_si256((__m256i*)&b64[v * 4]);
+    __m256i vout = _mm256_and_si256(va, vb);
+    _mm256_storeu_si256((__m256i*)&out64[v * 4], vout);
+  }
+
+
+  for (uint64_t i = vec_chunks * 4; i < n_chunks; i++)
+    out64[i] = a64[i] & b64[i];
+
+#elif defined(__ARM_NEON)
+
+  uint64_t vec_chunks = n_chunks / 2;
+
+  TK_PARALLEL_FOR(schedule(static))
+  for (uint64_t v = 0; v < vec_chunks; v++) {
+    uint64x2_t va = vld1q_u64(&a64[v * 2]);
+    uint64x2_t vb = vld1q_u64(&b64[v * 2]);
+    uint64x2_t vout = vandq_u64(va, vb);
+    vst1q_u64(&out64[v * 2], vout);
+  }
+
+
+  for (uint64_t i = vec_chunks * 2; i < n_chunks; i++)
+    out64[i] = a64[i] & b64[i];
+
+#else
+
   TK_PARALLEL_FOR(schedule(static))
   for (uint64_t i = 0; i < n_chunks; i ++)
     out64[i] = a64[i] & b64[i];
-
+#endif
 
   for (uint64_t i = n_chunks * 8; i < n_chunks * 8 + remaining; i ++)
     out[i] = a[i] & b[i];
-
 
   if (rem_bits > 0) {
     uint8_t mask = (1U << rem_bits) - 1;
@@ -150,21 +257,70 @@ static inline void tk_parallel_sfx(tk_cvec_bits_or) (
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
   uint64_t main_bytes = full_bytes - (rem_bits > 0 ? 1 : 0);
 
-
   uint64_t n_chunks = main_bytes / 8;
   uint64_t remaining = main_bytes % 8;
   uint64_t *out64 = (uint64_t *)out;
   const uint64_t *a64 = (const uint64_t *)a;
   const uint64_t *b64 = (const uint64_t *)b;
 
+
+#if defined(__AVX512F__)
+
+  uint64_t vec_chunks = n_chunks / 8;
+
+  TK_PARALLEL_FOR(schedule(static))
+  for (uint64_t v = 0; v < vec_chunks; v++) {
+    __m512i va = _mm512_loadu_si512(&a64[v * 8]);
+    __m512i vb = _mm512_loadu_si512(&b64[v * 8]);
+    __m512i vout = _mm512_or_si512(va, vb);
+    _mm512_storeu_si512(&out64[v * 8], vout);
+  }
+
+
+  for (uint64_t i = vec_chunks * 8; i < n_chunks; i++)
+    out64[i] = a64[i] | b64[i];
+
+#elif defined(__AVX2__)
+
+  uint64_t vec_chunks = n_chunks / 4;
+
+  TK_PARALLEL_FOR(schedule(static))
+  for (uint64_t v = 0; v < vec_chunks; v++) {
+    __m256i va = _mm256_loadu_si256((__m256i*)&a64[v * 4]);
+    __m256i vb = _mm256_loadu_si256((__m256i*)&b64[v * 4]);
+    __m256i vout = _mm256_or_si256(va, vb);
+    _mm256_storeu_si256((__m256i*)&out64[v * 4], vout);
+  }
+
+
+  for (uint64_t i = vec_chunks * 4; i < n_chunks; i++)
+    out64[i] = a64[i] | b64[i];
+
+#elif defined(__ARM_NEON)
+
+  uint64_t vec_chunks = n_chunks / 2;
+
+  TK_PARALLEL_FOR(schedule(static))
+  for (uint64_t v = 0; v < vec_chunks; v++) {
+    uint64x2_t va = vld1q_u64(&a64[v * 2]);
+    uint64x2_t vb = vld1q_u64(&b64[v * 2]);
+    uint64x2_t vout = vorrq_u64(va, vb);
+    vst1q_u64(&out64[v * 2], vout);
+  }
+
+
+  for (uint64_t i = vec_chunks * 2; i < n_chunks; i++)
+    out64[i] = a64[i] | b64[i];
+
+#else
+
   TK_PARALLEL_FOR(schedule(static))
   for (uint64_t i = 0; i < n_chunks; i ++)
     out64[i] = a64[i] | b64[i];
-
+#endif
 
   for (uint64_t i = n_chunks * 8; i < n_chunks * 8 + remaining; i ++)
     out[i] = a[i] | b[i];
-
 
   if (rem_bits > 0) {
     uint8_t mask = (1U << rem_bits) - 1;
@@ -182,21 +338,70 @@ static inline void tk_parallel_sfx(tk_cvec_bits_xor) (
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
   uint64_t main_bytes = full_bytes - (rem_bits > 0 ? 1 : 0);
 
-
   uint64_t n_chunks = main_bytes / 8;
   uint64_t remaining = main_bytes % 8;
   uint64_t *out64 = (uint64_t *)out;
   const uint64_t *a64 = (const uint64_t *)a;
   const uint64_t *b64 = (const uint64_t *)b;
 
+
+#if defined(__AVX512F__)
+
+  uint64_t vec_chunks = n_chunks / 8;
+
+  TK_PARALLEL_FOR(schedule(static))
+  for (uint64_t v = 0; v < vec_chunks; v++) {
+    __m512i va = _mm512_loadu_si512(&a64[v * 8]);
+    __m512i vb = _mm512_loadu_si512(&b64[v * 8]);
+    __m512i vout = _mm512_xor_si512(va, vb);
+    _mm512_storeu_si512(&out64[v * 8], vout);
+  }
+
+
+  for (uint64_t i = vec_chunks * 8; i < n_chunks; i++)
+    out64[i] = a64[i] ^ b64[i];
+
+#elif defined(__AVX2__)
+
+  uint64_t vec_chunks = n_chunks / 4;
+
+  TK_PARALLEL_FOR(schedule(static))
+  for (uint64_t v = 0; v < vec_chunks; v++) {
+    __m256i va = _mm256_loadu_si256((__m256i*)&a64[v * 4]);
+    __m256i vb = _mm256_loadu_si256((__m256i*)&b64[v * 4]);
+    __m256i vout = _mm256_xor_si256(va, vb);
+    _mm256_storeu_si256((__m256i*)&out64[v * 4], vout);
+  }
+
+
+  for (uint64_t i = vec_chunks * 4; i < n_chunks; i++)
+    out64[i] = a64[i] ^ b64[i];
+
+#elif defined(__ARM_NEON)
+
+  uint64_t vec_chunks = n_chunks / 2;
+
+  TK_PARALLEL_FOR(schedule(static))
+  for (uint64_t v = 0; v < vec_chunks; v++) {
+    uint64x2_t va = vld1q_u64(&a64[v * 2]);
+    uint64x2_t vb = vld1q_u64(&b64[v * 2]);
+    uint64x2_t vout = veorq_u64(va, vb);
+    vst1q_u64(&out64[v * 2], vout);
+  }
+
+
+  for (uint64_t i = vec_chunks * 2; i < n_chunks; i++)
+    out64[i] = a64[i] ^ b64[i];
+
+#else
+
   TK_PARALLEL_FOR(schedule(static))
   for (uint64_t i = 0; i < n_chunks; i ++)
     out64[i] = a64[i] ^ b64[i];
-
+#endif
 
   for (uint64_t i = n_chunks * 8; i < n_chunks * 8 + remaining; i ++)
     out[i] = a[i] ^ b[i];
-
 
   if (rem_bits > 0) {
     uint8_t mask = (1U << rem_bits) - 1;

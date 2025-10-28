@@ -13,8 +13,6 @@
 #define TK_CVEC_BITS_BYTES(n) (((n) + CHAR_BIT - 1) / CHAR_BIT)
 #endif
 
-
-
 static inline tk_ivec_t *tk_ivec_bits_from_cvec(lua_State *L, const char *bm, uint64_t n_samples, uint64_t n_features);
 static inline tk_ivec_t *tk_ivec_bits_from_cvec_serial(lua_State *L, const char *bm, uint64_t n_samples, uint64_t n_features);
 static inline void tk_ivec_bits_extend(tk_ivec_t *base, tk_ivec_t *ext, uint64_t n_feat, uint64_t n_extfeat);
@@ -461,14 +459,12 @@ static inline tk_ivec_t *tk_ivec_set_union (lua_State *L, tk_ivec_t *a, tk_ivec_
 }
 
 
-
-#include <santoku/parallel/tpl.h>
-#include <santoku/ivec/ext_tpl.h>
-
-
 #define TK_GENERATE_SINGLE
 #include <santoku/parallel/tpl.h>
 #include <santoku/ivec/ext_tpl.h>
 #undef TK_GENERATE_SINGLE
+
+#include <santoku/parallel/tpl.h>
+#include <santoku/ivec/ext_tpl.h>
 
 #endif

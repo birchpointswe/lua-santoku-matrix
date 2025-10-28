@@ -8,15 +8,13 @@
 #include <santoku/dvec/base.h>
 #include <santoku/ivec.h>
 
-
-#include <santoku/parallel/tpl.h>
-#include <santoku/dvec/ext_tpl.h>
-
-
 #define TK_GENERATE_SINGLE
 #include <santoku/parallel/tpl.h>
 #include <santoku/dvec/ext_tpl.h>
 #undef TK_GENERATE_SINGLE
+
+#include <santoku/parallel/tpl.h>
+#include <santoku/dvec/ext_tpl.h>
 
 static inline size_t tk_dvec_scores_kaiser (
   double *scores,

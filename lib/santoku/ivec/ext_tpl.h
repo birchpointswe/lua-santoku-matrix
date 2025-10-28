@@ -1,24 +1,15 @@
-
-
-
 #ifndef tk_parallel_sfx
 #error "Must include santoku/parallel/tpl.h before this template"
 #endif
 
+static inline uint64_t tk_cvec_bits_popcount(const uint8_t *data, uint64_t n_bits);
+static inline uint64_t tk_cvec_bits_popcount_serial(const uint8_t *data, uint64_t n_bits);
 
 static inline tk_ivec_t *tk_parallel_sfx(tk_ivec_bits_from_cvec) (lua_State *L, const char *bm, uint64_t n_samples, uint64_t n_features) {
   tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
-  uint64_t total_bits = 0;
-  TK_PARALLEL_FOR(reduction(+:total_bits))
-  for (uint64_t i = 0; i < n_samples; i ++)
-    for (uint64_t j = 0; j < n_features; j ++) {
-      uint64_t bit = i * n_features + j;
-      uint64_t chunk = bit / CHAR_BIT;
-      uint64_t pos = bit % CHAR_BIT;
-      if (bm[chunk] & (1 << pos)) {
-        total_bits++;
-      }
-    }
+
+  uint64_t total_bits_in_bitmap = n_samples * n_features;
+  uint64_t total_bits = tk_parallel_sfx(tk_cvec_bits_popcount)((const uint8_t *) bm, total_bits_in_bitmap);
   if (tk_ivec_ensure(out, total_bits) != 0) {
     tk_ivec_destroy(out);
     return NULL;
@@ -28,16 +19,12 @@ static inline tk_ivec_t *tk_parallel_sfx(tk_ivec_bits_from_cvec) (lua_State *L, 
     tk_ivec_destroy(out);
     return NULL;
   }
+
+  uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
   TK_PARALLEL_FOR(schedule(static))
   for (uint64_t i = 0; i < n_samples; i ++) {
-    for (uint64_t j = 0; j < n_features; j ++) {
-      uint64_t bit = i * n_features + j;
-      uint64_t chunk = bit / CHAR_BIT;
-      uint64_t pos = bit % CHAR_BIT;
-      if (bm[chunk] & (1 << pos)) {
-        sample_counts[i]++;
-      }
-    }
+    const uint8_t *sample_start = (const uint8_t *)(bm + i * bytes_per_sample);
+    sample_counts[i] = tk_cvec_bits_popcount_serial(sample_start, n_features);
   }
   uint64_t *offsets = (uint64_t *)malloc((n_samples + 1) * sizeof(uint64_t));
   if (!offsets) {

@@ -1428,14 +1428,12 @@ static inline void tk_vec_pfx(suppress_unused_lua_fns) (void)
   { (void) tk_vec_pfx(lua_fns); }
 
 
-
-#include <santoku/parallel/tpl.h>
-#include <santoku/vec/tpl_para.h>
-
-
 #define TK_GENERATE_SINGLE
 #include <santoku/parallel/tpl.h>
 #include <santoku/vec/tpl_para.h>
 #undef TK_GENERATE_SINGLE
+
+#include <santoku/parallel/tpl.h>
+#include <santoku/vec/tpl_para.h>
 
 #include <santoku/vec/undef.h>

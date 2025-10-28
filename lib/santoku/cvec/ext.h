@@ -43,7 +43,6 @@ static inline int tk_cvec_byte_popcount (unsigned int x) {
 #endif
 
 
-
 static inline uint64_t tk_cvec_bits_popcount(const uint8_t *data, uint64_t n_bits);
 static inline uint64_t tk_cvec_bits_popcount_serial(const uint8_t *data, uint64_t n_bits);
 static inline uint64_t tk_cvec_bits_hamming(const uint8_t *a, const uint8_t *b, uint64_t n_bits);
@@ -203,14 +202,12 @@ static inline tk_cvec_t *tk_cvec_bits_extend (
   return base;
 }
 
-
-#include <santoku/parallel/tpl.h>
-#include <santoku/cvec/ext_tpl.h>
-
-
 #define TK_GENERATE_SINGLE
 #include <santoku/parallel/tpl.h>
 #include <santoku/cvec/ext_tpl.h>
 #undef TK_GENERATE_SINGLE
+
+#include <santoku/parallel/tpl.h>
+#include <santoku/cvec/ext_tpl.h>
 
 #endif
