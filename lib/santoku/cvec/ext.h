@@ -135,18 +135,6 @@ static inline tk_cvec_t *tk_cvec_bits_flip_interleave (tk_cvec_t *v, uint64_t n_
   return v;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
 static inline int tk_cvec_push_str (tk_cvec_t *v, const char *s)
 {
   for (char *p = (char *) s; *p; p ++) {

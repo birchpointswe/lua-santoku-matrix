@@ -25,9 +25,68 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_popcount) (
   uint64_t remaining = main_bytes % 8;
   const uint64_t *data64 = (const uint64_t *)data;
 
+#if defined(__AVX512F__) && defined(__AVX512VPOPCNTDQ__)
+  uint64_t vec_chunks = n_chunks / 8;
+
+  TK_PARALLEL_FOR(reduction(+:count))
+  for (uint64_t v = 0; v < vec_chunks; v++) {
+    __m512i vdata = _mm512_loadu_si512(&data64[v * 8]);
+    __m512i vpop = _mm512_popcnt_epi64(vdata);
+    count += _mm512_reduce_add_epi64(vpop);
+  }
+
+  for (uint64_t i = vec_chunks * 8; i < n_chunks; i++)
+    count += (uint64_t) __builtin_popcountll(data64[i]);
+
+#elif defined(__AVX2__)
+  uint64_t vec_chunks = n_chunks / 4;
+
+  const __m256i lookup = _mm256_set_epi8(
+    4, 3, 3, 2, 3, 2, 2, 1, 3, 2, 2, 1, 2, 1, 1, 0,
+    4, 3, 3, 2, 3, 2, 2, 1, 3, 2, 2, 1, 2, 1, 1, 0
+  );
+  const __m256i low_mask = _mm256_set1_epi8(0x0F);
+  const __m256i zero = _mm256_setzero_si256();
+
+  TK_PARALLEL_FOR(reduction(+:count))
+  for (uint64_t v = 0; v < vec_chunks; v++) {
+    __m256i vdata = _mm256_loadu_si256((__m256i*)&data64[v * 4]);
+
+    __m256i v_low = _mm256_and_si256(vdata, low_mask);
+    __m256i v_pop_low = _mm256_shuffle_epi8(lookup, v_low);
+    __m256i v_high = _mm256_and_si256(_mm256_srli_epi16(vdata, 4), low_mask);
+    __m256i v_pop_high = _mm256_shuffle_epi8(lookup, v_high);
+
+    __m256i v_pop_bytes = _mm256_add_epi8(v_pop_low, v_pop_high);
+    __m256i v_pop_sum = _mm256_sad_epu8(v_pop_bytes, zero);
+
+    count += (uint64_t) _mm256_extract_epi64(v_pop_sum, 0);
+    count += (uint64_t) _mm256_extract_epi64(v_pop_sum, 1);
+    count += (uint64_t) _mm256_extract_epi64(v_pop_sum, 2);
+    count += (uint64_t) _mm256_extract_epi64(v_pop_sum, 3);
+  }
+
+  for (uint64_t i = vec_chunks * 4; i < n_chunks; i++)
+    count += (uint64_t) __builtin_popcountll(data64[i]);
+
+#elif defined(__ARM_NEON)
+  uint64_t vec_chunks = n_chunks / 2;
+
+  TK_PARALLEL_FOR(reduction(+:count))
+  for (uint64_t v = 0; v < vec_chunks; v++) {
+    uint64x2_t vdata = vld1q_u64(&data64[v * 2]);
+    uint8x16_t vcnt = vcntq_u8(vreinterpretq_u8_u64(vdata));
+    count += vaddlvq_u8(vcnt);
+  }
+
+  for (uint64_t i = vec_chunks * 2; i < n_chunks; i++)
+    count += (uint64_t) __builtin_popcountll(data64[i]);
+
+#else
   TK_PARALLEL_FOR(reduction(+:count))
   for (uint64_t i = 0; i < n_chunks; i ++)
     count += (uint64_t) __builtin_popcountll(data64[i]);
+#endif
 
   for (uint64_t i = n_chunks * 8; i < n_chunks * 8 + remaining; i ++)
     count += (uint64_t) __builtin_popcount(data[i]);
@@ -75,6 +134,12 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming) (
 #elif defined(__AVX2__)
   uint64_t i = 0;
   uint64_t vec_chunks = n_chunks / 4;
+  const __m256i lookup = _mm256_set_epi8(
+    4, 3, 3, 2, 3, 2, 2, 1, 3, 2, 2, 1, 2, 1, 1, 0, 4, 3, 3,
+    2, 3, 2, 2, 1, 3, 2, 2, 1, 2, 1, 1, 0
+  );
+  const __m256i low_mask = _mm256_set1_epi8(0x0F);
+  const __m256i zero = _mm256_setzero_si256();
 
   TK_PARALLEL_FOR(reduction(+:dist))
   for (uint64_t v = 0; v < vec_chunks; v++) {
@@ -82,10 +147,20 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming) (
     __m256i vb = _mm256_loadu_si256((__m256i*)&b64[v * 4]);
     __m256i vxor = _mm256_xor_si256(va, vb);
 
-    dist += (uint64_t) __builtin_popcountll((uint64_t) _mm256_extract_epi64(vxor, 0));
-    dist += (uint64_t) __builtin_popcountll((uint64_t) _mm256_extract_epi64(vxor, 1));
-    dist += (uint64_t) __builtin_popcountll((uint64_t) _mm256_extract_epi64(vxor, 2));
-    dist += (uint64_t) __builtin_popcountll((uint64_t) _mm256_extract_epi64(vxor, 3));
+    __m256i v_low = _mm256_and_si256(vxor, low_mask);
+    __m256i v_pop_low = _mm256_shuffle_epi8(lookup, v_low);
+
+    __m256i v_high = _mm256_and_si256(_mm256_srli_epi16(vxor, 4), low_mask);
+    __m256i v_pop_high = _mm256_shuffle_epi8(lookup, v_high);
+
+    __m256i v_pop_bytes = _mm256_add_epi8(v_pop_low, v_pop_high);
+
+    __m256i v_pop_sum = _mm256_sad_epu8(v_pop_bytes, zero);
+
+    dist += (uint64_t) _mm256_extract_epi64(v_pop_sum, 0);
+    dist += (uint64_t) _mm256_extract_epi64(v_pop_sum, 1);
+    dist += (uint64_t) _mm256_extract_epi64(v_pop_sum, 2);
+    dist += (uint64_t) _mm256_extract_epi64(v_pop_sum, 3);
   }
 
   for (i = vec_chunks * 4; i < n_chunks; i++) {
@@ -149,11 +224,90 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming_mask) (
   const uint64_t *b64 = (const uint64_t *)b;
   const uint64_t *mask64 = (const uint64_t *)mask;
 
+#if defined(__AVX512F__) && defined(__AVX512VPOPCNTDQ__)
+  uint64_t vec_chunks = n_chunks / 8;
+
+  TK_PARALLEL_FOR(reduction(+:dist))
+  for (uint64_t v = 0; v < vec_chunks; v++) {
+    __m512i va = _mm512_loadu_si512(&a64[v * 8]);
+    __m512i vb = _mm512_loadu_si512(&b64[v * 8]);
+    __m512i vm = _mm512_loadu_si512(&mask64[v * 8]);
+    __m512i vxor = _mm512_xor_si512(va, vb);
+    __m512i vmasked = _mm512_and_si512(vxor, vm);
+    __m512i vpop = _mm512_popcnt_epi64(vmasked);
+    dist += _mm512_reduce_add_epi64(vpop);
+  }
+
+  for (uint64_t i = vec_chunks * 8; i < n_chunks; i++) {
+    uint64_t masked_xor = (a64[i] ^ b64[i]) & mask64[i];
+    dist += (uint64_t) __builtin_popcountll(masked_xor);
+  }
+
+#elif defined(__AVX2__)
+  uint64_t vec_chunks = n_chunks / 4;
+
+  const __m256i lookup = _mm256_set_epi8(
+    4, 3, 3, 2, 3, 2, 2, 1, 3, 2, 2, 1, 2, 1, 1, 0,
+    4, 3, 3, 2, 3, 2, 2, 1, 3, 2, 2, 1, 2, 1, 1, 0
+  );
+  const __m256i low_mask = _mm256_set1_epi8(0x0F);
+  const __m256i zero = _mm256_setzero_si256();
+
+  TK_PARALLEL_FOR(reduction(+:dist))
+  for (uint64_t v = 0; v < vec_chunks; v++) {
+    __m256i va = _mm256_loadu_si256((__m256i*)&a64[v * 4]);
+    __m256i vb = _mm256_loadu_si256((__m256i*)&b64[v * 4]);
+    __m256i vm = _mm256_loadu_si256((__m256i*)&mask64[v * 4]);
+
+    __m256i vxor = _mm256_xor_si256(va, vb);
+    __m256i v_to_pop = _mm256_and_si256(vxor, vm);
+
+    __m256i v_low = _mm256_and_si256(v_to_pop, low_mask);
+    __m256i v_pop_low = _mm256_shuffle_epi8(lookup, v_low);
+    __m256i v_high = _mm256_and_si256(_mm256_srli_epi16(v_to_pop, 4), low_mask);
+    __m256i v_pop_high = _mm256_shuffle_epi8(lookup, v_high);
+
+    __m256i v_pop_bytes = _mm256_add_epi8(v_pop_low, v_pop_high);
+    __m256i v_pop_sum = _mm256_sad_epu8(v_pop_bytes, zero);
+
+    dist += (uint64_t) _mm256_extract_epi64(v_pop_sum, 0);
+    dist += (uint64_t) _mm256_extract_epi64(v_pop_sum, 1);
+    dist += (uint64_t) _mm256_extract_epi64(v_pop_sum, 2);
+    dist += (uint64_t) _mm256_extract_epi64(v_pop_sum, 3);
+  }
+
+  for (uint64_t i = vec_chunks * 4; i < n_chunks; i++) {
+    uint64_t masked_xor = (a64[i] ^ b64[i]) & mask64[i];
+    dist += (uint64_t) __builtin_popcountll(masked_xor);
+  }
+
+#elif defined(__ARM_NEON)
+  uint64_t vec_chunks = n_chunks / 2;
+
+  TK_PARALLEL_FOR(reduction(+:dist))
+  for (uint64_t v = 0; v < vec_chunks; v++) {
+    uint64x2_t va = vld1q_u64(&a64[v * 2]);
+    uint64x2_t vb = vld1q_u64(&b64[v * 2]);
+    uint64x2_t vm = vld1q_u64(&mask64[v * 2]);
+    uint64x2_t vxor = veorq_u64(va, vb);
+    uint64x2_t vmasked = vandq_u64(vxor, vm);
+
+    uint8x16_t vcnt = vcntq_u8(vreinterpretq_u8_u64(vmasked));
+    dist += vaddlvq_u8(vcnt);
+  }
+
+  for (uint64_t i = vec_chunks * 2; i < n_chunks; i++) {
+    uint64_t masked_xor = (a64[i] ^ b64[i]) & mask64[i];
+    dist += (uint64_t) __builtin_popcountll(masked_xor);
+  }
+
+#else
   TK_PARALLEL_FOR(reduction(+:dist))
   for (uint64_t i = 0; i < n_chunks; i ++) {
     uint64_t masked_xor = (a64[i] ^ b64[i]) & mask64[i];
     dist += (uint64_t) __builtin_popcountll(masked_xor);
   }
+#endif
 
   for (uint64_t i = n_chunks * 8; i < n_chunks * 8 + remaining; i ++)
     dist += (uint64_t) __builtin_popcount((a[i] ^ b[i]) & mask[i]);
@@ -164,6 +318,225 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming_mask) (
     dist += (uint64_t) __builtin_popcount(x & m);
   }
   return dist;
+}
+
+static inline void tk_parallel_sfx(tk_cvec_bits_popcount_andnot) (
+  const uint8_t * __restrict__ a,
+  const uint8_t * __restrict__ b,
+  uint64_t n_bits,
+  uint64_t * __restrict__ pop_a_out,
+  uint64_t * __restrict__ pop_andnot_out
+) {
+  uint64_t full_bytes = TK_CVEC_BITS_BYTES(n_bits);
+  uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
+  uint64_t main_bytes = full_bytes - (rem_bits > 0 ? 1 : 0);
+
+  uint64_t pop_a = 0;
+  uint64_t pop_andnot = 0;
+
+  uint64_t n_chunks = main_bytes / 8;
+  uint64_t remaining = main_bytes % 8;
+  const uint64_t *a64 = (const uint64_t *)a;
+  const uint64_t *b64 = (const uint64_t *)b;
+
+#if defined(__AVX512F__) && defined(__AVX512VPOPCNTDQ__)
+  uint64_t vec_chunks = n_chunks / 8;
+
+  TK_PARALLEL_FOR(reduction(+:pop_a, pop_andnot))
+  for (uint64_t v = 0; v < vec_chunks; v++) {
+    __m512i va = _mm512_loadu_si512(&a64[v * 8]);
+    __m512i vb = _mm512_loadu_si512(&b64[v * 8]);
+
+    __m512i vandnot = _mm512_andnot_si512(vb, va);
+
+    __m512i vpop_a = _mm512_popcnt_epi64(va);
+    __m512i vpop_andnot = _mm512_popcnt_epi64(vandnot);
+
+    pop_a += _mm512_reduce_add_epi64(vpop_a);
+    pop_andnot += _mm512_reduce_add_epi64(vpop_andnot);
+  }
+
+  for (uint64_t i = vec_chunks * 8; i < n_chunks; i++) {
+    uint64_t va = a64[i];
+    uint64_t vandnot = va & ~b64[i];
+    pop_a += (uint64_t) __builtin_popcountll(va);
+    pop_andnot += (uint64_t) __builtin_popcountll(vandnot);
+  }
+
+#elif defined(__AVX2__)
+  uint64_t vec_chunks = n_chunks / 4;
+
+  const __m256i lookup = _mm256_set_epi8(
+      4, 3, 3, 2, 3, 2, 2, 1, 3, 2, 2, 1, 2, 1, 1, 0,
+      4, 3, 3, 2, 3, 2, 2, 1, 3, 2, 2, 1, 2, 1, 1, 0
+  );
+  const __m256i low_mask = _mm256_set1_epi8(0x0F);
+  const __m256i zero = _mm256_setzero_si256();
+
+  TK_PARALLEL_FOR(reduction(+:pop_a, pop_andnot))
+  for (uint64_t v = 0; v < vec_chunks; v++) {
+    __m256i va = _mm256_loadu_si256((__m256i*)&a64[v * 4]);
+    __m256i vb = _mm256_loadu_si256((__m256i*)&b64[v * 4]);
+
+    __m256i vandnot = _mm256_andnot_si256(vb, va);
+
+    __m256i va_low = _mm256_and_si256(va, low_mask);
+    __m256i va_pop_low = _mm256_shuffle_epi8(lookup, va_low);
+    __m256i va_high = _mm256_and_si256(_mm256_srli_epi16(va, 4), low_mask);
+    __m256i va_pop_high = _mm256_shuffle_epi8(lookup, va_high);
+    __m256i va_pop_bytes = _mm256_add_epi8(va_pop_low, va_pop_high);
+    __m256i va_pop_sum = _mm256_sad_epu8(va_pop_bytes, zero);
+
+    __m256i vn_low = _mm256_and_si256(vandnot, low_mask);
+    __m256i vn_pop_low = _mm256_shuffle_epi8(lookup, vn_low);
+    __m256i vn_high = _mm256_and_si256(_mm256_srli_epi16(vandnot, 4), low_mask);
+    __m256i vn_pop_high = _mm256_shuffle_epi8(lookup, vn_high);
+    __m256i vn_pop_bytes = _mm256_add_epi8(vn_pop_low, vn_pop_high);
+    __m256i vn_pop_sum = _mm256_sad_epu8(vn_pop_bytes, zero);
+
+    pop_a += (uint64_t) _mm256_extract_epi64(va_pop_sum, 0) +
+             (uint64_t) _mm256_extract_epi64(va_pop_sum, 1) +
+             (uint64_t) _mm256_extract_epi64(va_pop_sum, 2) +
+             (uint64_t) _mm256_extract_epi64(va_pop_sum, 3);
+
+    pop_andnot += (uint64_t) _mm256_extract_epi64(vn_pop_sum, 0) +
+                  (uint64_t) _mm256_extract_epi64(vn_pop_sum, 1) +
+                  (uint64_t) _mm256_extract_epi64(vn_pop_sum, 2) +
+                  (uint64_t) _mm256_extract_epi64(vn_pop_sum, 3);
+  }
+
+  for (uint64_t i = vec_chunks * 4; i < n_chunks; i++) {
+    uint64_t va = a64[i];
+    uint64_t vandnot = va & ~b64[i];
+    pop_a += (uint64_t) __builtin_popcountll(va);
+    pop_andnot += (uint64_t) __builtin_popcountll(vandnot);
+  }
+
+#elif defined(__ARM_NEON)
+  uint64_t vec_chunks = n_chunks / 2;
+
+  TK_PARALLEL_FOR(reduction(+:pop_a, pop_andnot))
+  for (uint64_t v = 0; v < vec_chunks; v++) {
+    uint64x2_t va = vld1q_u64(&a64[v * 2]);
+    uint64x2_t vb = vld1q_u64(&b64[v * 2]);
+
+    uint64x2_t vandnot = vbicq_u64(va, vb);
+
+    uint8x16_t vcnt_a = vcntq_u8(vreinterpretq_u8_u64(va));
+    uint8x16_t vcnt_andnot = vcntq_u8(vreinterpretq_u8_u64(vandnot));
+
+    pop_a += vaddlvq_u8(vcnt_a);
+    pop_andnot += vaddlvq_u8(vcnt_andnot);
+  }
+
+  for (uint64_t i = vec_chunks * 2; i < n_chunks; i++) {
+    uint64_t va = a64[i];
+    uint64_t vandnot = va & ~b64[i];
+    pop_a += (uint64_t) __builtin_popcountll(va);
+    pop_andnot += (uint64_t) __builtin_popcountll(vandnot);
+  }
+
+#else
+  TK_PARALLEL_FOR(reduction(+:pop_a, pop_andnot))
+  for (uint64_t i = 0; i < n_chunks; i ++) {
+    uint64_t va = a64[i];
+    uint64_t vandnot = va & ~b64[i];
+    pop_a += (uint64_t) __builtin_popcountll(va);
+    pop_andnot += (uint64_t) __builtin_popcountll(vandnot);
+  }
+#endif
+
+  for (uint64_t i = n_chunks * 8; i < n_chunks * 8 + remaining; i ++) {
+    uint8_t va = a[i];
+    uint8_t vandnot = va & ~b[i];
+    pop_a += (uint64_t) __builtin_popcount(va);
+    pop_andnot += (uint64_t) __builtin_popcount(vandnot);
+  }
+
+  if (rem_bits > 0) {
+    uint8_t mask = (1U << rem_bits) - 1;
+    uint8_t va = a[full_bytes - 1] & mask;
+    uint8_t vandnot = va & ~b[full_bytes - 1];
+
+    pop_a += (uint64_t) __builtin_popcount(va);
+    pop_andnot += (uint64_t) __builtin_popcount(vandnot);
+  }
+
+  *pop_a_out = pop_a;
+  *pop_andnot_out = pop_andnot;
+}
+
+static inline void tk_parallel_sfx(tk_cvec_bits_andnot) (
+  uint8_t * __restrict__ out,
+  const uint8_t * __restrict__ a,
+  const uint8_t * __restrict__ b,
+  uint64_t n_bits
+) {
+  uint64_t full_bytes = TK_CVEC_BITS_BYTES(n_bits);
+  uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
+  uint64_t main_bytes = full_bytes - (rem_bits > 0 ? 1 : 0);
+
+  uint64_t n_chunks = main_bytes / 8;
+  uint64_t remaining = main_bytes % 8;
+  uint64_t *out64 = (uint64_t *)out;
+  const uint64_t *a64 = (const uint64_t *)a;
+  const uint64_t *b64 = (const uint64_t *)b;
+
+#if defined(__AVX512F__)
+  uint64_t vec_chunks = n_chunks / 8;
+
+  TK_PARALLEL_FOR(schedule(static))
+  for (uint64_t v = 0; v < vec_chunks; v++) {
+    __m512i va = _mm512_loadu_si512(&a64[v * 8]);
+    __m512i vb = _mm512_loadu_si512(&b64[v * 8]);
+    __m512i vout = _mm512_andnot_si512(vb, va);
+    _mm512_storeu_si512(&out64[v * 8], vout);
+  }
+
+  for (uint64_t i = vec_chunks * 8; i < n_chunks; i++)
+    out64[i] = a64[i] & ~b64[i];
+
+#elif defined(__AVX2__)
+  uint64_t vec_chunks = n_chunks / 4;
+
+  TK_PARALLEL_FOR(schedule(static))
+  for (uint64_t v = 0; v < vec_chunks; v++) {
+    __m256i va = _mm256_loadu_si256((__m256i*)&a64[v * 4]);
+    __m256i vb = _mm256_loadu_si256((__m256i*)&b64[v * 4]);
+    __m256i vout = _mm256_andnot_si256(vb, va);
+    _mm256_storeu_si256((__m256i*)&out64[v * 4], vout);
+  }
+
+  for (uint64_t i = vec_chunks * 4; i < n_chunks; i++)
+    out64[i] = a64[i] & ~b64[i];
+
+#elif defined(__ARM_NEON)
+  uint64_t vec_chunks = n_chunks / 2;
+
+  TK_PARALLEL_FOR(schedule(static))
+  for (uint64_t v = 0; v < vec_chunks; v++) {
+    uint64x2_t va = vld1q_u64(&a64[v * 2]);
+    uint64x2_t vb = vld1q_u64(&b64[v * 2]);
+    uint64x2_t vout = vbicq_u64(va, vb);
+    vst1q_u64(&out64[v * 2], vout);
+  }
+
+  for (uint64_t i = vec_chunks * 2; i < n_chunks; i++)
+    out64[i] = a64[i] & ~b64[i];
+
+#else
+  TK_PARALLEL_FOR(schedule(static))
+  for (uint64_t i = 0; i < n_chunks; i ++)
+    out64[i] = a64[i] & ~b64[i];
+#endif
+
+  for (uint64_t i = n_chunks * 8; i < n_chunks * 8 + remaining; i ++)
+    out[i] = a[i] & ~b[i];
+
+  if (rem_bits > 0) {
+    uint8_t mask = (1U << rem_bits) - 1;
+    out[full_bytes - 1] = (a[full_bytes - 1] & ~b[full_bytes - 1]) & mask;
+  }
 }
 
 static inline void tk_parallel_sfx(tk_cvec_bits_and) (
@@ -182,9 +555,7 @@ static inline void tk_parallel_sfx(tk_cvec_bits_and) (
   const uint64_t *a64 = (const uint64_t *)a;
   const uint64_t *b64 = (const uint64_t *)b;
 
-
 #if defined(__AVX512F__)
-
   uint64_t vec_chunks = n_chunks / 8;
 
   TK_PARALLEL_FOR(schedule(static))
@@ -195,12 +566,10 @@ static inline void tk_parallel_sfx(tk_cvec_bits_and) (
     _mm512_storeu_si512(&out64[v * 8], vout);
   }
 
-
   for (uint64_t i = vec_chunks * 8; i < n_chunks; i++)
     out64[i] = a64[i] & b64[i];
 
 #elif defined(__AVX2__)
-
   uint64_t vec_chunks = n_chunks / 4;
 
   TK_PARALLEL_FOR(schedule(static))
@@ -211,12 +580,10 @@ static inline void tk_parallel_sfx(tk_cvec_bits_and) (
     _mm256_storeu_si256((__m256i*)&out64[v * 4], vout);
   }
 
-
   for (uint64_t i = vec_chunks * 4; i < n_chunks; i++)
     out64[i] = a64[i] & b64[i];
 
 #elif defined(__ARM_NEON)
-
   uint64_t vec_chunks = n_chunks / 2;
 
   TK_PARALLEL_FOR(schedule(static))
@@ -227,12 +594,10 @@ static inline void tk_parallel_sfx(tk_cvec_bits_and) (
     vst1q_u64(&out64[v * 2], vout);
   }
 
-
   for (uint64_t i = vec_chunks * 2; i < n_chunks; i++)
     out64[i] = a64[i] & b64[i];
 
 #else
-
   TK_PARALLEL_FOR(schedule(static))
   for (uint64_t i = 0; i < n_chunks; i ++)
     out64[i] = a64[i] & b64[i];
@@ -263,9 +628,7 @@ static inline void tk_parallel_sfx(tk_cvec_bits_or) (
   const uint64_t *a64 = (const uint64_t *)a;
   const uint64_t *b64 = (const uint64_t *)b;
 
-
 #if defined(__AVX512F__)
-
   uint64_t vec_chunks = n_chunks / 8;
 
   TK_PARALLEL_FOR(schedule(static))
@@ -276,12 +639,10 @@ static inline void tk_parallel_sfx(tk_cvec_bits_or) (
     _mm512_storeu_si512(&out64[v * 8], vout);
   }
 
-
   for (uint64_t i = vec_chunks * 8; i < n_chunks; i++)
     out64[i] = a64[i] | b64[i];
 
 #elif defined(__AVX2__)
-
   uint64_t vec_chunks = n_chunks / 4;
 
   TK_PARALLEL_FOR(schedule(static))
@@ -292,12 +653,10 @@ static inline void tk_parallel_sfx(tk_cvec_bits_or) (
     _mm256_storeu_si256((__m256i*)&out64[v * 4], vout);
   }
 
-
   for (uint64_t i = vec_chunks * 4; i < n_chunks; i++)
     out64[i] = a64[i] | b64[i];
 
 #elif defined(__ARM_NEON)
-
   uint64_t vec_chunks = n_chunks / 2;
 
   TK_PARALLEL_FOR(schedule(static))
@@ -308,12 +667,10 @@ static inline void tk_parallel_sfx(tk_cvec_bits_or) (
     vst1q_u64(&out64[v * 2], vout);
   }
 
-
   for (uint64_t i = vec_chunks * 2; i < n_chunks; i++)
     out64[i] = a64[i] | b64[i];
 
 #else
-
   TK_PARALLEL_FOR(schedule(static))
   for (uint64_t i = 0; i < n_chunks; i ++)
     out64[i] = a64[i] | b64[i];
@@ -344,9 +701,7 @@ static inline void tk_parallel_sfx(tk_cvec_bits_xor) (
   const uint64_t *a64 = (const uint64_t *)a;
   const uint64_t *b64 = (const uint64_t *)b;
 
-
 #if defined(__AVX512F__)
-
   uint64_t vec_chunks = n_chunks / 8;
 
   TK_PARALLEL_FOR(schedule(static))
@@ -357,12 +712,10 @@ static inline void tk_parallel_sfx(tk_cvec_bits_xor) (
     _mm512_storeu_si512(&out64[v * 8], vout);
   }
 
-
   for (uint64_t i = vec_chunks * 8; i < n_chunks; i++)
     out64[i] = a64[i] ^ b64[i];
 
 #elif defined(__AVX2__)
-
   uint64_t vec_chunks = n_chunks / 4;
 
   TK_PARALLEL_FOR(schedule(static))
@@ -373,12 +726,10 @@ static inline void tk_parallel_sfx(tk_cvec_bits_xor) (
     _mm256_storeu_si256((__m256i*)&out64[v * 4], vout);
   }
 
-
   for (uint64_t i = vec_chunks * 4; i < n_chunks; i++)
     out64[i] = a64[i] ^ b64[i];
 
 #elif defined(__ARM_NEON)
-
   uint64_t vec_chunks = n_chunks / 2;
 
   TK_PARALLEL_FOR(schedule(static))
@@ -389,12 +740,10 @@ static inline void tk_parallel_sfx(tk_cvec_bits_xor) (
     vst1q_u64(&out64[v * 2], vout);
   }
 
-
   for (uint64_t i = vec_chunks * 2; i < n_chunks; i++)
     out64[i] = a64[i] ^ b64[i];
 
 #else
-
   TK_PARALLEL_FOR(schedule(static))
   for (uint64_t i = 0; i < n_chunks; i ++)
     out64[i] = a64[i] ^ b64[i];
@@ -408,6 +757,7 @@ static inline void tk_parallel_sfx(tk_cvec_bits_xor) (
     out[full_bytes - 1] = (a[full_bytes - 1] ^ b[full_bytes - 1]) & mask;
   }
 }
+
 static inline tk_ivec_t *tk_parallel_sfx(tk_cvec_bits_to_ivec) (
   lua_State *L,
   tk_cvec_t *bitmap,
@@ -495,7 +845,6 @@ static inline tk_cvec_t *tk_parallel_sfx(tk_cvec_bits_from_ivec) (
   out->n = total_bytes;
   return out;
 }
-
 
 static inline int tk_parallel_sfx(tk_cvec_bits_extend_mapped) (
   tk_cvec_t *base,
@@ -626,8 +975,6 @@ static inline int tk_parallel_sfx(tk_cvec_bits_extend_mapped) (
   base->n = final_n_samples * total_bytes_per_sample;
   return 0;
 }
-
-
 
 static inline void tk_parallel_sfx(tk_cvec_bits_to_ascii) (
   lua_State *L,
