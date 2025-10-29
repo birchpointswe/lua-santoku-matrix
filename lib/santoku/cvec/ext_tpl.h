@@ -32,7 +32,7 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_popcount) (
   for (uint64_t v = 0; v < vec_chunks; v++) {
     __m512i vdata = _mm512_loadu_si512(&data64[v * 8]);
     __m512i vpop = _mm512_popcnt_epi64(vdata);
-    count += _mm512_reduce_add_epi64(vpop);
+    count += (uint64_t) _mm512_reduce_add_epi64(vpop);
   }
 
   for (uint64_t i = vec_chunks * 8; i < n_chunks; i++)
@@ -76,7 +76,7 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_popcount) (
   for (uint64_t v = 0; v < vec_chunks; v++) {
     uint64x2_t vdata = vld1q_u64(&data64[v * 2]);
     uint8x16_t vcnt = vcntq_u8(vreinterpretq_u8_u64(vdata));
-    count += vaddlvq_u8(vcnt);
+    count += (uint64_t) vaddlvq_u8(vcnt);
   }
 
   for (uint64_t i = vec_chunks * 2; i < n_chunks; i++)
@@ -123,7 +123,7 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming) (
     __m512i vb = _mm512_loadu_si512(&b64[v * 8]);
     __m512i vxor = _mm512_xor_si512(va, vb);
     __m512i vpop = _mm512_popcnt_epi64(vxor);
-    dist += _mm512_reduce_add_epi64(vpop);
+    dist += (uint64_t) _mm512_reduce_add_epi64(vpop);
   }
 
   for (i = vec_chunks * 8; i < n_chunks; i++) {
@@ -179,7 +179,7 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming) (
     uint64x2_t vxor = veorq_u64(va, vb);
 
     uint8x16_t vcnt = vcntq_u8(vreinterpretq_u8_u64(vxor));
-    dist += vaddlvq_u8(vcnt);
+    dist += (uint64_t) vaddlvq_u8(vcnt);
   }
 
   for (i = vec_chunks * 2; i < n_chunks; i++) {
@@ -235,7 +235,7 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming_mask) (
     __m512i vxor = _mm512_xor_si512(va, vb);
     __m512i vmasked = _mm512_and_si512(vxor, vm);
     __m512i vpop = _mm512_popcnt_epi64(vmasked);
-    dist += _mm512_reduce_add_epi64(vpop);
+    dist += (uint64_t) _mm512_reduce_add_epi64(vpop);
   }
 
   for (uint64_t i = vec_chunks * 8; i < n_chunks; i++) {
@@ -293,7 +293,7 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming_mask) (
     uint64x2_t vmasked = vandq_u64(vxor, vm);
 
     uint8x16_t vcnt = vcntq_u8(vreinterpretq_u8_u64(vmasked));
-    dist += vaddlvq_u8(vcnt);
+    dist += (uint64_t) vaddlvq_u8(vcnt);
   }
 
   for (uint64_t i = vec_chunks * 2; i < n_chunks; i++) {
@@ -352,8 +352,8 @@ static inline void tk_parallel_sfx(tk_cvec_bits_popcount_andnot) (
     __m512i vpop_a = _mm512_popcnt_epi64(va);
     __m512i vpop_andnot = _mm512_popcnt_epi64(vandnot);
 
-    pop_a += _mm512_reduce_add_epi64(vpop_a);
-    pop_andnot += _mm512_reduce_add_epi64(vpop_andnot);
+    pop_a += (uint64_t) _mm512_reduce_add_epi64(vpop_a);
+    pop_andnot += (uint64_t) _mm512_reduce_add_epi64(vpop_andnot);
   }
 
   for (uint64_t i = vec_chunks * 8; i < n_chunks; i++) {
@@ -425,8 +425,8 @@ static inline void tk_parallel_sfx(tk_cvec_bits_popcount_andnot) (
     uint8x16_t vcnt_a = vcntq_u8(vreinterpretq_u8_u64(va));
     uint8x16_t vcnt_andnot = vcntq_u8(vreinterpretq_u8_u64(vandnot));
 
-    pop_a += vaddlvq_u8(vcnt_a);
-    pop_andnot += vaddlvq_u8(vcnt_andnot);
+    pop_a += (uint64_t) vaddlvq_u8(vcnt_a);
+    pop_andnot += (uint64_t) vaddlvq_u8(vcnt_andnot);
   }
 
   for (uint64_t i = vec_chunks * 2; i < n_chunks; i++) {
