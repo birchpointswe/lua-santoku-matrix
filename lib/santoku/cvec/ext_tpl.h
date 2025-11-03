@@ -109,7 +109,6 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming) (
   uint64_t dist = 0;
 
   uint64_t n_chunks = main_bytes / 8;
-  uint64_t remaining = main_bytes % 8;
   const uint64_t *a64 = (const uint64_t *)a;
   const uint64_t *b64 = (const uint64_t *)b;
 
@@ -188,16 +187,12 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming) (
   }
 
 #else
-  TK_PARALLEL_FOR(reduction(+:dist))
-  for (uint64_t i = 0; i < n_chunks; i ++) {
-    uint64_t xor_val = a64[i] ^ b64[i];
-    dist += (uint64_t) __builtin_popcountll(xor_val);
-  }
-#endif
 
-  for (uint64_t i = n_chunks * 8; i < n_chunks * 8 + remaining; i ++) {
+  TK_PARALLEL_FOR(reduction(+:dist))
+  for (uint64_t i = 0; i < main_bytes; i++) {
     dist += (uint64_t) __builtin_popcount(a[i] ^ b[i]);
   }
+#endif
 
   if (rem_bits > 0) {
     uint8_t x = a[full_bytes - 1] ^ b[full_bytes - 1];
