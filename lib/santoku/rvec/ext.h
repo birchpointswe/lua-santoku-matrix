@@ -294,8 +294,15 @@ static inline double tk_csr_biserial(
     }
   }
 
-  if (count_0 == 0 || count_1 == 0 || n_a == 0)
+  if (n_a == 0)
     return 0.0;
+
+
+  if (count_0 == 0)
+    return 1.0;
+  if (count_1 == 0)
+    return 1.0;
+
   double U1 = rank_sum_1 - (count_1 * (count_1 + 1)) / 2.0;
   return 1.0 - (2.0 * U1) / (count_0 * count_1);
 }
