@@ -266,23 +266,15 @@ static inline double tk_csr_biserial(
     return 0.0;
   double rank_sum_1 = 0.0;
   uint64_t count_0 = 0, count_1 = 0;
-
-
   for (int64_t j = start_a; j < end_a; j++) {
     double rank = (double)(j - start_a);
     uint64_t count = 1;
     double weight = weights_a->a[j];
-
-
     while (j + 1 < end_a && weights_a->a[j + 1] == weight) {
       count++;
       j++;
     }
-
-
     double average_rank = (rank + (rank + count - 1)) / 2.0 + 1.0;
-
-
     for (uint64_t k = 0; k < count; k++) {
       int64_t neighbor = neighbors_a->a[(uint64_t)j - k];
       if (tk_iuset_get(group_1, neighbor) != tk_iuset_end(group_1)) {
@@ -293,16 +285,12 @@ static inline double tk_csr_biserial(
       }
     }
   }
-
   if (n_a == 0)
     return 0.0;
-
-
-  if (count_0 == 0)
+  if (count_0 == 0 && count_1 > 0)
     return 1.0;
-  if (count_1 == 0)
-    return 1.0;
-
+  if (count_1 == 0 || count_0 == 0)
+    return 0.0;
   double U1 = rank_sum_1 - (count_1 * (count_1 + 1)) / 2.0;
   return 1.0 - (2.0 * U1) / (count_0 * count_1);
 }
@@ -318,33 +306,23 @@ static inline double tk_csr_variance_ratio(
   uint64_t n_a = (uint64_t)(end_a - start_a);
   if (n_a == 0 || !group_1)
     return 0.0;
-
-
   tk_dumap_clear(rank_buffer);
   int kha;
   for (int64_t j = start_a; j < end_a; j++) {
     double rank = (double)(j - start_a);
     uint64_t count = 1;
     double weight = weights_a->a[j];
-
-
     while (j + 1 < end_a && weights_a->a[j + 1] == weight) {
       count++;
       j++;
     }
-
-
     double average_rank = (rank + (rank + count - 1)) / 2.0 + 1.0;
-
-
     for (uint64_t k = 0; k < count; k++) {
       int64_t neighbor = neighbors_a->a[(uint64_t)j - k];
       uint32_t khi = tk_dumap_put(rank_buffer, neighbor, &kha);
       tk_dumap_setval(rank_buffer, khi, average_rank);
     }
   }
-
-
   double rank_sum_0 = 0.0, rank_sum_1 = 0.0;
   uint64_t count_0 = 0, count_1 = 0;
   int64_t neighbor;
@@ -358,20 +336,13 @@ static inline double tk_csr_variance_ratio(
       count_0++;
     }
   }))
-
   if (count_0 == 0 || count_1 == 0)
     return 0.0;
-
   double mean_rank_0 = rank_sum_0 / count_0;
   double mean_rank_1 = rank_sum_1 / count_1;
   double overall_mean = (rank_sum_0 + rank_sum_1) / (count_0 + count_1);
-
-
-
   double ss_between = count_0 * (mean_rank_0 - overall_mean) * (mean_rank_0 - overall_mean)
                     + count_1 * (mean_rank_1 - overall_mean) * (mean_rank_1 - overall_mean);
-
-
   double ss_within = 0.0;
   tk_umap_foreach(rank_buffer, neighbor, rank, ({
     if (tk_iuset_get(group_1, neighbor) != tk_iuset_end(group_1)) {
@@ -382,16 +353,10 @@ static inline double tk_csr_variance_ratio(
       ss_within += diff * diff;
     }
   }))
-
-
-
-
   double ss_total = ss_between + ss_within;
   if (ss_total <= 1e-12) {
-
     return 0.0;
   }
-
   return ss_between / ss_total;
 }
 
