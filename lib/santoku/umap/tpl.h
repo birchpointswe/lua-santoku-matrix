@@ -368,7 +368,7 @@ static inline int tk_umap_pfx(put_lua) (lua_State *L)
   int absent;
   uint32_t iter = tk_umap_pfx(put)(h, k, &absent);
   lua_pushinteger(L, iter);
-  lua_pushboolean(L, !absent);
+  lua_pushboolean(L, absent);
   return 2;
 }
 #endif
