@@ -23,6 +23,7 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_popcount) (
 
   uint64_t n_chunks = main_bytes / 8;
   uint64_t remaining = main_bytes % 8;
+  (void) remaining;
   const uint64_t *data64 = (const uint64_t *)data;
 
 #if defined(__AVX512F__) && defined(__AVX512VPOPCNTDQ__)
@@ -88,7 +89,7 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_popcount) (
     count += (uint64_t) __builtin_popcountll(data64[i]);
 #endif
 
-  for (uint64_t i = n_chunks * 8; i < n_chunks * 8 + remaining; i ++)
+  for (uint64_t i = n_chunks * 8; i < main_bytes; i ++)
     count += (uint64_t) __builtin_popcount(data[i]);
 
   if (rem_bits > 0) {
@@ -167,6 +168,11 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming) (
     dist += (uint64_t) __builtin_popcountll(xor_val);
   }
 
+
+  for (uint64_t bi = n_chunks * 8; bi < main_bytes; bi++) {
+    dist += (uint64_t) __builtin_popcount(a[bi] ^ b[bi]);
+  }
+
 #elif defined(__ARM_NEON)
   uint64_t i = 0;
   uint64_t vec_chunks = n_chunks / 2;
@@ -184,6 +190,11 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming) (
   for (i = vec_chunks * 2; i < n_chunks; i++) {
     uint64_t xor_val = a64[i] ^ b64[i];
     dist += (uint64_t) __builtin_popcountll(xor_val);
+  }
+
+
+  for (uint64_t bi = n_chunks * 8; bi < main_bytes; bi++) {
+    dist += (uint64_t) __builtin_popcount(a[bi] ^ b[bi]);
   }
 
 #else
@@ -236,6 +247,11 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming_mask) (
   for (uint64_t i = vec_chunks * 8; i < n_chunks; i++) {
     uint64_t masked_xor = (a64[i] ^ b64[i]) & mask64[i];
     dist += (uint64_t) __builtin_popcountll(masked_xor);
+  }
+
+
+  for (uint64_t i = n_chunks * 8; i < main_bytes; i++) {
+    dist += (uint64_t) __builtin_popcount((a[i] ^ b[i]) & mask[i]);
   }
 
 #elif defined(__AVX2__)

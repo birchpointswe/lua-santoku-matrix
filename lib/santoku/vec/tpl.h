@@ -436,8 +436,6 @@ static inline tk_vec_base tk_vec_pfx(sum) (
   return sum;
 }
 
-
-
 static inline tk_vec_base tk_vec_pfx(max) (
   tk_vec_pfx(t) *m0,
   uint64_t *colp
@@ -456,8 +454,6 @@ static inline tk_vec_base tk_vec_pfx(max) (
   return maxval;
 }
 
-
-
 static inline tk_vec_base tk_vec_pfx(min) (
   tk_vec_pfx(t) *m0,
   uint64_t *colp
@@ -475,94 +471,6 @@ static inline tk_vec_base tk_vec_pfx(min) (
   *colp = mincol;
   return minval;
 }
-
-
-
-
-
-
-
-
-#ifdef tk_vec_abs
-#endif
-
-
-
-
-
-
-
-static inline const char *tk_vec_pfx(raw) (
-  lua_State *L,
-  tk_vec_pfx(t) *m0,
-  const char *fmt
-) {
-  if (fmt == NULL) {
-    lua_pushlstring(L, (char *) m0->a, sizeof(tk_vec_base) * m0->n);
-    return lua_tostring(L, -1);
-  }
-  void *out = NULL;
-  size_t out_size = 0;
-  if (!strcmp(fmt, "u32")) {
-    out_size = sizeof(uint32_t);
-    out = malloc(out_size * m0->n);
-    if (!out) goto err_mem;
-    for (size_t i = 0; i < m0->n; i ++) {
-      tk_vec_base r = m0->a[i];
-      if (r < 0)
-        goto err_negative;
-      if (r > (tk_vec_base) UINT32_MAX)
-        goto err_toobig;
-      ((uint32_t *) out)[i] = (uint32_t) r;
-    }
-  } else if (!strcmp(fmt, "u64")) {
-    out_size = sizeof(uint64_t);
-    out = malloc(out_size * m0->n);
-    if (!out) goto err_mem;
-    for (size_t i = 0; i < m0->n; i ++) {
-      tk_vec_base r = m0->a[i];
-      if (r < 0)
-        goto err_negative;
-      if (r > (tk_vec_base) UINT64_MAX)
-        goto err_toobig;
-      ((uint64_t *) out)[i] = (uint64_t) r;
-    }
-  } else if (!strcmp(fmt, "f32")) {
-    out_size = sizeof(float);
-    out = malloc(out_size * m0->n);
-    if (!out)
-      goto err_mem;
-    for (size_t i = 0; i < m0->n; i ++)
-      ((float *) out)[i] = (float) m0->a[i];
-  } else if (!strcmp(fmt, "f64")) {
-    out_size = sizeof(double);
-    out = malloc(out_size * m0->n);
-    if (!out)
-      goto err_mem;
-    for (size_t i = 0; i < m0->n; i ++)
-      ((double *) out)[i] = (double) m0->a[i];
-  } else {
-    goto err_format;
-  }
-  lua_pushlstring(L, (char *) out, out_size * m0->n);
-  free(out);
-  return lua_tostring(L, -1);
-err_format:
-  tk_vec_err(L, raw, 2, "bad format", fmt);
-  return NULL;
-err_mem:
-  tk_vec_err(L, raw, 2, "malloc error");
-  return NULL;
-err_negative:
-  tk_vec_err(L, raw, 2, "unexpected negative");
-  goto cleanup;
-err_toobig:
-  tk_vec_err(L, raw, 2, "number too large");
-cleanup:
-  free(out);
-  return NULL;
-}
-
 
 #endif
 
@@ -1290,16 +1198,16 @@ static inline int tk_vec_pfx(fill_indices_lua) (lua_State *L)
   return 1;
 }
 
+#endif
+
 static inline int tk_vec_pfx(raw_lua) (lua_State *L)
 {
-  lua_settop(L, 2);
+  lua_settop(L, 1);
   tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
-  const char *fmt = tk_lua_optstring(L, 2, "fmt", NULL);
-  tk_vec_pfx(raw)(L, m0, fmt);
+  size_t len = sizeof(tk_vec_base) * m0->n;
+  lua_pushlstring(L, (char *) m0->a, len);
   return 1;
 }
-
-#endif
 
 static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
 {
@@ -1314,6 +1222,7 @@ static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
   { "clear", tk_vec_pfx(clear_lua) },
   { "zero", tk_vec_pfx(zero_lua) },
   { "transpose", tk_vec_pfx(transpose_lua) },
+  { "raw", tk_vec_pfx(raw_lua) },
 
 #ifdef tk_vec_peekbase
   { "get", tk_vec_pfx(get_lua) },
@@ -1368,8 +1277,6 @@ static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
   { "rmins", tk_vec_pfx(cmins_lua) },
   { "fill", tk_vec_pfx(fill_lua) },
   { "fill_indices", tk_vec_pfx(fill_indices_lua) },
-  { "raw", tk_vec_pfx(raw_lua) },
-
 #endif
 
   { NULL, NULL }
