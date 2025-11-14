@@ -254,8 +254,12 @@ static inline double tk_csr_point_biserial(
       count_0++;
     }
   }
-  if (count_0 == 0 || count_1 == 0)
+  if (count_1 == 0)
     return 0.0;
+
+  if (count_0 == 0)
+    return 1.0;
+
   double mean_1 = sum_1 / count_1;
   double mean_0 = sum_0 / count_0;
   double global_mean = sum_all / n_a;
@@ -332,8 +336,16 @@ static inline double tk_csr_pearson(
   double numerator = n_a * sum_xy - sum_x * sum_y;
   double denom_x = n_a * sum_x2 - sum_x * sum_x;
   double denom_y = n_a * sum_y2 - sum_y * sum_y;
-  if (denom_x < 1e-10 || denom_y < 1e-10)
+
+  if (denom_y < 1e-10)
     return 0.0;
+
+  if (denom_x < 1e-10) {
+
+    double prop_in_group = sum_x / n_a;
+    return prop_in_group > 0.99 ? 1.0 : 0.0;
+  }
+
   return numerator / sqrt(denom_x * denom_y);
 }
 
@@ -378,8 +390,12 @@ static inline double tk_csr_variance_ratio(
       count_0++;
     }
   }))
-  if (count_0 == 0 || count_1 == 0)
+  if (count_1 == 0)
     return 0.0;
+
+  if (count_0 == 0)
+    return 1.0;
+
   double mean_rank_0 = rank_sum_0 / count_0;
   double mean_rank_1 = rank_sum_1 / count_1;
   double overall_mean = (rank_sum_0 + rank_sum_1) / (count_0 + count_1);
