@@ -182,7 +182,7 @@ static inline double tk_csr_pearson_distance(
   double denom_y = n_d * sum_y2 - sum_y * sum_y;
   if (denom_x < 1e-10 || denom_y < 1e-10)
     return 0.0;
-  return numerator / sqrt(denom_x * denom_y);
+  return -numerator / sqrt(denom_x * denom_y);
 }
 
 static inline double tk_csr_position(
