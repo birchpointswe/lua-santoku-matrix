@@ -168,7 +168,6 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming) (
     dist += (uint64_t) __builtin_popcountll(xor_val);
   }
 
-
   for (uint64_t bi = n_chunks * 8; bi < main_bytes; bi++) {
     dist += (uint64_t) __builtin_popcount(a[bi] ^ b[bi]);
   }
@@ -192,13 +191,11 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming) (
     dist += (uint64_t) __builtin_popcountll(xor_val);
   }
 
-
   for (uint64_t bi = n_chunks * 8; bi < main_bytes; bi++) {
     dist += (uint64_t) __builtin_popcount(a[bi] ^ b[bi]);
   }
 
 #else
-
   TK_PARALLEL_FOR(reduction(+:dist))
   for (uint64_t i = 0; i < main_bytes; i++) {
     dist += (uint64_t) __builtin_popcount(a[i] ^ b[i]);
@@ -248,7 +245,6 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming_mask) (
     uint64_t masked_xor = (a64[i] ^ b64[i]) & mask64[i];
     dist += (uint64_t) __builtin_popcountll(masked_xor);
   }
-
 
   for (uint64_t i = n_chunks * 8; i < main_bytes; i++) {
     dist += (uint64_t) __builtin_popcount((a[i] ^ b[i]) & mask[i]);
