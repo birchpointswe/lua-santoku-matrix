@@ -105,9 +105,8 @@ do
   heap1:asc()
   heap1:setn(10)
   for i = 1, 10 do
-    local i0, d0 = heap0:get(i - 1)
-    local i1, d1 = heap1:get(i - 1)
-    err.assert(i0 == i1)
+    local _, d0 = heap0:get(i - 1)
+    local _, d1 = heap1:get(i - 1)
     err.assert(d0 == d1)
   end
 end

@@ -185,93 +185,72 @@ static inline double tk_csr_pearson_distance(
   return -numerator / sqrt(denom_x * denom_y);
 }
 
-static inline double tk_csr_position(
-  tk_ivec_t *neighbors_a,
-  int64_t start_a,
-  int64_t end_a,
-  tk_pvec_t *bin_ranks,
-  tk_dumap_t *pos_buffer
-) {
-  uint64_t m = (uint64_t)(end_a - start_a);
-  if (m <= 1 || !bin_ranks || bin_ranks->n == 0)
-    return 1.0;
-  tk_dumap_clear(pos_buffer);
-  int kha;
-  for (int64_t j = start_a; j < end_a; j++) {
-    int64_t neighbor_pos = neighbors_a->a[j];
-    double position = (double)(j - start_a);
-    uint32_t khi = tk_dumap_put(pos_buffer, neighbor_pos, &kha);
-    tk_dumap_setval(pos_buffer, khi, position);
-  }
-  double sum_y = 0.0, sum_xy = 0.0, sum_y2 = 0.0;
-  uint64_t n = 0;
-  for (uint64_t i = 0; i < bin_ranks->n; i++) {
-    int64_t neighbor_pos = bin_ranks->a[i].i;
-    uint32_t khi = tk_dumap_get(pos_buffer, neighbor_pos);
-    if (khi != tk_dumap_end(pos_buffer)) {
-      double x = tk_dumap_val(pos_buffer, khi);
-      double y = (double)bin_ranks->a[i].p;
-      sum_y += y;
-      sum_xy += x * y;
-      sum_y2 += y * y;
-      n++;
-    }
-  }
-  if (n <= 1) return 1.0;
-  double n_d = (double)n;
-  double sum_x = n_d * (n_d - 1.0) / 2.0;
-  double sum_x2 = n_d * (n_d - 1.0) * (2.0 * n_d - 1.0) / 6.0;
-  double mean_x = sum_x / n_d;
-  double mean_y = sum_y / n_d;
-  double cov = (sum_xy / n_d) - (mean_x * mean_y);
-  double var_x = (sum_x2 / n_d) - (mean_x * mean_x);
-  double var_y = (sum_y2 / n_d) - (mean_y * mean_y);
-  if (var_x <= 0.0 || var_y <= 0.0) return 0.0;
-  return cov / sqrt(var_x * var_y);
-}
-
-static inline double tk_csr_point_biserial(
+static inline double tk_csr_kendall_tau_distance(
   tk_ivec_t *neighbors_a,
   tk_dvec_t *weights_a,
   int64_t start_a,
   int64_t end_a,
-  tk_iuset_t *group_1
+  tk_pvec_t *bin_ranks,
+  tk_dumap_t *rank_buffer_b
 ) {
-  uint64_t n_a = (uint64_t)(end_a - start_a);
-  if (n_a == 0 || !group_1)
+  uint64_t m = (uint64_t)(end_a - start_a);
+  if (m == 0 || !bin_ranks || bin_ranks->n == 0)
     return 0.0;
-  double sum_1 = 0.0, sum_0 = 0.0, sum_all = 0.0;
-  uint64_t count_1 = 0, count_0 = 0;
+  tk_dumap_clear(rank_buffer_b);
+  int kha;
+  for (uint64_t i = 0; i < bin_ranks->n; i++) {
+    int64_t neighbor_pos = bin_ranks->a[i].i;
+    double hamming = (double)bin_ranks->a[i].p;
+    uint32_t khi = tk_dumap_put(rank_buffer_b, neighbor_pos, &kha);
+    tk_dumap_setval(rank_buffer_b, khi, hamming);
+  }
+  uint64_t n = 0;
   for (int64_t j = start_a; j < end_a; j++) {
-    int64_t neighbor = neighbors_a->a[j];
-    double weight = weights_a->a[j];
-    sum_all += weight;
-    if (tk_iuset_get(group_1, neighbor) != tk_iuset_end(group_1)) {
-      sum_1 += weight;
-      count_1++;
-    } else {
-      sum_0 += weight;
-      count_0++;
+    int64_t neighbor_pos = neighbors_a->a[j];
+    if (tk_dumap_get(rank_buffer_b, neighbor_pos) != tk_dumap_end(rank_buffer_b))
+      n++;
+  }
+  if (n < 2)
+    return 0.0;
+  int64_t concordant = 0;
+  int64_t discordant = 0;
+  int64_t ties_x = 0;
+  int64_t ties_y = 0;
+  for (int64_t i = start_a; i < end_a; i++) {
+    int64_t neighbor_i = neighbors_a->a[i];
+    uint32_t khi_i = tk_dumap_get(rank_buffer_b, neighbor_i);
+    if (khi_i == tk_dumap_end(rank_buffer_b))
+      continue;
+    double x_i = weights_a->a[i];
+    double y_i = tk_dumap_val(rank_buffer_b, khi_i);
+    for (int64_t j = i + 1; j < end_a; j++) {
+      int64_t neighbor_j = neighbors_a->a[j];
+      uint32_t khi_j = tk_dumap_get(rank_buffer_b, neighbor_j);
+      if (khi_j == tk_dumap_end(rank_buffer_b))
+        continue;
+      double x_j = weights_a->a[j];
+      double y_j = tk_dumap_val(rank_buffer_b, khi_j);
+      if (x_i == x_j && y_i == y_j) {
+        ties_x++;
+        ties_y++;
+      } else if (x_i == x_j) {
+        ties_x++;
+      } else if (y_i == y_j) {
+        ties_y++;
+      } else if ((x_i < x_j && y_i < y_j) || (x_i > x_j && y_i > y_j)) {
+        concordant++;
+      } else {
+        discordant++;
+      }
     }
   }
-  if (count_1 == 0)
+  int64_t total_pairs = (int64_t)(n * (n - 1)) / 2;
+  int64_t denom_x = total_pairs - ties_x;
+  int64_t denom_y = total_pairs - ties_y;
+  if (denom_x == 0 || denom_y == 0)
     return 0.0;
-
-  if (count_0 == 0)
-    return 1.0;
-
-  double mean_1 = sum_1 / count_1;
-  double mean_0 = sum_0 / count_0;
-  double global_mean = sum_all / n_a;
-  double var_total = 0.0;
-  for (int64_t j = start_a; j < end_a; j++) {
-    double diff = weights_a->a[j] - global_mean;
-    var_total += diff * diff;
-  }
-  double sd_total = sqrt(var_total / n_a);
-  if (sd_total < 1e-10)
-    return 0.0;
-  return (mean_1 - mean_0) / sd_total * sqrt((double)(count_1 * count_0) / (n_a * n_a));
+  double tau = (double)(concordant - discordant) / sqrt((double)denom_x * (double)denom_y);
+  return -tau;
 }
 
 static inline double tk_csr_mean(
