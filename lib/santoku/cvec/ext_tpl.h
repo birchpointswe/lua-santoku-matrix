@@ -343,16 +343,14 @@ static inline void tk_parallel_sfx(tk_cvec_bits_popcount_andnot) (
 
   uint64_t n_chunks = main_bytes / 8;
   uint64_t remaining = main_bytes % 8;
-  const uint64_t *a64 = (const uint64_t *)a;
-  const uint64_t *b64 = (const uint64_t *)b;
 
 #if defined(__AVX512F__) && defined(__AVX512VPOPCNTDQ__)
   uint64_t vec_chunks = n_chunks / 8;
 
   TK_PARALLEL_FOR(reduction(+:pop_a, pop_andnot))
   for (uint64_t v = 0; v < vec_chunks; v++) {
-    __m512i va = _mm512_loadu_si512(&a64[v * 8]);
-    __m512i vb = _mm512_loadu_si512(&b64[v * 8]);
+    __m512i va = _mm512_loadu_si512(&a[v * 64]);
+    __m512i vb = _mm512_loadu_si512(&b[v * 64]);
 
     __m512i vandnot = _mm512_andnot_si512(vb, va);
 
@@ -364,8 +362,10 @@ static inline void tk_parallel_sfx(tk_cvec_bits_popcount_andnot) (
   }
 
   for (uint64_t i = vec_chunks * 8; i < n_chunks; i++) {
-    uint64_t va = a64[i];
-    uint64_t vandnot = va & ~b64[i];
+    uint64_t va, vb;
+    memcpy(&va, &a[i * 8], sizeof(uint64_t));
+    memcpy(&vb, &b[i * 8], sizeof(uint64_t));
+    uint64_t vandnot = va & ~vb;
     pop_a += (uint64_t) __builtin_popcountll(va);
     pop_andnot += (uint64_t) __builtin_popcountll(vandnot);
   }
@@ -382,8 +382,8 @@ static inline void tk_parallel_sfx(tk_cvec_bits_popcount_andnot) (
 
   TK_PARALLEL_FOR(reduction(+:pop_a, pop_andnot))
   for (uint64_t v = 0; v < vec_chunks; v++) {
-    __m256i va = _mm256_loadu_si256((__m256i*)&a64[v * 4]);
-    __m256i vb = _mm256_loadu_si256((__m256i*)&b64[v * 4]);
+    __m256i va = _mm256_loadu_si256((const __m256i*)&a[v * 32]);
+    __m256i vb = _mm256_loadu_si256((const __m256i*)&b[v * 32]);
 
     __m256i vandnot = _mm256_andnot_si256(vb, va);
 
@@ -413,8 +413,10 @@ static inline void tk_parallel_sfx(tk_cvec_bits_popcount_andnot) (
   }
 
   for (uint64_t i = vec_chunks * 4; i < n_chunks; i++) {
-    uint64_t va = a64[i];
-    uint64_t vandnot = va & ~b64[i];
+    uint64_t va, vb;
+    memcpy(&va, &a[i * 8], sizeof(uint64_t));
+    memcpy(&vb, &b[i * 8], sizeof(uint64_t));
+    uint64_t vandnot = va & ~vb;
     pop_a += (uint64_t) __builtin_popcountll(va);
     pop_andnot += (uint64_t) __builtin_popcountll(vandnot);
   }
@@ -424,8 +426,11 @@ static inline void tk_parallel_sfx(tk_cvec_bits_popcount_andnot) (
 
   TK_PARALLEL_FOR(reduction(+:pop_a, pop_andnot))
   for (uint64_t v = 0; v < vec_chunks; v++) {
-    uint64x2_t va = vld1q_u64(&a64[v * 2]);
-    uint64x2_t vb = vld1q_u64(&b64[v * 2]);
+    uint64_t tmp_a[2], tmp_b[2];
+    memcpy(tmp_a, &a[v * 16], 16);
+    memcpy(tmp_b, &b[v * 16], 16);
+    uint64x2_t va = vld1q_u64(tmp_a);
+    uint64x2_t vb = vld1q_u64(tmp_b);
 
     uint64x2_t vandnot = vbicq_u64(va, vb);
 
@@ -437,8 +442,10 @@ static inline void tk_parallel_sfx(tk_cvec_bits_popcount_andnot) (
   }
 
   for (uint64_t i = vec_chunks * 2; i < n_chunks; i++) {
-    uint64_t va = a64[i];
-    uint64_t vandnot = va & ~b64[i];
+    uint64_t va, vb;
+    memcpy(&va, &a[i * 8], sizeof(uint64_t));
+    memcpy(&vb, &b[i * 8], sizeof(uint64_t));
+    uint64_t vandnot = va & ~vb;
     pop_a += (uint64_t) __builtin_popcountll(va);
     pop_andnot += (uint64_t) __builtin_popcountll(vandnot);
   }
@@ -446,8 +453,10 @@ static inline void tk_parallel_sfx(tk_cvec_bits_popcount_andnot) (
 #else
   TK_PARALLEL_FOR(reduction(+:pop_a, pop_andnot))
   for (uint64_t i = 0; i < n_chunks; i ++) {
-    uint64_t va = a64[i];
-    uint64_t vandnot = va & ~b64[i];
+    uint64_t va, vb;
+    memcpy(&va, &a[i * 8], sizeof(uint64_t));
+    memcpy(&vb, &b[i * 8], sizeof(uint64_t));
+    uint64_t vandnot = va & ~vb;
     pop_a += (uint64_t) __builtin_popcountll(va);
     pop_andnot += (uint64_t) __builtin_popcountll(vandnot);
   }
