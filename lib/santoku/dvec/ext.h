@@ -401,4 +401,148 @@ static inline tk_dvec_t *tk_dvec_csums_override(lua_State *L, tk_dvec_t *m0, uin
   return out;
 }
 
+#include <santoku/iumap.h>
+
+static inline tk_dvec_t *tk_dvec_mtx_extend (
+  tk_dvec_t *base,
+  tk_dvec_t *ext,
+  uint64_t n_base_features,
+  uint64_t n_ext_features
+) {
+  if (base == NULL || ext == NULL)
+    return NULL;
+
+  uint64_t n_samples = base->n / n_base_features;
+  uint64_t n_total_features = n_base_features + n_ext_features;
+
+  tk_dvec_ensure(base, n_samples * n_total_features);
+  double *base_data = base->a;
+  double *ext_data = ext->a;
+
+  for (int64_t s = (int64_t) n_samples - 1; s >= 0; s--) {
+    uint64_t base_offset = (uint64_t) s * n_base_features;
+    uint64_t ext_offset = (uint64_t) s * n_ext_features;
+    uint64_t out_offset = (uint64_t) s * n_total_features;
+
+    memmove(base_data + out_offset, base_data + base_offset, n_base_features * sizeof(double));
+    memcpy(base_data + out_offset + n_base_features, ext_data + ext_offset, n_ext_features * sizeof(double));
+  }
+
+  base->n = n_samples * n_total_features;
+  return base;
+}
+
+static inline int tk_dvec_mtx_extend_mapped (
+  tk_dvec_t *base,
+  tk_dvec_t *ext,
+  tk_ivec_t *aids,
+  tk_ivec_t *bids,
+  uint64_t n_base_features,
+  uint64_t n_ext_features,
+  bool project
+) {
+  if (base == NULL || ext == NULL || aids == NULL || bids == NULL)
+    return -1;
+
+  uint64_t n_total_features = n_base_features + n_ext_features;
+
+  tk_iumap_t *a_id_to_pos = tk_iumap_from_ivec(0, aids);
+  if (!a_id_to_pos)
+    return -1;
+
+  uint64_t n_only_b = 0;
+  int64_t *b_to_final = (int64_t *)calloc(bids->n, sizeof(int64_t));
+  if (!b_to_final) {
+    tk_iumap_destroy(a_id_to_pos);
+    return -1;
+  }
+
+  int64_t next_pos = (int64_t)aids->n;
+  for (size_t bi = 0; bi < bids->n; bi++) {
+    khint_t khi = tk_iumap_get(a_id_to_pos, bids->a[bi]);
+    if (khi != tk_iumap_end(a_id_to_pos)) {
+      b_to_final[bi] = tk_iumap_val(a_id_to_pos, khi);
+    } else {
+      if (!project) {
+        b_to_final[bi] = next_pos++;
+        n_only_b++;
+      } else {
+        b_to_final[bi] = -1;
+      }
+    }
+  }
+
+  uint64_t final_n_samples = project ? aids->n : (aids->n + n_only_b);
+  size_t old_aids_n = aids->n;
+
+  if (!project) {
+    if (tk_ivec_ensure(aids, final_n_samples) != 0) {
+      free(b_to_final);
+      tk_iumap_destroy(a_id_to_pos);
+      return -1;
+    }
+    for (size_t i = 0; i < bids->n; i++) {
+      if (b_to_final[i] >= (int64_t)old_aids_n) {
+        aids->a[aids->n++] = bids->a[i];
+      }
+    }
+  }
+
+  if (tk_dvec_ensure(base, final_n_samples * n_total_features) != 0) {
+    free(b_to_final);
+    tk_iumap_destroy(a_id_to_pos);
+    return -1;
+  }
+
+  double *base_data = base->a;
+  double *ext_data = ext->a;
+
+  tk_iumap_t *b_id_to_pos = tk_iumap_from_ivec(0, bids);
+  if (!b_id_to_pos) {
+    free(b_to_final);
+    tk_iumap_destroy(a_id_to_pos);
+    return -1;
+  }
+
+  double *new_data = calloc(final_n_samples * n_total_features, sizeof(double));
+  if (!new_data) {
+    free(b_to_final);
+    tk_iumap_destroy(a_id_to_pos);
+    tk_iumap_destroy(b_id_to_pos);
+    return -1;
+  }
+
+  for (size_t ai = 0; ai < old_aids_n; ai++) {
+    uint64_t dest_offset = ai * n_total_features;
+    uint64_t src_offset = ai * n_base_features;
+    memcpy(new_data + dest_offset, base_data + src_offset, n_base_features * sizeof(double));
+
+    khint_t khi = tk_iumap_get(b_id_to_pos, aids->a[ai]);
+    if (khi != tk_iumap_end(b_id_to_pos)) {
+      int64_t b_idx = tk_iumap_val(b_id_to_pos, khi);
+      uint64_t ext_src_offset = (uint64_t)b_idx * n_ext_features;
+      memcpy(new_data + dest_offset + n_base_features, ext_data + ext_src_offset, n_ext_features * sizeof(double));
+    }
+  }
+
+  for (size_t bi = 0; bi < bids->n; bi++) {
+    int64_t final_pos = b_to_final[bi];
+    if (final_pos >= (int64_t)old_aids_n) {
+      uint64_t dest_offset = (uint64_t)final_pos * n_total_features;
+      uint64_t ext_src_offset = bi * n_ext_features;
+      memcpy(new_data + dest_offset + n_base_features, ext_data + ext_src_offset, n_ext_features * sizeof(double));
+    }
+  }
+
+  memcpy(base_data, new_data, final_n_samples * n_total_features * sizeof(double));
+  base->n = final_n_samples * n_total_features;
+
+  free(new_data);
+  free(b_to_final);
+  tk_iumap_destroy(a_id_to_pos);
+  tk_iumap_destroy(b_id_to_pos);
+
+  return 0;
+}
+
 #endif

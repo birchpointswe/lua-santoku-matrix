@@ -105,34 +105,35 @@ static inline tk_iuset_t *tk_iuset_from_ivec (lua_State *L, tk_ivec_t *v)
   return s;
 }
 
-static inline int tk_ivec_bits_select (
+static inline tk_ivec_t *tk_ivec_bits_select (
   tk_ivec_t *src_bits,
   tk_ivec_t *selected_features,
   tk_ivec_t *sample_ids,
-  uint64_t n_visible,
+  uint64_t n_features,
   tk_ivec_t *dest,
-  uint64_t dest_sample
+  uint64_t dest_sample,
+  uint64_t dest_stride
 ) {
   if (dest != NULL && dest_sample == 0)
     tk_ivec_clear(dest);
 
   if (src_bits == NULL || src_bits->n == 0)
-    return 0;
+    return src_bits;
 
   if (dest == NULL && (selected_features == NULL || selected_features->n == 0) &&
       (sample_ids == NULL || sample_ids->n == 0))
-    return 0;
+    return src_bits;
 
   int64_t *feature_map = NULL;
-  uint64_t n_new_features = n_visible;
+  uint64_t n_new_features = n_features;
   if (selected_features != NULL && selected_features->n > 0) {
-    feature_map = calloc(n_visible, sizeof(int64_t));
-    if (!feature_map) return -1;
-    for (uint64_t i = 0; i < n_visible; i++)
+    feature_map = calloc(n_features, sizeof(int64_t));
+    if (!feature_map) return NULL;
+    for (uint64_t i = 0; i < n_features; i++)
       feature_map[i] = -1;
     for (uint64_t i = 0; i < selected_features->n; i++) {
       int64_t feat = selected_features->a[i];
-      if (feat >= 0 && (uint64_t) feat < n_visible)
+      if (feat >= 0 && (uint64_t) feat < n_features)
         feature_map[feat] = (int64_t) i;
     }
     n_new_features = selected_features->n;
@@ -144,20 +145,20 @@ static inline int tk_ivec_bits_select (
   if (sample_ids != NULL && sample_ids->n > 0) {
     for (uint64_t i = 0; i < src_bits->n; i++) {
       if (src_bits->a[i] >= 0) {
-        uint64_t s = (uint64_t) src_bits->a[i] / n_visible;
+        uint64_t s = (uint64_t) src_bits->a[i] / n_features;
         if (s > max_sample) max_sample = s;
       }
     }
     sample_set = tk_iuset_from_ivec(NULL, sample_ids);
     if (!sample_set) {
       if (feature_map) free(feature_map);
-      return -1;
+      return NULL;
     }
     sample_map = calloc(max_sample + 1, sizeof(int64_t));
     if (!sample_map) {
       if (feature_map) free(feature_map);
       tk_iuset_destroy(sample_set);
-      return -1;
+      return NULL;
     }
     for (uint64_t i = 0; i <= max_sample; i++)
       sample_map[i] = -1;
@@ -169,13 +170,15 @@ static inline int tk_ivec_bits_select (
     }
   }
 
+  uint64_t final_stride = (dest_stride > 0) ? dest_stride : n_new_features;
+
   if (dest != NULL) {
     for (size_t i = 0; i < src_bits->n; i++) {
       int64_t val = src_bits->a[i];
       if (val < 0)
         continue;
-      uint64_t sample = (uint64_t) val / n_visible;
-      uint64_t feature = (uint64_t) val % n_visible;
+      uint64_t sample = (uint64_t) val / n_features;
+      uint64_t feature = (uint64_t) val % n_features;
       int64_t new_sample = (int64_t) sample;
       if (sample_set != NULL) {
         if (!tk_iuset_contains(sample_set, (int64_t) sample))
@@ -195,12 +198,12 @@ static inline int tk_ivec_bits_select (
           continue;
       }
       new_sample += (int64_t) dest_sample;
-      int64_t new_val = new_sample * (int64_t) n_new_features + new_feature;
+      int64_t new_val = new_sample * (int64_t) final_stride + new_feature;
       if (tk_ivec_push(dest, new_val) != 0) {
         if (feature_map) free(feature_map);
         if (sample_map) free(sample_map);
         if (sample_set) tk_iuset_destroy(sample_set);
-        return -1;
+        return NULL;
       }
     }
     tk_ivec_shrink(dest);
@@ -210,8 +213,8 @@ static inline int tk_ivec_bits_select (
       int64_t val = src_bits->a[i];
       if (val < 0)
         continue;
-      uint64_t sample = (uint64_t) val / n_visible;
-      uint64_t feature = (uint64_t) val % n_visible;
+      uint64_t sample = (uint64_t) val / n_features;
+      uint64_t feature = (uint64_t) val % n_features;
       int64_t new_sample = (int64_t) sample;
       if (sample_set != NULL) {
         if (!tk_iuset_contains(sample_set, (int64_t) sample))
@@ -227,7 +230,7 @@ static inline int tk_ivec_bits_select (
         if (new_feature < 0)
           continue;
       }
-      src_bits->a[write++] = new_sample * (int64_t) n_new_features + new_feature;
+      src_bits->a[write++] = new_sample * (int64_t) final_stride + new_feature;
     }
     src_bits->n = write;
   }
@@ -238,7 +241,7 @@ static inline int tk_ivec_bits_select (
     free(sample_map);
   if (sample_set != NULL)
     tk_iuset_destroy(sample_set);
-  return 0;
+  return dest != NULL ? dest : src_bits;
 }
 
 static inline tk_cvec_t *tk_cvec_bits_select (
@@ -250,6 +253,9 @@ static inline tk_cvec_t *tk_cvec_bits_select (
   uint64_t dest_sample,
   uint64_t dest_stride
 ) {
+  if (src_bitmap == NULL)
+    return NULL;
+
   uint64_t n_samples = src_bitmap->n / TK_CVEC_BITS_BYTES(n_features);
 
   if (dest == NULL && (selected_features == NULL || selected_features->n == 0) &&
@@ -368,6 +374,198 @@ static inline tk_cvec_t *tk_cvec_bits_select (
     tk_iuset_destroy(sample_set);
 
   return dest != NULL ? dest : src_bitmap;
+}
+
+static inline tk_dvec_t *tk_dvec_mtx_select (
+  tk_dvec_t *src_matrix,
+  tk_ivec_t *selected_features,
+  tk_ivec_t *sample_ids,
+  uint64_t n_features,
+  tk_dvec_t *dest,
+  uint64_t dest_sample,
+  uint64_t dest_stride
+) {
+  if (src_matrix == NULL)
+    return NULL;
+
+  uint64_t n_samples = src_matrix->n / n_features;
+
+  if (dest == NULL && (selected_features == NULL || selected_features->n == 0) &&
+      (sample_ids == NULL || sample_ids->n == 0))
+    return src_matrix;
+
+  tk_iuset_t *sample_set = NULL;
+  uint64_t n_output_samples = 0;
+
+  if (sample_ids != NULL && sample_ids->n > 0) {
+    sample_set = tk_iuset_from_ivec(NULL, sample_ids);
+    if (!sample_set)
+      return NULL;
+    n_output_samples = sample_ids->n;
+  } else {
+    n_output_samples = n_samples;
+  }
+
+  uint64_t n_selected_features = (selected_features != NULL && selected_features->n > 0)
+    ? selected_features->n : n_features;
+  double *src_data = src_matrix->a;
+
+  if (dest != NULL) {
+    uint64_t final_stride = (dest_stride > 0) ? dest_stride : n_selected_features;
+
+    if (dest_sample == 0) {
+      tk_dvec_ensure(dest, n_output_samples * final_stride);
+      dest->n = n_output_samples * final_stride;
+    } else {
+      tk_dvec_ensure(dest, (dest_sample + n_output_samples) * final_stride);
+      dest->n = (dest_sample + n_output_samples) * final_stride;
+    }
+
+    double *dest_data = dest->a;
+    uint64_t dest_idx = 0;
+
+    for (uint64_t s = 0; s < n_samples; s++) {
+      if (sample_set != NULL && !tk_iuset_contains(sample_set, (int64_t) s))
+        continue;
+
+      uint64_t src_offset = s * n_features;
+      uint64_t dest_offset = (dest_sample + dest_idx) * final_stride;
+
+      if (selected_features != NULL && selected_features->n > 0) {
+        for (uint64_t f = 0; f < selected_features->n; f++) {
+          int64_t feat_idx = selected_features->a[f];
+          if (feat_idx >= 0 && (uint64_t)feat_idx < n_features) {
+            dest_data[dest_offset + f] = src_data[src_offset + (uint64_t)feat_idx];
+          }
+        }
+      } else {
+        memcpy(dest_data + dest_offset, src_data + src_offset, n_features * sizeof(double));
+      }
+
+      dest_idx++;
+    }
+
+    if (sample_set)
+      tk_iuset_destroy(sample_set);
+
+    return dest;
+  } else {
+    double *src_data = src_matrix->a;
+    uint64_t write_idx = 0;
+
+    for (uint64_t s = 0; s < n_samples; s++) {
+      if (sample_set != NULL && !tk_iuset_contains(sample_set, (int64_t) s))
+        continue;
+
+      uint64_t src_offset = s * n_features;
+      uint64_t dest_offset = write_idx * n_selected_features;
+
+      if (selected_features != NULL && selected_features->n > 0) {
+        for (uint64_t f = 0; f < selected_features->n; f++) {
+          int64_t feat_idx = selected_features->a[f];
+          if (feat_idx >= 0 && (uint64_t)feat_idx < n_features) {
+            src_data[dest_offset + f] = src_data[src_offset + (uint64_t)feat_idx];
+          }
+        }
+      } else {
+        if (dest_offset != src_offset) {
+          memmove(src_data + dest_offset, src_data + src_offset, n_features * sizeof(double));
+        }
+      }
+
+      write_idx++;
+    }
+
+    src_matrix->n = n_output_samples * n_selected_features;
+
+    if (sample_set)
+      tk_iuset_destroy(sample_set);
+
+    return src_matrix;
+  }
+}
+
+static inline tk_ivec_t *tk_dvec_mtx_top_independent (
+  lua_State *L,
+  tk_dvec_t *matrix,
+  uint64_t n_samples,
+  uint64_t n_features,
+  uint64_t top_k
+) {
+  if (matrix == NULL || n_samples == 0 || n_features == 0 || top_k == 0)
+    return tk_ivec_create(L, 0, 0, 0);
+
+  if (top_k > n_features)
+    top_k = n_features;
+
+  double *data = matrix->a;
+
+  tk_dvec_t *col_means = tk_dvec_create(NULL, n_features, 0, 0);
+  tk_dvec_t *col_stds = tk_dvec_create(NULL, n_features, 0, 0);
+  if (!col_means || !col_stds) {
+    if (col_means) tk_dvec_destroy(col_means);
+    if (col_stds) tk_dvec_destroy(col_stds);
+    return NULL;
+  }
+
+  #pragma omp parallel for
+  for (uint64_t f = 0; f < n_features; f++) {
+    double sum = 0.0;
+    for (uint64_t s = 0; s < n_samples; s++)
+      sum += data[s * n_features + f];
+    col_means->a[f] = sum / (double)n_samples;
+
+    double sum_sq = 0.0;
+    for (uint64_t s = 0; s < n_samples; s++) {
+      double diff = data[s * n_features + f] - col_means->a[f];
+      sum_sq += diff * diff;
+    }
+    col_stds->a[f] = sqrt(sum_sq / (double)n_samples);
+  }
+  col_means->n = n_features;
+  col_stds->n = n_features;
+
+  tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+
+  #pragma omp parallel for
+  for (uint64_t i = 0; i < n_features; i++) {
+    if (col_stds->a[i] < 1e-10)
+      continue;
+
+    double max_abs_corr = 0.0;
+    for (uint64_t j = 0; j < n_features; j++) {
+      if (i == j || col_stds->a[j] < 1e-10)
+        continue;
+
+      double sum_prod = 0.0;
+      for (uint64_t s = 0; s < n_samples; s++) {
+        double xi = (data[s * n_features + i] - col_means->a[i]) / col_stds->a[i];
+        double xj = (data[s * n_features + j] - col_means->a[j]) / col_stds->a[j];
+        sum_prod += xi * xj;
+      }
+      double corr = sum_prod / (double)n_samples;
+      double abs_corr = fabs(corr);
+
+      if (abs_corr > max_abs_corr)
+        max_abs_corr = abs_corr;
+    }
+
+    tk_rank_t r = { (int64_t)i, max_abs_corr };
+    #pragma omp critical
+    tk_rvec_hmin(top_heap, top_k, r);
+  }
+
+  tk_dvec_destroy(col_means);
+  tk_dvec_destroy(col_stds);
+
+  tk_rvec_asc(top_heap, 0, top_heap->n);
+  tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+  tk_dvec_t *scores = tk_dvec_create(L, 0, 0, 0);
+  tk_rvec_keys(L, top_heap, out);
+  tk_rvec_values(L, top_heap, scores);
+  tk_rvec_destroy(top_heap);
+
+  return out;
 }
 
 static inline tk_ivec_t *tk_iuset_keys (lua_State *L, tk_iuset_t *S)

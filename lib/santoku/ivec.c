@@ -100,27 +100,36 @@ static inline int tk_ivec_bits_select_lua (lua_State *L)
   tk_ivec_t *src_bits = tk_ivec_peek(L, 1, "src_bits");
   tk_ivec_t *selected_features = lua_isnil(L, 2) ? NULL : tk_ivec_peek(L, 2, "selected_features");
   tk_ivec_t *sample_ids = NULL;
-  uint64_t n_visible;
+  uint64_t n_features;
   tk_ivec_t *dest = NULL;
   uint64_t dest_sample = 0;
+  uint64_t dest_stride = 0;
 
   if (n_args == 4) {
     sample_ids = lua_isnil(L, 3) ? NULL : tk_ivec_peek(L, 3, "sample_ids");
-    n_visible = tk_lua_checkunsigned(L, 4, "visible");
+    n_features = tk_lua_checkunsigned(L, 4, "n_features");
   } else if (n_args == 5) {
     sample_ids = lua_isnil(L, 3) ? NULL : tk_ivec_peek(L, 3, "sample_ids");
-    n_visible = tk_lua_checkunsigned(L, 4, "visible");
+    n_features = tk_lua_checkunsigned(L, 4, "n_features");
     dest = tk_ivec_peek(L, 5, "dest");
   } else if (n_args == 6) {
     sample_ids = lua_isnil(L, 3) ? NULL : tk_ivec_peek(L, 3, "sample_ids");
-    n_visible = tk_lua_checkunsigned(L, 4, "visible");
+    n_features = tk_lua_checkunsigned(L, 4, "n_features");
     dest = tk_ivec_peek(L, 5, "dest");
     dest_sample = tk_lua_checkunsigned(L, 6, "dest_sample");
+  } else if (n_args == 7) {
+    sample_ids = lua_isnil(L, 3) ? NULL : tk_ivec_peek(L, 3, "sample_ids");
+    n_features = tk_lua_checkunsigned(L, 4, "n_features");
+    dest = tk_ivec_peek(L, 5, "dest");
+    dest_sample = tk_lua_checkunsigned(L, 6, "dest_sample");
+    dest_stride = tk_lua_checkunsigned(L, 7, "dest_stride");
   } else {
-    n_visible = tk_lua_checkunsigned(L, 3, "visible");
+    n_features = tk_lua_checkunsigned(L, 3, "n_features");
   }
 
-  tk_ivec_bits_select(src_bits, selected_features, sample_ids, n_visible, dest, dest_sample);
+  tk_ivec_t *result = tk_ivec_bits_select(src_bits, selected_features, sample_ids, n_features, dest, dest_sample, dest_stride);
+  if (result == NULL)
+    return luaL_error(L, "bits_select failed");
   return 0;
 }
 
@@ -150,15 +159,17 @@ static inline int tk_ivec_bits_extend_cvec_helper (
   lua_State *L,
   tk_ivec_t *base,
   tk_cvec_t *ext_cvec,
-  uint64_t n_feat,
-  uint64_t n_extfeat
+  uint64_t n_base_features,
+  uint64_t n_ext_features
 ) {
-  tk_ivec_t *ext = tk_cvec_bits_to_ivec(L, ext_cvec, n_extfeat);
+  tk_ivec_t *ext = tk_cvec_bits_to_ivec(L, ext_cvec, n_ext_features);
   if (!ext)
     return -1;
-  tk_ivec_bits_extend(base, ext, n_feat, n_extfeat);
+  tk_ivec_t *result = tk_ivec_bits_extend(base, ext, n_base_features, n_ext_features);
   tk_ivec_destroy(ext);
   lua_remove(L, -1);
+  if (!result)
+    return -1;
   return 0;
 }
 
@@ -168,36 +179,38 @@ static inline int tk_ivec_bits_extend_lua (lua_State *L)
 
   if (nargs == 4) {
     tk_ivec_t *base = tk_ivec_peek(L, 1, "base_bits");
-    uint64_t n_feat = tk_lua_checkunsigned(L, 3, "features");
-    uint64_t n_extfeat = tk_lua_checkunsigned(L, 4, "extended");
+    uint64_t n_base_features = tk_lua_checkunsigned(L, 3, "features");
+    uint64_t n_ext_features = tk_lua_checkunsigned(L, 4, "extended");
     tk_ivec_t *ext_ivec = tk_ivec_peekopt(L, 2);
     if (ext_ivec) {
-      tk_ivec_bits_extend(base, ext_ivec, n_feat, n_extfeat);
+      tk_ivec_t *result = tk_ivec_bits_extend(base, ext_ivec, n_base_features, n_ext_features);
+      if (!result)
+        return luaL_error(L, "bits_extend: allocation failed");
     } else {
       tk_cvec_t *ext_cvec = tk_cvec_peek(L, 2, "ext_bits");
-      if (tk_ivec_bits_extend_cvec_helper(L, base, ext_cvec, n_feat, n_extfeat) != 0)
+      if (tk_ivec_bits_extend_cvec_helper(L, base, ext_cvec, n_base_features, n_ext_features) != 0)
         return luaL_error(L, "bits_extend: allocation failed");
     }
   } else if (nargs == 6 || nargs == 7) {
     tk_ivec_t *base = tk_ivec_peek(L, 1, "base_bits");
     tk_ivec_t *aids = tk_ivec_peek(L, 3, "aids");
     tk_ivec_t *bids = tk_ivec_peek(L, 4, "bids");
-    uint64_t n_feat = tk_lua_checkunsigned(L, 5, "features");
-    uint64_t n_extfeat = tk_lua_checkunsigned(L, 6, "extended");
+    uint64_t n_base_features = tk_lua_checkunsigned(L, 5, "features");
+    uint64_t n_ext_features = tk_lua_checkunsigned(L, 6, "extended");
 
     bool project = false;
     if (nargs == 7)
       project = lua_toboolean(L, 7);
     tk_ivec_t *ext_ivec = tk_ivec_peekopt(L, 2);
     if (ext_ivec) {
-      if (tk_ivec_bits_extend_mapped(base, ext_ivec, aids, bids, n_feat, n_extfeat, project) != 0)
+      if (tk_ivec_bits_extend_mapped(base, ext_ivec, aids, bids, n_base_features, n_ext_features, project) != 0)
         return luaL_error(L, "bits_extend_mapped: allocation failed");
     } else {
       tk_cvec_t *ext_cvec = tk_cvec_peek(L, 2, "ext_bits");
-      tk_ivec_t *ext = tk_cvec_bits_to_ivec(L, ext_cvec, n_extfeat);
+      tk_ivec_t *ext = tk_cvec_bits_to_ivec(L, ext_cvec, n_ext_features);
       if (!ext)
         return luaL_error(L, "bits_to_ivec: allocation failed");
-      if (tk_ivec_bits_extend_mapped(base, ext, aids, bids, n_feat, n_extfeat, project) != 0) {
+      if (tk_ivec_bits_extend_mapped(base, ext, aids, bids, n_base_features, n_ext_features, project) != 0) {
         tk_ivec_destroy(ext);
         lua_remove(L, -1);
         return luaL_error(L, "bits_extend_mapped: allocation failed");

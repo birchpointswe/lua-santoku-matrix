@@ -871,6 +871,9 @@ static inline int tk_parallel_sfx(tk_cvec_bits_extend_mapped) (
   uint64_t n_ext_features,
   bool project
 ) {
+  if (base == NULL || ext == NULL || aids == NULL || bids == NULL)
+    return -1;
+
   uint64_t n_total_features = n_base_features + n_ext_features;
   uint64_t base_bytes_per_sample = TK_CVEC_BITS_BYTES(n_base_features);
   uint64_t ext_bytes_per_sample = TK_CVEC_BITS_BYTES(n_ext_features);

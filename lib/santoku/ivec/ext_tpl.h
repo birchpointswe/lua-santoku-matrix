@@ -54,32 +54,39 @@ static inline tk_ivec_t *tk_parallel_sfx(tk_ivec_bits_from_cvec) (lua_State *L, 
   return out;
 }
 
-static inline void tk_parallel_sfx(tk_ivec_bits_extend) (tk_ivec_t *base, tk_ivec_t *ext, uint64_t n_feat, uint64_t n_extfeat) {
+static inline tk_ivec_t *tk_parallel_sfx(tk_ivec_bits_extend) (tk_ivec_t *base, tk_ivec_t *ext, uint64_t n_base_features, uint64_t n_ext_features) {
+  if (base == NULL || ext == NULL)
+    return NULL;
   tk_ivec_asc(base, 0, base->n);
   tk_ivec_asc(ext, 0, ext->n);
   size_t total = base->n + ext->n;
-  tk_ivec_ensure(base, total);
+  if (tk_ivec_ensure(base, total) != 0)
+    return NULL;
   TK_PARALLEL_FOR(schedule(static))
   for (size_t i = 0; i < base->n; i ++) {
     uint64_t bit = (uint64_t) base->a[i];
-    uint64_t sample = bit / n_feat;
-    uint64_t old_off = sample * n_feat;
-    uint64_t new_off = sample * (n_feat + n_extfeat);
+    uint64_t sample = bit / n_base_features;
+    uint64_t old_off = sample * n_base_features;
+    uint64_t new_off = sample * (n_base_features + n_ext_features);
     base->a[i] = (int64_t) (bit - old_off + new_off);
   }
   TK_PARALLEL_FOR(schedule(static))
   for (size_t i = 0; i < ext->n; i ++) {
     uint64_t bit = (uint64_t) ext->a[i];
-    uint64_t sample = bit / n_extfeat;
-    uint64_t old_off = sample * n_extfeat;
-    uint64_t new_off = sample * (n_feat + n_extfeat);
-    base->a[base->n + i] = (int64_t) (bit - old_off + new_off + n_feat);
+    uint64_t sample = bit / n_ext_features;
+    uint64_t old_off = sample * n_ext_features;
+    uint64_t new_off = sample * (n_base_features + n_ext_features);
+    base->a[base->n + i] = (int64_t) (bit - old_off + new_off + n_base_features);
   }
   base->n = total;
   tk_ivec_asc(base, 0, base->n);
+  return base;
 }
 
-static inline int tk_parallel_sfx(tk_ivec_bits_extend_mapped) (tk_ivec_t *base, tk_ivec_t *ext, tk_ivec_t *aids, tk_ivec_t *bids, uint64_t n_feat, uint64_t n_extfeat, bool project) {
+static inline int tk_parallel_sfx(tk_ivec_bits_extend_mapped) (tk_ivec_t *base, tk_ivec_t *ext, tk_ivec_t *aids, tk_ivec_t *bids, uint64_t n_base_features, uint64_t n_ext_features, bool project) {
+  if (base == NULL || ext == NULL || aids == NULL || bids == NULL)
+    return -1;
+
   tk_ivec_asc(base, 0, base->n);
   tk_ivec_asc(ext, 0, ext->n);
   tk_iumap_t *a_id_to_pos = tk_iumap_from_ivec(0, aids);
@@ -113,7 +120,7 @@ static inline int tk_parallel_sfx(tk_ivec_bits_extend_mapped) (tk_ivec_t *base, 
     }
   }
   uint64_t final_n_samples = project ? aids->n : (aids->n + n_only_b);
-  uint64_t n_total_feat = n_feat + n_extfeat;
+  uint64_t n_total_features = n_base_features + n_ext_features;
   size_t old_aids_n = aids->n;
   if (!project) {
     if (tk_ivec_ensure(aids, final_n_samples) != 0) {
@@ -131,14 +138,14 @@ static inline int tk_parallel_sfx(tk_ivec_bits_extend_mapped) (tk_ivec_t *base, 
   TK_PARALLEL_FOR(reduction(+:max_bits))
   for (size_t i = 0; i < base->n; i++) {
     uint64_t bit = (uint64_t)base->a[i];
-    uint64_t sample = bit / n_feat;
+    uint64_t sample = bit / n_base_features;
     if (sample < old_aids_n)
       max_bits++;
   }
   TK_PARALLEL_FOR(reduction(+:max_bits))
   for (size_t i = 0; i < ext->n; i++) {
     uint64_t bit = (uint64_t)ext->a[i];
-    uint64_t sample = bit / n_extfeat;
+    uint64_t sample = bit / n_ext_features;
     if (sample < bids->n && b_to_final[sample] >= 0)
       max_bits++;
   }
@@ -151,21 +158,21 @@ static inline int tk_parallel_sfx(tk_ivec_bits_extend_mapped) (tk_ivec_t *base, 
   TK_PARALLEL_FOR(schedule(static))
   for (int64_t i = (int64_t)base->n - 1; i >= 0; i--) {
     uint64_t bit = (uint64_t)base->a[i];
-    uint64_t sample = bit / n_feat;
-    uint64_t feature = bit % n_feat;
+    uint64_t sample = bit / n_base_features;
+    uint64_t feature = bit % n_base_features;
     if (sample < old_aids_n) {
       uint64_t new_sample_pos = (uint64_t)a_to_final[sample];
-      base->a[i] = (int64_t)(new_sample_pos * n_total_feat + feature);
+      base->a[i] = (int64_t)(new_sample_pos * n_total_features + feature);
     }
   }
   size_t insert_pos = base->n;
   for (size_t i = 0; i < ext->n; i++) {
     uint64_t bit = (uint64_t)ext->a[i];
-    uint64_t b_sample = bit / n_extfeat;
-    uint64_t feature = bit % n_extfeat;
+    uint64_t b_sample = bit / n_ext_features;
+    uint64_t feature = bit % n_ext_features;
     if (b_sample < bids->n && b_to_final[b_sample] >= 0) {
       uint64_t final_sample = (uint64_t)b_to_final[b_sample];
-      base->a[insert_pos++] = (int64_t)(final_sample * n_total_feat + n_feat + feature);
+      base->a[insert_pos++] = (int64_t)(final_sample * n_total_features + n_base_features + feature);
     }
   }
   base->n = insert_pos;

@@ -15,10 +15,10 @@
 
 static inline tk_ivec_t *tk_ivec_bits_from_cvec(lua_State *L, const char *bm, uint64_t n_samples, uint64_t n_features);
 static inline tk_ivec_t *tk_ivec_bits_from_cvec_serial(lua_State *L, const char *bm, uint64_t n_samples, uint64_t n_features);
-static inline void tk_ivec_bits_extend(tk_ivec_t *base, tk_ivec_t *ext, uint64_t n_feat, uint64_t n_extfeat);
-static inline void tk_ivec_bits_extend_serial(tk_ivec_t *base, tk_ivec_t *ext, uint64_t n_feat, uint64_t n_extfeat);
-static inline int tk_ivec_bits_extend_mapped(tk_ivec_t *base, tk_ivec_t *ext, tk_ivec_t *aids, tk_ivec_t *bids, uint64_t n_feat, uint64_t n_extfeat, bool project);
-static inline int tk_ivec_bits_extend_mapped_serial(tk_ivec_t *base, tk_ivec_t *ext, tk_ivec_t *aids, tk_ivec_t *bids, uint64_t n_feat, uint64_t n_extfeat, bool project);
+static inline tk_ivec_t *tk_ivec_bits_extend(tk_ivec_t *base, tk_ivec_t *ext, uint64_t n_base_features, uint64_t n_ext_features);
+static inline tk_ivec_t *tk_ivec_bits_extend_serial(tk_ivec_t *base, tk_ivec_t *ext, uint64_t n_base_features, uint64_t n_ext_features);
+static inline int tk_ivec_bits_extend_mapped(tk_ivec_t *base, tk_ivec_t *ext, tk_ivec_t *aids, tk_ivec_t *bids, uint64_t n_base_features, uint64_t n_ext_features, bool project);
+static inline int tk_ivec_bits_extend_mapped_serial(tk_ivec_t *base, tk_ivec_t *ext, tk_ivec_t *aids, tk_ivec_t *bids, uint64_t n_base_features, uint64_t n_ext_features, bool project);
 
 static inline void tk_ivec_copy_pkeys (tk_ivec_t *m0, tk_pvec_t *m1, int64_t start, int64_t end, int64_t dest) {
   if (start < 0 || start >= end || start >= (int64_t) m1->n)
