@@ -30,17 +30,21 @@
 #define TK_CVEC_ALL_MASK 0xFF
 #define TK_CVEC_POS_MASK 0x55
 #define TK_CVEC_NEG_MASK 0xAA
-#ifndef tk_cvec_byte_popcount
-#ifdef __GNUC__
-#define tk_cvec_byte_popcount(x) __builtin_popcount(x)
-#else
-static inline int tk_cvec_byte_popcount (unsigned int x) {
-  x = x - ((x >> 1) & 0x55555555);
-  x = (x & 0x33333333) + ((x >> 2) & 0x33333333);
-  return (((x + (x >> 4)) & 0x0F0F0F0F) * 0x01010101) >> 24;
+
+static const uint8_t TK_POPCOUNT_TABLE[256] = {
+  0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4,1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,
+  1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,
+  1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,
+  2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,3,4,4,5,4,5,5,6,4,5,5,6,5,6,6,7,
+  1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,
+  2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,3,4,4,5,4,5,5,6,4,5,5,6,5,6,6,7,
+  2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,3,4,4,5,4,5,5,6,4,5,5,6,5,6,6,7,
+  3,4,4,5,4,5,5,6,4,5,5,6,5,6,6,7,4,5,5,6,5,6,6,7,5,6,6,7,6,7,7,8
+};
+
+static inline uint8_t tk_popcount8(uint8_t x) {
+  return TK_POPCOUNT_TABLE[x];
 }
-#endif
-#endif
 
 
 static inline uint64_t tk_cvec_bits_popcount(const uint8_t *data, uint64_t n_bits);

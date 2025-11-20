@@ -1,6 +1,6 @@
 local env = {
   name = "santoku-matrix",
-  version = "0.0.178-1",
+  version = "0.0.179-1",
   variable_prefix = "TK_MATRIX",
   license = "MIT",
   public = true,
@@ -8,10 +8,11 @@ local env = {
     "-std=gnu11", "-D_GNU_SOURCE", "-Wall", "-Wextra",
     "-Wstrict-overflow", "-Wsign-conversion", "-Wsign-compare",
     "-I$(shell luarocks show santoku --rock-dir)/include/",
-    "-fopenmp", "$(shell pkg-config --cflags blas)"
+    "-fopenmp", "$(shell pkg-config --cflags openblas)"
   },
   ldflags = {
-    "-lm", "-fopenmp", "$(shell pkg-config --libs blas)"
+    "-lm", "-fopenmp", "$(shell pkg-config --libs openblas)",
+    "-Wl,-z,nodelete"
   },
   dependencies = {
     "lua == 5.1",

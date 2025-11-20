@@ -820,8 +820,8 @@ static inline int tk_vec_pfx(table_lua) (lua_State *L)
     start = 0;
     end =  m0->n;
   } else if (t == 3) {
-    start = tk_lua_checkunsigned(L, 3, "start");
-    end = tk_lua_checkunsigned(L, 4, "end");
+    start = tk_lua_checkunsigned(L, 2, "start");
+    end = tk_lua_checkunsigned(L, 3, "end");
   } else {
     tk_vec_err(L, table, 1, "expected either 1 or 3 arguments (vec and optionally start/end indices)");
     return 0;
@@ -908,11 +908,11 @@ static inline int tk_vec_pfx(scale_lua) (lua_State *L)
   tk_vec_base scale;
   uint64_t start, end;
   if (t == 2) {
-    scale = tk_lua_checkdouble(L, 2, "scale");
+    scale = tk_vec_peekbase(L, 2);
     start = 0;
     end = m0->n;
-  } else if (t == 3) {
-    scale = tk_lua_checkdouble(L, 2, "scale");
+  } else if (t == 4) {
+    scale = tk_vec_peekbase(L, 2);
     start = tk_lua_checkunsigned(L, 3, "start");
     end = tk_lua_checkunsigned(L, 4, "end");
   } else {
@@ -930,11 +930,11 @@ static inline int tk_vec_pfx(add_lua) (lua_State *L)
   tk_vec_base add;
   uint64_t start, end;
   if (t == 2) {
-    add = tk_lua_checkdouble(L, 2, "add");
+    add = tk_vec_peekbase(L, 2);
     start = 0;
     end = m0->n;
   } else if (t == 4) {
-    add = tk_lua_checkdouble(L, 2, "add");
+    add = tk_vec_peekbase(L, 2);
     start = tk_lua_checkunsigned(L, 3, "start");
     end = tk_lua_checkunsigned(L, 4, "end");
   } else {
@@ -952,11 +952,11 @@ static inline int tk_vec_pfx(add_scaled_lua) (lua_State *L)
   tk_vec_base add;
   uint64_t start, end;
   if (t == 2) {
-    add = tk_lua_checkdouble(L, 2, "add");
+    add = tk_vec_peekbase(L, 2);
     start = 0;
     end = m0->n;
   } else if (t == 4) {
-    add = tk_lua_checkdouble(L, 2, "add");
+    add = tk_vec_peekbase(L, 2);
     start = tk_lua_checkunsigned(L, 3, "start");
     end = tk_lua_checkunsigned(L, 4, "end");
   } else {
@@ -976,7 +976,7 @@ static inline int tk_vec_pfx(scalev_lua) (lua_State *L)
   if (t == 2) {
     start = 0;
     end = m0->n;
-  } else if (t == 3) {
+  } else if (t == 4) {
     start = tk_lua_checkunsigned(L, 3, "start");
     end = tk_lua_checkunsigned(L, 4, "end");
   } else {
@@ -1070,13 +1070,13 @@ static inline int tk_vec_pfx(pow_lua) (lua_State *L)
 {
   int t = lua_gettop(L);
   tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
-  tk_vec_base e;
+  double e;
   uint64_t start, end;
   if (t == 2) {
     e = tk_lua_checkdouble(L, 2, "e");
     start = 0;
     end = m0->n;
-  } else if (t == 3) {
+  } else if (t == 4) {
     e = tk_lua_checkdouble(L, 2, "e");
     start = tk_lua_checkunsigned(L, 3, "start");
     end = tk_lua_checkunsigned(L, 4, "end");
