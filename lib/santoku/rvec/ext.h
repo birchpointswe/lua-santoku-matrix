@@ -478,7 +478,7 @@ static inline double tk_csr_ndcg_distance(
 
 
 
-  return -(dcg / idcg);
+  return dcg / idcg;
 }
 
 #endif
