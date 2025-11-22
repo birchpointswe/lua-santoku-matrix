@@ -31,7 +31,7 @@ static inline int tk_dvec_scores_kaiser_lua (lua_State *L)
   double val;
   size_t idx = tk_dvec_scores_kaiser(scores->a, scores->n, &val);
   lua_pushnumber(L, (lua_Number)val);
-  lua_pushnumber(L, (lua_Number)idx);
+  lua_pushnumber(L, (lua_Number)(idx + 1));
   return 2;
 }
 
@@ -42,7 +42,7 @@ static inline int tk_dvec_scores_max_curvature_lua (lua_State *L)
   double val;
   size_t idx = tk_dvec_scores_max_curvature(scores->a, scores->n, &val);
   lua_pushnumber(L, (lua_Number)val);
-  lua_pushnumber(L, (lua_Number)idx);
+  lua_pushnumber(L, (lua_Number)(idx + 1));
   return 2;
 }
 
@@ -53,7 +53,7 @@ static inline int tk_dvec_scores_lmethod_lua (lua_State *L)
   double val;
   size_t idx = tk_dvec_scores_lmethod(scores->a, scores->n, &val);
   lua_pushnumber(L, (lua_Number)val);
-  lua_pushnumber(L, (lua_Number)idx);
+  lua_pushnumber(L, (lua_Number)(idx + 1));
   return 2;
 }
 
@@ -64,7 +64,7 @@ static inline int tk_dvec_scores_max_gap_lua (lua_State *L)
   double val;
   size_t idx = tk_dvec_scores_max_gap(scores->a, scores->n, &val);
   lua_pushnumber(L, (lua_Number)val);
-  lua_pushnumber(L, (lua_Number)idx);
+  lua_pushnumber(L, (lua_Number)(idx + 1));
   return 2;
 }
 
@@ -75,7 +75,7 @@ static inline int tk_dvec_scores_max_drop_lua (lua_State *L)
   double val;
   size_t idx = tk_dvec_scores_max_drop(scores->a, scores->n, &val);
   lua_pushnumber(L, (lua_Number)val);
-  lua_pushnumber(L, (lua_Number)idx);
+  lua_pushnumber(L, (lua_Number)(idx + 1));
   return 2;
 }
 
@@ -86,7 +86,7 @@ static inline int tk_dvec_scores_max_acceleration_lua (lua_State *L)
   double val;
   size_t idx = tk_dvec_scores_max_acceleration(scores->a, scores->n, &val);
   lua_pushnumber(L, (lua_Number)val);
-  lua_pushnumber(L, (lua_Number)idx);
+  lua_pushnumber(L, (lua_Number)(idx + 1));
   return 2;
 }
 
@@ -100,9 +100,9 @@ static inline int tk_dvec_scores_tolerance_lua (lua_State *L)
   double start_val = (start < scores->n) ? scores->a[start] : 0.0;
   double end_val = (end < scores->n) ? scores->a[end] : 0.0;
   lua_pushnumber(L, (lua_Number)start_val);
-  lua_pushnumber(L, (lua_Number)start);
+  lua_pushnumber(L, (lua_Number)(start + 1));
   lua_pushnumber(L, (lua_Number)end_val);
-  lua_pushnumber(L, (lua_Number)end);
+  lua_pushnumber(L, (lua_Number)(end + 1));
   return 4;
 }
 
@@ -114,7 +114,7 @@ static inline int tk_dvec_scores_plateau_lua (lua_State *L)
   double val;
   size_t idx = tk_dvec_scores_plateau(scores->a, scores->n, tolerance, &val);
   lua_pushnumber(L, (lua_Number)val);
-  lua_pushnumber(L, (lua_Number)idx);
+  lua_pushnumber(L, (lua_Number)(idx + 1));
   return 2;
 }
 
@@ -270,6 +270,30 @@ static inline int tk_dvec_mtx_top_skewness_lua (lua_State *L)
   return 2;
 }
 
+static inline int tk_dvec_mtx_top_bimodality_lua (lua_State *L)
+{
+  lua_settop(L, 5);
+  tk_dvec_t *matrix = tk_dvec_peek(L, 1, "matrix");
+  uint64_t n_samples = tk_lua_checkunsigned(L, 2, "n_samples");
+  uint64_t n_features = tk_lua_checkunsigned(L, 3, "n_features");
+  uint64_t top_k = lua_isnil(L, 4) ? n_features : tk_lua_checkunsigned(L, 4, "top_k");
+  double min_bc = tk_lua_optnumber(L, 5, "min_bc", 0.0);
+  tk_dvec_mtx_top_bimodality(L, matrix, n_samples, n_features, top_k, min_bc);
+  return 2;
+}
+
+static inline int tk_dvec_mtx_top_esber_lua (lua_State *L)
+{
+  lua_settop(L, 5);
+  tk_dvec_t *matrix = tk_dvec_peek(L, 1, "matrix");
+  uint64_t n_samples = tk_lua_checkunsigned(L, 2, "n_samples");
+  uint64_t n_features = tk_lua_checkunsigned(L, 3, "n_features");
+  uint64_t top_k = lua_isnil(L, 4) ? n_features : tk_lua_checkunsigned(L, 4, "top_k");
+  uint64_t n_bins = lua_isnil(L, 5) ? 0 : tk_lua_checkunsigned(L, 5, "n_bins");
+  tk_dvec_mtx_top_esber(L, matrix, n_samples, n_features, top_k, n_bins);
+  return 2;
+}
+
 static luaL_Reg tk_dvec_lua_mt_ext2_fns[] =
 {
   { "center", tk_dvec_center_lua },
@@ -292,6 +316,8 @@ static luaL_Reg tk_dvec_lua_mt_ext2_fns[] =
   { "mtx_top_variance", tk_dvec_mtx_top_variance_lua },
   { "mtx_top_kurtosis", tk_dvec_mtx_top_kurtosis_lua },
   { "mtx_top_skewness", tk_dvec_mtx_top_skewness_lua },
+  { "mtx_top_bimodality", tk_dvec_mtx_top_bimodality_lua },
+  { "mtx_top_esber", tk_dvec_mtx_top_esber_lua },
   { NULL, NULL }
 };
 

@@ -5,17 +5,20 @@
 #include <cblas.h>
 #include <omp.h>
 #include <math.h>
+#include <string.h>
+#include <stdlib.h>
 
 #include <santoku/dvec/base.h>
 #include <santoku/ivec.h>
 #include <santoku/rvec/base.h>
-
 
 static inline tk_ivec_t *tk_rvec_keys (lua_State *L, tk_rvec_t *P, tk_ivec_t *out);
 static inline tk_dvec_t *tk_rvec_values (lua_State *L, tk_rvec_t *P, tk_dvec_t *out);
 static inline tk_ivec_t *tk_dvec_mtx_top_variance (lua_State *L, tk_dvec_t *matrix, uint64_t n_samples, uint64_t n_features, uint64_t top_k);
 static inline tk_ivec_t *tk_dvec_mtx_top_kurtosis (lua_State *L, tk_dvec_t *matrix, uint64_t n_samples, uint64_t n_features, uint64_t top_k);
 static inline tk_ivec_t *tk_dvec_mtx_top_skewness (lua_State *L, tk_dvec_t *matrix, uint64_t n_samples, uint64_t n_features, uint64_t top_k);
+static inline tk_ivec_t *tk_dvec_mtx_top_bimodality (lua_State *L, tk_dvec_t *matrix, uint64_t n_samples, uint64_t n_features, uint64_t top_k, double min_bc);
+static inline tk_ivec_t *tk_dvec_mtx_top_esber (lua_State *L, tk_dvec_t *matrix, uint64_t n_samples, uint64_t n_features, uint64_t top_k, uint64_t n_bins);
 
 #define TK_GENERATE_SINGLE
 #include <santoku/parallel/tpl.h>
@@ -420,23 +423,18 @@ static inline tk_dvec_t *tk_dvec_mtx_extend (
 ) {
   if (base == NULL || ext == NULL)
     return NULL;
-
   uint64_t n_samples = base->n / n_base_features;
   uint64_t n_total_features = n_base_features + n_ext_features;
-
   tk_dvec_ensure(base, n_samples * n_total_features);
   double *base_data = base->a;
   double *ext_data = ext->a;
-
   for (int64_t s = (int64_t) n_samples - 1; s >= 0; s--) {
     uint64_t base_offset = (uint64_t) s * n_base_features;
     uint64_t ext_offset = (uint64_t) s * n_ext_features;
     uint64_t out_offset = (uint64_t) s * n_total_features;
-
     memmove(base_data + out_offset, base_data + base_offset, n_base_features * sizeof(double));
     memcpy(base_data + out_offset + n_base_features, ext_data + ext_offset, n_ext_features * sizeof(double));
   }
-
   base->n = n_samples * n_total_features;
   return base;
 }
@@ -452,20 +450,16 @@ static inline int tk_dvec_mtx_extend_mapped (
 ) {
   if (base == NULL || ext == NULL || aids == NULL || bids == NULL)
     return -1;
-
   uint64_t n_total_features = n_base_features + n_ext_features;
-
   tk_iumap_t *a_id_to_pos = tk_iumap_from_ivec(0, aids);
   if (!a_id_to_pos)
     return -1;
-
   uint64_t n_only_b = 0;
   int64_t *b_to_final = (int64_t *)calloc(bids->n, sizeof(int64_t));
   if (!b_to_final) {
     tk_iumap_destroy(a_id_to_pos);
     return -1;
   }
-
   int64_t next_pos = (int64_t)aids->n;
   for (size_t bi = 0; bi < bids->n; bi++) {
     khint_t khi = tk_iumap_get(a_id_to_pos, bids->a[bi]);
@@ -480,10 +474,8 @@ static inline int tk_dvec_mtx_extend_mapped (
       }
     }
   }
-
   uint64_t final_n_samples = project ? aids->n : (aids->n + n_only_b);
   size_t old_aids_n = aids->n;
-
   if (!project) {
     if (tk_ivec_ensure(aids, final_n_samples) != 0) {
       free(b_to_final);
@@ -496,23 +488,19 @@ static inline int tk_dvec_mtx_extend_mapped (
       }
     }
   }
-
   if (tk_dvec_ensure(base, final_n_samples * n_total_features) != 0) {
     free(b_to_final);
     tk_iumap_destroy(a_id_to_pos);
     return -1;
   }
-
   double *base_data = base->a;
   double *ext_data = ext->a;
-
   tk_iumap_t *b_id_to_pos = tk_iumap_from_ivec(0, bids);
   if (!b_id_to_pos) {
     free(b_to_final);
     tk_iumap_destroy(a_id_to_pos);
     return -1;
   }
-
   double *new_data = calloc(final_n_samples * n_total_features, sizeof(double));
   if (!new_data) {
     free(b_to_final);
@@ -520,12 +508,10 @@ static inline int tk_dvec_mtx_extend_mapped (
     tk_iumap_destroy(b_id_to_pos);
     return -1;
   }
-
   for (size_t ai = 0; ai < old_aids_n; ai++) {
     uint64_t dest_offset = ai * n_total_features;
     uint64_t src_offset = ai * n_base_features;
     memcpy(new_data + dest_offset, base_data + src_offset, n_base_features * sizeof(double));
-
     khint_t khi = tk_iumap_get(b_id_to_pos, aids->a[ai]);
     if (khi != tk_iumap_end(b_id_to_pos)) {
       int64_t b_idx = tk_iumap_val(b_id_to_pos, khi);
@@ -533,7 +519,6 @@ static inline int tk_dvec_mtx_extend_mapped (
       memcpy(new_data + dest_offset + n_base_features, ext_data + ext_src_offset, n_ext_features * sizeof(double));
     }
   }
-
   for (size_t bi = 0; bi < bids->n; bi++) {
     int64_t final_pos = b_to_final[bi];
     if (final_pos >= (int64_t)old_aids_n) {
@@ -542,15 +527,12 @@ static inline int tk_dvec_mtx_extend_mapped (
       memcpy(new_data + dest_offset + n_base_features, ext_data + ext_src_offset, n_ext_features * sizeof(double));
     }
   }
-
   memcpy(base_data, new_data, final_n_samples * n_total_features * sizeof(double));
   base->n = final_n_samples * n_total_features;
-
   free(new_data);
   free(b_to_final);
   tk_iumap_destroy(a_id_to_pos);
   tk_iumap_destroy(b_id_to_pos);
-
   return 0;
 }
 
@@ -563,32 +545,25 @@ static inline tk_ivec_t *tk_dvec_mtx_top_variance (
 ) {
   if (matrix == NULL || n_samples == 0 || n_features == 0)
     return NULL;
-
   double *data = matrix->a;
   tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
-
   #pragma omp parallel for
   for (uint64_t f = 0; f < n_features; f++) {
-
     double sum = 0.0;
     for (uint64_t s = 0; s < n_samples; s++) {
       sum += data[s * n_features + f];
     }
     double mean = sum / (double)n_samples;
-
-
     double var_sum = 0.0;
     for (uint64_t s = 0; s < n_samples; s++) {
       double diff = data[s * n_features + f] - mean;
       var_sum += diff * diff;
     }
     double variance = var_sum / (double)n_samples;
-
     tk_rank_t r = { (int64_t)f, variance };
     #pragma omp critical
     tk_rvec_hmin(top_heap, top_k, r);
   }
-
   tk_rvec_desc(top_heap, 0, top_heap->n);
   tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
   tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
@@ -607,20 +582,15 @@ static inline tk_ivec_t *tk_dvec_mtx_top_kurtosis (
 ) {
   if (matrix == NULL || n_samples == 0 || n_features == 0)
     return NULL;
-
   double *data = matrix->a;
   tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
-
   #pragma omp parallel for
   for (uint64_t f = 0; f < n_features; f++) {
-
     double sum = 0.0;
     for (uint64_t s = 0; s < n_samples; s++) {
       sum += data[s * n_features + f];
     }
     double mean = sum / (double)n_samples;
-
-
     double m2_sum = 0.0;
     double m4_sum = 0.0;
     for (uint64_t s = 0; s < n_samples; s++) {
@@ -631,21 +601,14 @@ static inline tk_ivec_t *tk_dvec_mtx_top_kurtosis (
     }
     double variance = m2_sum / (double)n_samples;
     double m4 = m4_sum / (double)n_samples;
-
-
-
     double kurtosis = 0.0;
     if (variance > 1e-10) {
       kurtosis = (m4 / (variance * variance)) - 3.0;
     }
-
-
-
     tk_rank_t r = { (int64_t)f, -fabs(kurtosis) };
     #pragma omp critical
     tk_rvec_hmin(top_heap, top_k, r);
   }
-
   tk_rvec_desc(top_heap, 0, top_heap->n);
   tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
   tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
@@ -664,20 +627,15 @@ static inline tk_ivec_t *tk_dvec_mtx_top_skewness (
 ) {
   if (matrix == NULL || n_samples == 0 || n_features == 0)
     return NULL;
-
   double *data = matrix->a;
   tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
-
   #pragma omp parallel for
   for (uint64_t f = 0; f < n_features; f++) {
-
     double sum = 0.0;
     for (uint64_t s = 0; s < n_samples; s++) {
       sum += data[s * n_features + f];
     }
     double mean = sum / (double)n_samples;
-
-
     double m2_sum = 0.0;
     double m3_sum = 0.0;
     for (uint64_t s = 0; s < n_samples; s++) {
@@ -688,22 +646,141 @@ static inline tk_ivec_t *tk_dvec_mtx_top_skewness (
     }
     double variance = m2_sum / (double)n_samples;
     double m3 = m3_sum / (double)n_samples;
-
-
-
     double skewness = 0.0;
     if (variance > 1e-10) {
       double std_dev = sqrt(variance);
       skewness = m3 / (std_dev * std_dev * std_dev);
     }
-
-
-
     tk_rank_t r = { (int64_t)f, -fabs(skewness) };
     #pragma omp critical
     tk_rvec_hmin(top_heap, top_k, r);
   }
+  tk_rvec_desc(top_heap, 0, top_heap->n);
+  tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+  tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+  tk_rvec_keys(L, top_heap, out);
+  tk_rvec_values(L, top_heap, weights);
+  tk_rvec_destroy(top_heap);
+  return out;
+}
 
+static inline tk_ivec_t *tk_dvec_mtx_top_bimodality (
+  lua_State *L,
+  tk_dvec_t *matrix,
+  uint64_t n_samples,
+  uint64_t n_features,
+  uint64_t top_k,
+  double min_bc
+) {
+  if (matrix == NULL || n_samples == 0 || n_features == 0)
+    return NULL;
+  if (n_samples < 4)
+    return NULL;
+  double *data = matrix->a;
+  tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+  #pragma omp parallel for
+  for (uint64_t f = 0; f < n_features; f++) {
+    double sum = 0.0;
+    for (uint64_t s = 0; s < n_samples; s++)
+      sum += data[s * n_features + f];
+    double mean = sum / (double)n_samples;
+    double m2_sum = 0.0;
+    double m3_sum = 0.0;
+    double m4_sum = 0.0;
+    for (uint64_t s = 0; s < n_samples; s++) {
+      double diff = data[s * n_features + f] - mean;
+      double diff2 = diff * diff;
+      m2_sum += diff2;
+      m3_sum += diff2 * diff;
+      m4_sum += diff2 * diff2;
+    }
+    double variance = m2_sum / (double)n_samples;
+    if (variance < 1e-10)
+      continue;
+    double m3 = m3_sum / (double)n_samples;
+    double m4 = m4_sum / (double)n_samples;
+    double std_dev = sqrt(variance);
+    double skewness = m3 / (variance * std_dev);
+    double raw_kurtosis = m4 / (variance * variance);
+    if (raw_kurtosis < 1e-10)
+      continue;
+    double bc = (skewness * skewness + 1.0) / raw_kurtosis;
+    if (bc >= min_bc) {
+      tk_rank_t r = { (int64_t)f, bc };
+      #pragma omp critical
+      tk_rvec_hmin(top_heap, top_k, r);
+    }
+  }
+  tk_rvec_desc(top_heap, 0, top_heap->n);
+  tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+  tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+  tk_rvec_keys(L, top_heap, out);
+  tk_rvec_values(L, top_heap, weights);
+  tk_rvec_destroy(top_heap);
+  return out;
+}
+
+static inline tk_ivec_t *tk_dvec_mtx_top_esber (
+  lua_State *L,
+  tk_dvec_t *matrix,
+  uint64_t n_samples,
+  uint64_t n_features,
+  uint64_t top_k,
+  uint64_t n_bins
+) {
+  if (matrix == NULL || n_samples == 0 || n_features == 0)
+    return NULL;
+  if (n_bins == 0)
+    n_bins = 32;
+  double *data = matrix->a;
+  tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+  #pragma omp parallel
+  {
+    uint64_t *bin_counts = (uint64_t *)calloc(n_bins, sizeof(uint64_t));
+    if (!bin_counts) {
+      #pragma omp critical
+      {
+        tk_rvec_destroy(top_heap);
+        luaL_error(L, "ESBER: failed to allocate bin buffer");
+      }
+    }
+    #pragma omp for
+    for (uint64_t f = 0; f < n_features; f++) {
+      double min_val = data[0 * n_features + f];
+      double max_val = min_val;
+      for (uint64_t s = 1; s < n_samples; s++) {
+        double val = data[s * n_features + f];
+        if (val < min_val) min_val = val;
+        if (val > max_val) max_val = val;
+      }
+      double range = max_val - min_val;
+      if (range < 1e-10) {
+        tk_rank_t r = { (int64_t)f, 0.0 };
+        #pragma omp critical
+        tk_rvec_hmin(top_heap, top_k, r);
+        continue;
+      }
+      memset(bin_counts, 0, n_bins * sizeof(uint64_t));
+      for (uint64_t s = 0; s < n_samples; s++) {
+        double val = data[s * n_features + f];
+        double normalized = (val - min_val) / range;
+        uint64_t bin_idx = (uint64_t)(normalized * (double)(n_bins - 1));
+        if (bin_idx >= n_bins) bin_idx = n_bins - 1;
+        bin_counts[bin_idx]++;
+      }
+      double entropy = 0.0;
+      for (uint64_t b = 0; b < n_bins; b++) {
+        if (bin_counts[b] > 0) {
+          double p = (double)bin_counts[b] / (double)n_samples;
+          entropy -= p * log2(p);
+        }
+      }
+      tk_rank_t r = { (int64_t)f, entropy };
+      #pragma omp critical
+      tk_rvec_hmin(top_heap, top_k, r);
+    }
+    free(bin_counts);
+  }
   tk_rvec_desc(top_heap, 0, top_heap->n);
   tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
   tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
