@@ -674,7 +674,7 @@ static inline tk_ivec_t *tk_dvec_mtx_top_esber (
           entropy -= p * log2(p);
         }
       }
-      tk_rank_t r = { (int64_t)f, -entropy };
+      tk_rank_t r = { (int64_t)f, entropy };
       #pragma omp critical
       tk_rvec_hmin(top_heap, top_k, r);
     }
@@ -732,7 +732,7 @@ static inline tk_ivec_t *tk_dvec_mtx_top_bimodality (
       double sample_size_correction = 3.0 * (n - 1.0) * (n - 1.0) / ((n - 2.0) * (n - 3.0));
       bimodality = (skewness * skewness + 1.0) / (excess_kurtosis + sample_size_correction);
     }
-    tk_rank_t r = { (int64_t)f, bimodality };
+    tk_rank_t r = { (int64_t)f, -bimodality };
     #pragma omp critical
     tk_rvec_hmin(top_heap, top_k, r);
   }
@@ -803,13 +803,9 @@ static inline tk_ivec_t *tk_dvec_mtx_top_dip (
           smoothed[b] = val;
         }
       }
-      uint64_t n_local_max = 0;
       uint64_t n_local_min = 0;
       double deepest_valley = 0.0;
       for (uint64_t b = 1; b < n_bins - 1; b++) {
-        if (smoothed[b] > smoothed[b-1] && smoothed[b] > smoothed[b+1]) {
-          n_local_max++;
-        }
         if (smoothed[b] < smoothed[b-1] && smoothed[b] < smoothed[b+1]) {
           n_local_min++;
           double left_peak = smoothed[b-1];
