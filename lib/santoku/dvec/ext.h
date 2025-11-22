@@ -17,6 +17,8 @@ static inline tk_dvec_t *tk_rvec_values (lua_State *L, tk_rvec_t *P, tk_dvec_t *
 static inline tk_ivec_t *tk_dvec_mtx_top_variance (lua_State *L, tk_dvec_t *matrix, uint64_t n_samples, uint64_t n_features, uint64_t top_k);
 static inline tk_ivec_t *tk_dvec_mtx_top_skewness (lua_State *L, tk_dvec_t *matrix, uint64_t n_samples, uint64_t n_features, uint64_t top_k);
 static inline tk_ivec_t *tk_dvec_mtx_top_esber (lua_State *L, tk_dvec_t *matrix, uint64_t n_samples, uint64_t n_features, uint64_t top_k, uint64_t n_bins);
+static inline tk_ivec_t *tk_dvec_mtx_top_bimodality (lua_State *L, tk_dvec_t *matrix, uint64_t n_samples, uint64_t n_features, uint64_t top_k);
+static inline tk_ivec_t *tk_dvec_mtx_top_dip (lua_State *L, tk_dvec_t *matrix, uint64_t n_samples, uint64_t n_features, uint64_t top_k);
 
 #define TK_GENERATE_SINGLE
 #include <santoku/parallel/tpl.h>
@@ -672,11 +674,165 @@ static inline tk_ivec_t *tk_dvec_mtx_top_esber (
           entropy -= p * log2(p);
         }
       }
-      tk_rank_t r = { (int64_t)f, entropy };
+      tk_rank_t r = { (int64_t)f, -entropy };
       #pragma omp critical
       tk_rvec_hmin(top_heap, top_k, r);
     }
     free(bin_counts);
+  }
+  tk_rvec_desc(top_heap, 0, top_heap->n);
+  tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+  tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+  tk_rvec_keys(L, top_heap, out);
+  tk_rvec_values(L, top_heap, weights);
+  tk_rvec_destroy(top_heap);
+  return out;
+}
+
+static inline tk_ivec_t *tk_dvec_mtx_top_bimodality (
+  lua_State *L,
+  tk_dvec_t *matrix,
+  uint64_t n_samples,
+  uint64_t n_features,
+  uint64_t top_k
+) {
+  if (matrix == NULL || n_samples == 0 || n_features == 0)
+    return NULL;
+  double *data = matrix->a;
+  tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+  #pragma omp parallel for
+  for (uint64_t f = 0; f < n_features; f++) {
+    double sum = 0.0;
+    for (uint64_t s = 0; s < n_samples; s++) {
+      sum += data[s * n_features + f];
+    }
+    double mean = sum / (double)n_samples;
+    double m2_sum = 0.0;
+    double m3_sum = 0.0;
+    double m4_sum = 0.0;
+    for (uint64_t s = 0; s < n_samples; s++) {
+      double diff = data[s * n_features + f] - mean;
+      double diff2 = diff * diff;
+      double diff3 = diff2 * diff;
+      double diff4 = diff2 * diff2;
+      m2_sum += diff2;
+      m3_sum += diff3;
+      m4_sum += diff4;
+    }
+    double variance = m2_sum / (double)n_samples;
+    double m3 = m3_sum / (double)n_samples;
+    double m4 = m4_sum / (double)n_samples;
+    double bimodality = 0.0;
+    if (variance > 1e-10 && n_samples > 3) {
+      double std_dev = sqrt(variance);
+      double skewness = m3 / (std_dev * std_dev * std_dev);
+      double kurtosis = m4 / (variance * variance);
+      double excess_kurtosis = kurtosis - 3.0;
+      double n = (double)n_samples;
+      double sample_size_correction = 3.0 * (n - 1.0) * (n - 1.0) / ((n - 2.0) * (n - 3.0));
+      bimodality = (skewness * skewness + 1.0) / (excess_kurtosis + sample_size_correction);
+    }
+    tk_rank_t r = { (int64_t)f, bimodality };
+    #pragma omp critical
+    tk_rvec_hmin(top_heap, top_k, r);
+  }
+  tk_rvec_desc(top_heap, 0, top_heap->n);
+  tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+  tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+  tk_rvec_keys(L, top_heap, out);
+  tk_rvec_values(L, top_heap, weights);
+  tk_rvec_destroy(top_heap);
+  return out;
+}
+
+static inline tk_ivec_t *tk_dvec_mtx_top_dip (
+  lua_State *L,
+  tk_dvec_t *matrix,
+  uint64_t n_samples,
+  uint64_t n_features,
+  uint64_t top_k
+) {
+  if (matrix == NULL || n_samples == 0 || n_features == 0 || n_samples < 5)
+    return NULL;
+  double *data = matrix->a;
+  tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+  uint64_t n_bins = n_samples < 100 ? 16 : 32;
+  #pragma omp parallel
+  {
+    uint64_t *bins = (uint64_t *)calloc(n_bins, sizeof(uint64_t));
+    double *smoothed = (double *)calloc(n_bins, sizeof(double));
+    if (!bins || !smoothed) {
+      #pragma omp critical
+      {
+        tk_rvec_destroy(top_heap);
+        if (bins) free(bins);
+        if (smoothed) free(smoothed);
+        luaL_error(L, "Multimodality test: failed to allocate buffers");
+      }
+    }
+    #pragma omp for
+    for (uint64_t f = 0; f < n_features; f++) {
+      double min_val = data[0 * n_features + f];
+      double max_val = min_val;
+      for (uint64_t s = 1; s < n_samples; s++) {
+        double val = data[s * n_features + f];
+        if (val < min_val) min_val = val;
+        if (val > max_val) max_val = val;
+      }
+      double range = max_val - min_val;
+      if (range < 1e-10) {
+        tk_rank_t r = { (int64_t)f, 0.0 };
+        #pragma omp critical
+        tk_rvec_hmin(top_heap, top_k, r);
+        continue;
+      }
+      memset(bins, 0, n_bins * sizeof(uint64_t));
+      for (uint64_t s = 0; s < n_samples; s++) {
+        double val = data[s * n_features + f];
+        double normalized = (val - min_val) / range;
+        uint64_t bin_idx = (uint64_t)(normalized * (double)(n_bins - 1));
+        if (bin_idx >= n_bins) bin_idx = n_bins - 1;
+        bins[bin_idx]++;
+      }
+      for (uint64_t b = 0; b < n_bins; b++) {
+        smoothed[b] = (double)bins[b] / (double)n_samples;
+      }
+      for (uint64_t pass = 0; pass < 2; pass++) {
+        for (uint64_t b = 1; b < n_bins - 1; b++) {
+          double val = (smoothed[b-1] + 2.0 * smoothed[b] + smoothed[b+1]) / 4.0;
+          smoothed[b] = val;
+        }
+      }
+      uint64_t n_local_max = 0;
+      uint64_t n_local_min = 0;
+      double deepest_valley = 0.0;
+      for (uint64_t b = 1; b < n_bins - 1; b++) {
+        if (smoothed[b] > smoothed[b-1] && smoothed[b] > smoothed[b+1]) {
+          n_local_max++;
+        }
+        if (smoothed[b] < smoothed[b-1] && smoothed[b] < smoothed[b+1]) {
+          n_local_min++;
+          double left_peak = smoothed[b-1];
+          double right_peak = smoothed[b+1];
+          for (int64_t i = (int64_t)b - 2; i >= 0; i--) {
+            if (smoothed[i] > left_peak) left_peak = smoothed[i];
+          }
+          for (uint64_t i = b + 2; i < n_bins; i++) {
+            if (smoothed[i] > right_peak) right_peak = smoothed[i];
+          }
+          double valley_depth = fmin(left_peak - smoothed[b], right_peak - smoothed[b]);
+          if (valley_depth > deepest_valley) {
+            deepest_valley = valley_depth;
+          }
+        }
+      }
+      double multimodality_score = deepest_valley * (double)n_local_min;
+      tk_rank_t r = { (int64_t)f, multimodality_score };
+      #pragma omp critical
+      tk_rvec_hmin(top_heap, top_k, r);
+    }
+    free(bins);
+    free(smoothed);
   }
   tk_rvec_desc(top_heap, 0, top_heap->n);
   tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
