@@ -153,6 +153,24 @@ static inline int tk_vec_pfx(ensure) (
   return tk_vec_pfx(resize)(m0, m, false);
 }
 
+static inline int tk_vec_pfx(reverse) (
+  tk_vec_pfx(t) *m0,
+  int64_t start,
+  int64_t end
+) {
+  if (start < 0 || start >= end || start >= (int64_t) m0->n)
+    return 0;
+  if (end >= (int64_t) m0->n)
+    end = (int64_t) m0->n;
+  tk_vec_base b;
+  for (int64_t i = start; i < start + (end - start) / 2; i ++) {
+    b = m0->a[i];
+    m0->a[i] = m0->a[start + end - 1 - i];
+    m0->a[start + end - 1 - i] = b;
+  }
+  return 0;
+}
+
 static inline int tk_vec_pfx(copy) (
   tk_vec_pfx(t) *m0,
   tk_vec_pfx(t) *m1,
@@ -566,6 +584,22 @@ static inline int tk_vec_pfx(multiply_lua) (lua_State *L)
   return 0;
 }
 #endif
+
+static inline int tk_vec_pfx(reverse_lua) (lua_State *L)
+{
+  int t = lua_gettop(L);
+  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "source");
+  int64_t start, end;
+  if (t == 1) {
+    start = 0;
+    end = (int64_t) m0->n;
+  } else {
+    start = tk_lua_checkinteger(L, 2, "start");
+    end = tk_lua_checkinteger(L, 3, "end");
+  }
+  tk_vec_pfx(reverse)(m0, start, end);
+  return 0;
+}
 
 static inline int tk_vec_pfx(copy_lua) (lua_State *L)
 {
