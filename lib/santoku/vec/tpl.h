@@ -1246,6 +1246,7 @@ static inline int tk_vec_pfx(raw_lua) (lua_State *L)
 static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
 {
   { "copy", tk_vec_pfx(copy_lua) },
+  { "reverse", tk_vec_pfx(reverse_lua) },
   { "destroy", tk_vec_pfx(destroy_lua) },
   { "size", tk_vec_pfx(size_lua) },
   { "capacity", tk_vec_pfx(capacity_lua) },
