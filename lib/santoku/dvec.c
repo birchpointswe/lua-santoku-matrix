@@ -248,17 +248,6 @@ static inline int tk_dvec_mtx_top_variance_lua (lua_State *L)
   return 2;
 }
 
-static inline int tk_dvec_mtx_top_kurtosis_lua (lua_State *L)
-{
-  lua_settop(L, 4);
-  tk_dvec_t *matrix = tk_dvec_peek(L, 1, "matrix");
-  uint64_t n_samples = tk_lua_checkunsigned(L, 2, "n_samples");
-  uint64_t n_features = tk_lua_checkunsigned(L, 3, "n_features");
-  uint64_t top_k = lua_isnil(L, 4) ? n_features : tk_lua_checkunsigned(L, 4, "top_k");
-  tk_dvec_mtx_top_kurtosis(L, matrix, n_samples, n_features, top_k);
-  return 2;
-}
-
 static inline int tk_dvec_mtx_top_skewness_lua (lua_State *L)
 {
   lua_settop(L, 4);
@@ -267,18 +256,6 @@ static inline int tk_dvec_mtx_top_skewness_lua (lua_State *L)
   uint64_t n_features = tk_lua_checkunsigned(L, 3, "n_features");
   uint64_t top_k = lua_isnil(L, 4) ? n_features : tk_lua_checkunsigned(L, 4, "top_k");
   tk_dvec_mtx_top_skewness(L, matrix, n_samples, n_features, top_k);
-  return 2;
-}
-
-static inline int tk_dvec_mtx_top_bimodality_lua (lua_State *L)
-{
-  lua_settop(L, 5);
-  tk_dvec_t *matrix = tk_dvec_peek(L, 1, "matrix");
-  uint64_t n_samples = tk_lua_checkunsigned(L, 2, "n_samples");
-  uint64_t n_features = tk_lua_checkunsigned(L, 3, "n_features");
-  uint64_t top_k = lua_isnil(L, 4) ? n_features : tk_lua_checkunsigned(L, 4, "top_k");
-  double min_bc = tk_lua_optnumber(L, 5, "min_bc", 0.0);
-  tk_dvec_mtx_top_bimodality(L, matrix, n_samples, n_features, top_k, min_bc);
   return 2;
 }
 
@@ -314,9 +291,7 @@ static luaL_Reg tk_dvec_lua_mt_ext2_fns[] =
   { "mtx_select", tk_dvec_mtx_select_lua },
   { "mtx_extend", tk_dvec_mtx_extend_lua },
   { "mtx_top_variance", tk_dvec_mtx_top_variance_lua },
-  { "mtx_top_kurtosis", tk_dvec_mtx_top_kurtosis_lua },
   { "mtx_top_skewness", tk_dvec_mtx_top_skewness_lua },
-  { "mtx_top_bimodality", tk_dvec_mtx_top_bimodality_lua },
   { "mtx_top_esber", tk_dvec_mtx_top_esber_lua },
   { NULL, NULL }
 };

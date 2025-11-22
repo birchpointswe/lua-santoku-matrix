@@ -15,9 +15,7 @@
 static inline tk_ivec_t *tk_rvec_keys (lua_State *L, tk_rvec_t *P, tk_ivec_t *out);
 static inline tk_dvec_t *tk_rvec_values (lua_State *L, tk_rvec_t *P, tk_dvec_t *out);
 static inline tk_ivec_t *tk_dvec_mtx_top_variance (lua_State *L, tk_dvec_t *matrix, uint64_t n_samples, uint64_t n_features, uint64_t top_k);
-static inline tk_ivec_t *tk_dvec_mtx_top_kurtosis (lua_State *L, tk_dvec_t *matrix, uint64_t n_samples, uint64_t n_features, uint64_t top_k);
 static inline tk_ivec_t *tk_dvec_mtx_top_skewness (lua_State *L, tk_dvec_t *matrix, uint64_t n_samples, uint64_t n_features, uint64_t top_k);
-static inline tk_ivec_t *tk_dvec_mtx_top_bimodality (lua_State *L, tk_dvec_t *matrix, uint64_t n_samples, uint64_t n_features, uint64_t top_k, double min_bc);
 static inline tk_ivec_t *tk_dvec_mtx_top_esber (lua_State *L, tk_dvec_t *matrix, uint64_t n_samples, uint64_t n_features, uint64_t top_k, uint64_t n_bins);
 
 #define TK_GENERATE_SINGLE
@@ -573,51 +571,6 @@ static inline tk_ivec_t *tk_dvec_mtx_top_variance (
   return out;
 }
 
-static inline tk_ivec_t *tk_dvec_mtx_top_kurtosis (
-  lua_State *L,
-  tk_dvec_t *matrix,
-  uint64_t n_samples,
-  uint64_t n_features,
-  uint64_t top_k
-) {
-  if (matrix == NULL || n_samples == 0 || n_features == 0)
-    return NULL;
-  double *data = matrix->a;
-  tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
-  #pragma omp parallel for
-  for (uint64_t f = 0; f < n_features; f++) {
-    double sum = 0.0;
-    for (uint64_t s = 0; s < n_samples; s++) {
-      sum += data[s * n_features + f];
-    }
-    double mean = sum / (double)n_samples;
-    double m2_sum = 0.0;
-    double m4_sum = 0.0;
-    for (uint64_t s = 0; s < n_samples; s++) {
-      double diff = data[s * n_features + f] - mean;
-      double diff2 = diff * diff;
-      m2_sum += diff2;
-      m4_sum += diff2 * diff2;
-    }
-    double variance = m2_sum / (double)n_samples;
-    double m4 = m4_sum / (double)n_samples;
-    double kurtosis = 0.0;
-    if (variance > 1e-10) {
-      kurtosis = (m4 / (variance * variance)) - 3.0;
-    }
-    tk_rank_t r = { (int64_t)f, -fabs(kurtosis) };
-    #pragma omp critical
-    tk_rvec_hmin(top_heap, top_k, r);
-  }
-  tk_rvec_desc(top_heap, 0, top_heap->n);
-  tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
-  tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
-  tk_rvec_keys(L, top_heap, out);
-  tk_rvec_values(L, top_heap, weights);
-  tk_rvec_destroy(top_heap);
-  return out;
-}
-
 static inline tk_ivec_t *tk_dvec_mtx_top_skewness (
   lua_State *L,
   tk_dvec_t *matrix,
@@ -654,62 +607,6 @@ static inline tk_ivec_t *tk_dvec_mtx_top_skewness (
     tk_rank_t r = { (int64_t)f, -fabs(skewness) };
     #pragma omp critical
     tk_rvec_hmin(top_heap, top_k, r);
-  }
-  tk_rvec_desc(top_heap, 0, top_heap->n);
-  tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
-  tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
-  tk_rvec_keys(L, top_heap, out);
-  tk_rvec_values(L, top_heap, weights);
-  tk_rvec_destroy(top_heap);
-  return out;
-}
-
-static inline tk_ivec_t *tk_dvec_mtx_top_bimodality (
-  lua_State *L,
-  tk_dvec_t *matrix,
-  uint64_t n_samples,
-  uint64_t n_features,
-  uint64_t top_k,
-  double min_bc
-) {
-  if (matrix == NULL || n_samples == 0 || n_features == 0)
-    return NULL;
-  if (n_samples < 4)
-    return NULL;
-  double *data = matrix->a;
-  tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
-  #pragma omp parallel for
-  for (uint64_t f = 0; f < n_features; f++) {
-    double sum = 0.0;
-    for (uint64_t s = 0; s < n_samples; s++)
-      sum += data[s * n_features + f];
-    double mean = sum / (double)n_samples;
-    double m2_sum = 0.0;
-    double m3_sum = 0.0;
-    double m4_sum = 0.0;
-    for (uint64_t s = 0; s < n_samples; s++) {
-      double diff = data[s * n_features + f] - mean;
-      double diff2 = diff * diff;
-      m2_sum += diff2;
-      m3_sum += diff2 * diff;
-      m4_sum += diff2 * diff2;
-    }
-    double variance = m2_sum / (double)n_samples;
-    if (variance < 1e-10)
-      continue;
-    double m3 = m3_sum / (double)n_samples;
-    double m4 = m4_sum / (double)n_samples;
-    double std_dev = sqrt(variance);
-    double skewness = m3 / (variance * std_dev);
-    double raw_kurtosis = m4 / (variance * variance);
-    if (raw_kurtosis < 1e-10)
-      continue;
-    double bc = (skewness * skewness + 1.0) / raw_kurtosis;
-    if (bc >= min_bc) {
-      tk_rank_t r = { (int64_t)f, bc };
-      #pragma omp critical
-      tk_rvec_hmin(top_heap, top_k, r);
-    }
   }
   tk_rvec_desc(top_heap, 0, top_heap->n);
   tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
