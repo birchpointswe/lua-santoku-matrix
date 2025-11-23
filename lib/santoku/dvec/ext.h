@@ -16,7 +16,7 @@ static inline tk_ivec_t *tk_rvec_keys (lua_State *L, tk_rvec_t *P, tk_ivec_t *ou
 static inline tk_dvec_t *tk_rvec_values (lua_State *L, tk_rvec_t *P, tk_dvec_t *out);
 static inline tk_ivec_t *tk_dvec_mtx_top_variance (lua_State *L, tk_dvec_t *matrix, uint64_t n_samples, uint64_t n_features, uint64_t top_k);
 static inline tk_ivec_t *tk_dvec_mtx_top_skewness (lua_State *L, tk_dvec_t *matrix, uint64_t n_samples, uint64_t n_features, uint64_t top_k);
-static inline tk_ivec_t *tk_dvec_mtx_top_esber (lua_State *L, tk_dvec_t *matrix, uint64_t n_samples, uint64_t n_features, uint64_t top_k, uint64_t n_bins);
+static inline tk_ivec_t *tk_dvec_mtx_top_entropy (lua_State *L, tk_dvec_t *matrix, uint64_t n_samples, uint64_t n_features, uint64_t top_k, uint64_t n_bins);
 static inline tk_ivec_t *tk_dvec_mtx_top_bimodality (lua_State *L, tk_dvec_t *matrix, uint64_t n_samples, uint64_t n_features, uint64_t top_k);
 static inline tk_ivec_t *tk_dvec_mtx_top_dip (lua_State *L, tk_dvec_t *matrix, uint64_t n_samples, uint64_t n_features, uint64_t top_k);
 
@@ -619,7 +619,7 @@ static inline tk_ivec_t *tk_dvec_mtx_top_skewness (
   return out;
 }
 
-static inline tk_ivec_t *tk_dvec_mtx_top_esber (
+static inline tk_ivec_t *tk_dvec_mtx_top_entropy (
   lua_State *L,
   tk_dvec_t *matrix,
   uint64_t n_samples,

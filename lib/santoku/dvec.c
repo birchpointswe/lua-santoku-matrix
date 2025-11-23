@@ -259,7 +259,7 @@ static inline int tk_dvec_mtx_top_skewness_lua (lua_State *L)
   return 2;
 }
 
-static inline int tk_dvec_mtx_top_esber_lua (lua_State *L)
+static inline int tk_dvec_mtx_top_entropy_lua (lua_State *L)
 {
   lua_settop(L, 5);
   tk_dvec_t *matrix = tk_dvec_peek(L, 1, "matrix");
@@ -267,7 +267,7 @@ static inline int tk_dvec_mtx_top_esber_lua (lua_State *L)
   uint64_t n_features = tk_lua_checkunsigned(L, 3, "n_features");
   uint64_t top_k = lua_isnil(L, 4) ? n_features : tk_lua_checkunsigned(L, 4, "top_k");
   uint64_t n_bins = lua_isnil(L, 5) ? 0 : tk_lua_checkunsigned(L, 5, "n_bins");
-  tk_dvec_mtx_top_esber(L, matrix, n_samples, n_features, top_k, n_bins);
+  tk_dvec_mtx_top_entropy(L, matrix, n_samples, n_features, top_k, n_bins);
   return 2;
 }
 
@@ -314,7 +314,7 @@ static luaL_Reg tk_dvec_lua_mt_ext2_fns[] =
   { "mtx_extend", tk_dvec_mtx_extend_lua },
   { "mtx_top_variance", tk_dvec_mtx_top_variance_lua },
   { "mtx_top_skewness", tk_dvec_mtx_top_skewness_lua },
-  { "mtx_top_esber", tk_dvec_mtx_top_esber_lua },
+  { "mtx_top_entropy", tk_dvec_mtx_top_entropy_lua },
   { "mtx_top_bimodality", tk_dvec_mtx_top_bimodality_lua },
   { "mtx_top_dip", tk_dvec_mtx_top_dip_lua },
   { NULL, NULL }
