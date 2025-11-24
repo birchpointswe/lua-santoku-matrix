@@ -28,33 +28,6 @@ static inline tk_ivec_t *tk_dvec_mtx_top_dip (lua_State *L, tk_dvec_t *matrix, u
 #include <santoku/parallel/tpl.h>
 #include <santoku/dvec/ext_tpl.h>
 
-static inline size_t tk_dvec_scores_kaiser (
-  double *scores,
-  size_t n,
-  double *out_val
-) {
-  if (n == 0) {
-    if (out_val) *out_val = 0.0;
-    return 0;
-  }
-  if (n == 1) {
-    if (out_val) *out_val = scores[0];
-    return 1;
-  }
-  double sum = 0.0;
-  for (size_t i = 0; i < n; i++)
-    sum += scores[i];
-  double mean = sum / (double)n;
-  for (size_t i = 0; i < n; i++) {
-    if (scores[i] < mean) {
-      if (out_val) *out_val = scores[i];
-      return i;
-    }
-  }
-  if (out_val) *out_val = (n > 0) ? scores[n-1] : 0.0;
-  return n;
-}
-
 static inline size_t tk_dvec_scores_max_curvature (
   double *scores,
   size_t n,
