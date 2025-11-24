@@ -24,17 +24,6 @@ static inline int tk_dvec_rnorml2_lua (lua_State *L)
   return 1;
 }
 
-static inline int tk_dvec_scores_kaiser_lua (lua_State *L)
-{
-  lua_settop(L, 1);
-  tk_dvec_t *scores = tk_dvec_peek(L, 1, "dvec");
-  double val;
-  size_t idx = tk_dvec_scores_kaiser(scores->a, scores->n, &val);
-  lua_pushnumber(L, (lua_Number)val);
-  lua_pushnumber(L, (lua_Number)(idx + 1));
-  return 2;
-}
-
 static inline int tk_dvec_scores_max_curvature_lua (lua_State *L)
 {
   lua_settop(L, 1);
@@ -314,7 +303,6 @@ static luaL_Reg tk_dvec_lua_mt_ext2_fns[] =
   { "csums", tk_dvec_csums_blas_lua },
   { "rmags", tk_dvec_rmags_blas_lua },
   { "cmags", tk_dvec_cmags_blas_lua },
-  { "scores_kaiser", tk_dvec_scores_kaiser_lua },
   { "scores_max_curvature", tk_dvec_scores_max_curvature_lua },
   { "scores_lmethod", tk_dvec_scores_lmethod_lua },
   { "scores_max_gap", tk_dvec_scores_max_gap_lua },
