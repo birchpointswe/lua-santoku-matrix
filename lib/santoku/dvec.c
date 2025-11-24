@@ -90,6 +90,18 @@ static inline int tk_dvec_scores_max_acceleration_lua (lua_State *L)
   return 2;
 }
 
+static inline int tk_dvec_scores_kneedle_lua (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_dvec_t *scores = tk_dvec_peek(L, 1, "dvec");
+  double sensitivity = luaL_optnumber(L, 2, 1.0);
+  double val;
+  size_t idx = tk_dvec_scores_kneedle(scores->a, scores->n, sensitivity, &val);
+  lua_pushnumber(L, (lua_Number)val);
+  lua_pushnumber(L, (lua_Number)(idx + 1));
+  return 2;
+}
+
 static inline int tk_dvec_scores_tolerance_lua (lua_State *L)
 {
   lua_settop(L, 2);
@@ -308,6 +320,7 @@ static luaL_Reg tk_dvec_lua_mt_ext2_fns[] =
   { "scores_max_gap", tk_dvec_scores_max_gap_lua },
   { "scores_max_drop", tk_dvec_scores_max_drop_lua },
   { "scores_max_acceleration", tk_dvec_scores_max_acceleration_lua },
+  { "scores_kneedle", tk_dvec_scores_kneedle_lua },
   { "scores_tolerance", tk_dvec_scores_tolerance_lua },
   { "scores_plateau", tk_dvec_scores_plateau_lua },
   { "mtx_select", tk_dvec_mtx_select_lua },

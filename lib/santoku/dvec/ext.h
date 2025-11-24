@@ -233,6 +233,74 @@ static inline size_t tk_dvec_scores_max_acceleration (
   return max_idx;
 }
 
+static inline size_t tk_dvec_scores_kneedle (
+  double *scores,
+  size_t n,
+  double sensitivity,
+  double *out_val
+) {
+  if (n < 3) {
+    if (out_val) *out_val = (n > 0) ? scores[0] : 0.0;
+    return 0;
+  }
+  if (sensitivity <= 0.0)
+    sensitivity = 1.0;
+  double min_score = scores[0];
+  double max_score = scores[0];
+  for (size_t i = 1; i < n; i++) {
+    if (scores[i] < min_score) min_score = scores[i];
+    if (scores[i] > max_score) max_score = scores[i];
+  }
+  double score_range = max_score - min_score;
+  if (score_range < 1e-10) {
+    if (out_val) *out_val = scores[0];
+    return 0;
+  }
+  double *normalized = (double *)malloc(n * sizeof(double));
+  if (!normalized) {
+    if (out_val) *out_val = scores[0];
+    return 0;
+  }
+  for (size_t i = 0; i < n; i++) {
+    double x_norm = (double)i / (double)(n - 1);
+    double y_norm = (scores[i] - min_score) / score_range;
+    normalized[i] = y_norm - x_norm;
+  }
+  double *smoothed = (double *)malloc(n * sizeof(double));
+  if (!smoothed) {
+    free(normalized);
+    if (out_val) *out_val = scores[0];
+    return 0;
+  }
+  smoothed[0] = normalized[0];
+  smoothed[n - 1] = normalized[n - 1];
+  for (size_t i = 1; i < n - 1; i++) {
+    smoothed[i] = (normalized[i - 1] + normalized[i] + normalized[i + 1]) / 3.0;
+  }
+  double max_diff = -DBL_MAX;
+  size_t knee_idx = 0;
+  for (size_t i = 0; i < n; i++) {
+    if (smoothed[i] > max_diff) {
+      max_diff = smoothed[i];
+      knee_idx = i;
+    }
+  }
+  free(normalized);
+  free(smoothed);
+  double threshold = max_diff - sensitivity / (double)n;
+  size_t final_knee = knee_idx;
+  for (size_t i = 0; i < n; i++) {
+    double x_norm = (double)i / (double)(n - 1);
+    double y_norm = (scores[i] - min_score) / score_range;
+    double diff = y_norm - x_norm;
+    if (diff >= threshold) {
+      final_knee = i;
+    }
+  }
+  if (out_val) *out_val = scores[final_knee];
+  return final_knee;
+}
+
 static inline void tk_dvec_scores_tolerance (
   double *scores,
   size_t n,
