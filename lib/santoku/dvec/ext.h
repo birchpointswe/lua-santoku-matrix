@@ -35,7 +35,7 @@ static inline size_t tk_dvec_scores_max_curvature (
 ) {
   if (n < 3) {
     if (out_val) *out_val = (n > 0) ? scores[0] : 0.0;
-    return 0;
+    return n > 0 ? n - 1 : 0;
   }
   double max_curv = 0.0;
   size_t max_idx = 1;
@@ -45,6 +45,11 @@ static inline size_t tk_dvec_scores_max_curvature (
       max_curv = curv;
       max_idx = i;
     }
+  }
+
+  if (max_curv < 1e-10) {
+    if (out_val) *out_val = scores[n - 1];
+    return n - 1;
   }
   if (out_val) *out_val = scores[max_idx];
   return max_idx;
@@ -57,7 +62,17 @@ static inline size_t tk_dvec_scores_lmethod (
 ) {
   if (n < 3) {
     if (out_val) *out_val = (n > 0) ? scores[0] : 0.0;
-    return 0;
+    return n > 0 ? n - 1 : 0;
+  }
+
+  double min_val = scores[0], max_val = scores[0];
+  for (size_t i = 1; i < n; i++) {
+    if (scores[i] < min_val) min_val = scores[i];
+    if (scores[i] > max_val) max_val = scores[i];
+  }
+  if (max_val - min_val < 1e-10) {
+    if (out_val) *out_val = scores[n - 1];
+    return n - 1;
   }
   double best_rmse = DBL_MAX;
   size_t best_k = 1;
@@ -118,7 +133,7 @@ static inline size_t tk_dvec_scores_max_gap (
 ) {
   if (n < 2) {
     if (out_val) *out_val = (n > 0) ? scores[0] : 0.0;
-    return 0;
+    return n > 0 ? n - 1 : 0;
   }
   double max_gap = 0.0;
   size_t max_idx = 0;
@@ -128,6 +143,11 @@ static inline size_t tk_dvec_scores_max_gap (
       max_gap = gap;
       max_idx = i;
     }
+  }
+
+  if (max_gap < 1e-10) {
+    if (out_val) *out_val = scores[n - 1];
+    return n - 1;
   }
   if (out_val) *out_val = scores[max_idx];
   return max_idx;
@@ -140,7 +160,7 @@ static inline size_t tk_dvec_scores_max_drop (
 ) {
   if (n < 2) {
     if (out_val) *out_val = (n > 0) ? scores[0] : 0.0;
-    return 0;
+    return n > 0 ? n - 1 : 0;
   }
   double max_drop = 0.0;
   size_t max_idx = 0;
@@ -150,6 +170,11 @@ static inline size_t tk_dvec_scores_max_drop (
       max_drop = drop;
       max_idx = i;
     }
+  }
+
+  if (max_drop < 1e-10) {
+    if (out_val) *out_val = scores[n - 1];
+    return n - 1;
   }
   if (out_val) *out_val = scores[max_idx];
   return max_idx;
@@ -189,7 +214,17 @@ static inline size_t tk_dvec_scores_max_acceleration (
 ) {
   if (n < 3) {
     if (out_val) *out_val = (n > 0) ? scores[0] : 0.0;
-    return 0;
+    return n > 0 ? n - 1 : 0;
+  }
+
+  double min_val = scores[0], max_val = scores[0];
+  for (size_t i = 1; i < n; i++) {
+    if (scores[i] < min_val) min_val = scores[i];
+    if (scores[i] > max_val) max_val = scores[i];
+  }
+  if (max_val - min_val < 1e-10) {
+    if (out_val) *out_val = scores[n - 1];
+    return n - 1;
   }
   double max_accel = -DBL_MAX;
   size_t max_idx = 0;

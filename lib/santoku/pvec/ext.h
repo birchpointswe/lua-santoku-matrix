@@ -1,6 +1,10 @@
 #ifndef TK_PVEC_EXT_H
 #define TK_PVEC_EXT_H
 
+#include <math.h>
+#include <float.h>
+#include <stdint.h>
+#include <stdlib.h>
 #include <santoku/dumap.h>
 
 static inline tk_pvec_t *tk_pvec_from_ivec (
@@ -110,6 +114,290 @@ static inline void tk_pvec_ranks (
       tk_dumap_setval(r, khi, average_rank);
     }
   }
+}
+
+
+
+
+static inline size_t tk_pvec_scores_max_curvature (
+  tk_pvec_t *v,
+  int64_t *out_val
+) {
+  size_t n = v->n;
+  if (n < 3) {
+    if (out_val) *out_val = (n > 0) ? v->a[0].p : 0;
+    return n > 0 ? n - 1 : 0;
+  }
+  int64_t max_curv = 0;
+  size_t max_idx = 1;
+  for (size_t i = 1; i < n - 1; i++) {
+    int64_t curv = llabs(v->a[i-1].p - 2 * v->a[i].p + v->a[i+1].p);
+    if (curv > max_curv) {
+      max_curv = curv;
+      max_idx = i;
+    }
+  }
+
+  if (max_curv == 0) {
+    if (out_val) *out_val = v->a[n - 1].p;
+    return n - 1;
+  }
+  if (out_val) *out_val = v->a[max_idx].p;
+  return max_idx;
+}
+
+static inline size_t tk_pvec_scores_lmethod (
+  tk_pvec_t *v,
+  int64_t *out_val
+) {
+  size_t n = v->n;
+  if (n < 3) {
+    if (out_val) *out_val = (n > 0) ? v->a[0].p : 0;
+    return n > 0 ? n - 1 : 0;
+  }
+
+  int64_t min_val = v->a[0].p, max_val = v->a[0].p;
+  for (size_t i = 1; i < n; i++) {
+    if (v->a[i].p < min_val) min_val = v->a[i].p;
+    if (v->a[i].p > max_val) max_val = v->a[i].p;
+  }
+  if (max_val == min_val) {
+    if (out_val) *out_val = v->a[n - 1].p;
+    return n - 1;
+  }
+  double best_rmse = DBL_MAX;
+  size_t best_k = 1;
+  for (size_t k = 1; k < n - 1; k++) {
+    double sum_x1 = 0.0, sum_y1 = 0.0, sum_xy1 = 0.0, sum_xx1 = 0.0;
+    for (size_t i = 0; i <= k; i++) {
+      double x = (double)i;
+      double y = (double)v->a[i].p;
+      sum_x1 += x;
+      sum_y1 += y;
+      sum_xy1 += x * y;
+      sum_xx1 += x * x;
+    }
+    size_t n1 = k + 1;
+    double mean_x1 = sum_x1 / (double)n1;
+    double mean_y1 = sum_y1 / (double)n1;
+    double slope1 = (sum_xy1 - (double)n1 * mean_x1 * mean_y1) / (sum_xx1 - (double)n1 * mean_x1 * mean_x1 + 1e-10);
+    double intercept1 = mean_y1 - slope1 * mean_x1;
+    double sum_x2 = 0.0, sum_y2 = 0.0, sum_xy2 = 0.0, sum_xx2 = 0.0;
+    for (size_t i = k + 1; i < n; i++) {
+      double x = (double)i;
+      double y = (double)v->a[i].p;
+      sum_x2 += x;
+      sum_y2 += y;
+      sum_xy2 += x * y;
+      sum_xx2 += x * x;
+    }
+    size_t n2 = n - k - 1;
+    double mean_x2 = sum_x2 / (double)n2;
+    double mean_y2 = sum_y2 / (double)n2;
+    double slope2 = (sum_xy2 - (double)n2 * mean_x2 * mean_y2) / (sum_xx2 - (double)n2 * mean_x2 * mean_x2 + 1e-10);
+    double intercept2 = mean_y2 - slope2 * mean_x2;
+    double sse = 0.0;
+    for (size_t i = 0; i <= k; i++) {
+      double pred = slope1 * (double)i + intercept1;
+      double err = (double)v->a[i].p - pred;
+      sse += err * err;
+    }
+    for (size_t i = k + 1; i < n; i++) {
+      double pred = slope2 * (double)i + intercept2;
+      double err = (double)v->a[i].p - pred;
+      sse += err * err;
+    }
+    double rmse = sqrt(sse / (double)n);
+    if (rmse < best_rmse) {
+      best_rmse = rmse;
+      best_k = k;
+    }
+  }
+  if (out_val) *out_val = v->a[best_k].p;
+  return best_k;
+}
+
+static inline size_t tk_pvec_scores_max_gap (
+  tk_pvec_t *v,
+  int64_t *out_val
+) {
+  size_t n = v->n;
+  if (n < 2) {
+    if (out_val) *out_val = (n > 0) ? v->a[0].p : 0;
+    return n > 0 ? n - 1 : 0;
+  }
+  int64_t max_gap = 0;
+  size_t max_idx = 0;
+  for (size_t i = 0; i < n - 1; i++) {
+    int64_t gap = v->a[i + 1].p - v->a[i].p;
+    if (gap > max_gap) {
+      max_gap = gap;
+      max_idx = i;
+    }
+  }
+
+  if (max_gap == 0) {
+    if (out_val) *out_val = v->a[n - 1].p;
+    return n - 1;
+  }
+  if (out_val) *out_val = v->a[max_idx].p;
+  return max_idx;
+}
+
+static inline size_t tk_pvec_scores_max_drop (
+  tk_pvec_t *v,
+  int64_t *out_val
+) {
+  size_t n = v->n;
+  if (n < 2) {
+    if (out_val) *out_val = (n > 0) ? v->a[0].p : 0;
+    return n > 0 ? n - 1 : 0;
+  }
+  int64_t max_drop = 0;
+  size_t max_idx = 0;
+  for (size_t i = 0; i < n - 1; i++) {
+    int64_t drop = v->a[i].p - v->a[i + 1].p;
+    if (drop > max_drop) {
+      max_drop = drop;
+      max_idx = i;
+    }
+  }
+
+  if (max_drop == 0) {
+    if (out_val) *out_val = v->a[n - 1].p;
+    return n - 1;
+  }
+  if (out_val) *out_val = v->a[max_idx].p;
+  return max_idx;
+}
+
+static inline size_t tk_pvec_scores_plateau (
+  tk_pvec_t *v,
+  int64_t tolerance,
+  int64_t *out_val
+) {
+  size_t n = v->n;
+  if (n == 0) {
+    if (out_val) *out_val = 0;
+    return 0;
+  }
+  if (n == 1) {
+    if (out_val) *out_val = v->a[0].p;
+    return 0;
+  }
+  int64_t base = v->a[0].p;
+  size_t end_idx = 0;
+  for (size_t i = 1; i < n; i++) {
+    if (llabs(v->a[i].p - base) <= tolerance) {
+      end_idx = i;
+    } else {
+      break;
+    }
+  }
+  if (out_val) *out_val = v->a[end_idx].p;
+  return end_idx;
+}
+
+static inline size_t tk_pvec_scores_max_acceleration (
+  tk_pvec_t *v,
+  int64_t *out_val
+) {
+  size_t n = v->n;
+  if (n < 3) {
+    if (out_val) *out_val = (n > 0) ? v->a[0].p : 0;
+    return n > 0 ? n - 1 : 0;
+  }
+
+  int64_t min_val = v->a[0].p, max_val = v->a[0].p;
+  for (size_t i = 1; i < n; i++) {
+    if (v->a[i].p < min_val) min_val = v->a[i].p;
+    if (v->a[i].p > max_val) max_val = v->a[i].p;
+  }
+  if (max_val == min_val) {
+    if (out_val) *out_val = v->a[n - 1].p;
+    return n - 1;
+  }
+  int64_t max_accel = INT64_MIN;
+  size_t max_idx = 0;
+  for (size_t i = 0; i < n - 2; i++) {
+    int64_t gap1 = v->a[i + 1].p - v->a[i].p;
+    int64_t gap2 = v->a[i + 2].p - v->a[i + 1].p;
+    int64_t accel = gap2 - gap1;
+    if (accel > max_accel) {
+      max_accel = accel;
+      max_idx = i;
+    }
+  }
+  if (out_val) *out_val = v->a[max_idx].p;
+  return max_idx;
+}
+
+static inline size_t tk_pvec_scores_kneedle (
+  tk_pvec_t *v,
+  double sensitivity,
+  int64_t *out_val
+) {
+  size_t n = v->n;
+  if (n < 3) {
+    if (out_val) *out_val = (n > 0) ? v->a[0].p : 0;
+    return n > 0 ? n - 1 : 0;
+  }
+  if (sensitivity <= 0.0)
+    sensitivity = 1.0;
+  int64_t min_score = v->a[0].p;
+  int64_t max_score = v->a[0].p;
+  for (size_t i = 1; i < n; i++) {
+    if (v->a[i].p < min_score) min_score = v->a[i].p;
+    if (v->a[i].p > max_score) max_score = v->a[i].p;
+  }
+  double score_range = (double)(max_score - min_score);
+  if (score_range < 1e-10) {
+    if (out_val) *out_val = v->a[0].p;
+    return n - 1;
+  }
+  double *normalized = (double *)malloc(n * sizeof(double));
+  if (!normalized) {
+    if (out_val) *out_val = v->a[0].p;
+    return n - 1;
+  }
+  for (size_t i = 0; i < n; i++) {
+    double x_norm = (double)i / (double)(n - 1);
+    double y_norm = ((double)v->a[i].p - (double)min_score) / score_range;
+    normalized[i] = y_norm - x_norm;
+  }
+  double *smoothed = (double *)malloc(n * sizeof(double));
+  if (!smoothed) {
+    free(normalized);
+    if (out_val) *out_val = v->a[0].p;
+    return n - 1;
+  }
+  smoothed[0] = normalized[0];
+  smoothed[n - 1] = normalized[n - 1];
+  for (size_t i = 1; i < n - 1; i++) {
+    smoothed[i] = (normalized[i - 1] + normalized[i] + normalized[i + 1]) / 3.0;
+  }
+  double max_diff = -DBL_MAX;
+  size_t knee_idx = 0;
+  for (size_t i = 0; i < n; i++) {
+    if (smoothed[i] > max_diff) {
+      max_diff = smoothed[i];
+      knee_idx = i;
+    }
+  }
+  free(normalized);
+  free(smoothed);
+  double threshold = max_diff - sensitivity / (double)n;
+  size_t final_knee = knee_idx;
+  for (size_t i = 0; i < n; i++) {
+    double x_norm = (double)i / (double)(n - 1);
+    double y_norm = ((double)v->a[i].p - (double)min_score) / score_range;
+    double diff = y_norm - x_norm;
+    if (diff >= threshold) {
+      final_knee = i;
+    }
+  }
+  if (out_val) *out_val = v->a[final_knee].p;
+  return final_knee;
 }
 
 #endif
