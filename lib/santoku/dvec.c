@@ -119,6 +119,38 @@ static inline int tk_dvec_scores_plateau_lua (lua_State *L)
   return 2;
 }
 
+static inline int tk_dvec_scores_elbow_lua (lua_State *L)
+{
+  lua_settop(L, 3);
+  tk_dvec_t *scores = tk_dvec_peek(L, 1, "dvec");
+  const char *method = luaL_checkstring(L, 2);
+  double alpha = luaL_optnumber(L, 3, 0.0);
+  double val;
+  size_t idx;
+  if (strcmp(method, "lmethod") == 0) {
+    idx = tk_dvec_scores_lmethod(scores->a, scores->n, &val);
+  } else if (strcmp(method, "max_gap") == 0) {
+    idx = tk_dvec_scores_max_gap(scores->a, scores->n, &val);
+  } else if (strcmp(method, "max_drop") == 0) {
+    idx = tk_dvec_scores_max_drop(scores->a, scores->n, &val);
+  } else if (strcmp(method, "max_curvature") == 0) {
+    idx = tk_dvec_scores_max_curvature(scores->a, scores->n, &val);
+  } else if (strcmp(method, "max_acceleration") == 0) {
+    idx = tk_dvec_scores_max_acceleration(scores->a, scores->n, &val);
+  } else if (strcmp(method, "kneedle") == 0) {
+    double sensitivity = (alpha > 0.0) ? alpha : 1.0;
+    idx = tk_dvec_scores_kneedle(scores->a, scores->n, sensitivity, &val);
+  } else if (strcmp(method, "plateau") == 0) {
+    double tolerance = (alpha > 0.0) ? alpha : 1e-3;
+    idx = tk_dvec_scores_plateau(scores->a, scores->n, tolerance, &val);
+  } else {
+    return luaL_error(L, "unknown elbow method: %s", method);
+  }
+  lua_pushnumber(L, (lua_Number)val);
+  lua_pushnumber(L, (lua_Number)(idx + 1));
+  return 2;
+}
+
 static inline int tk_dvec_multiply_blas_lua (lua_State *L)
 {
   lua_settop(L, 6);
@@ -311,6 +343,7 @@ static luaL_Reg tk_dvec_lua_mt_ext2_fns[] =
   { "scores_kneedle", tk_dvec_scores_kneedle_lua },
   { "scores_tolerance", tk_dvec_scores_tolerance_lua },
   { "scores_plateau", tk_dvec_scores_plateau_lua },
+  { "scores_elbow", tk_dvec_scores_elbow_lua },
   { "mtx_select", tk_dvec_mtx_select_lua },
   { "mtx_extend", tk_dvec_mtx_extend_lua },
   { "mtx_top_variance", tk_dvec_mtx_top_variance_lua },
