@@ -161,6 +161,8 @@ static inline int tk_rvec_scores_elbow_lua (lua_State *L)
   } else if (strcmp(method, "plateau") == 0) {
     double tolerance = (alpha > 0.0) ? alpha : 1e-3;
     idx = tk_rvec_scores_plateau(scores, tolerance, &val);
+  } else if (strcmp(method, "otsu") == 0) {
+    idx = tk_rvec_scores_otsu(scores, &val);
   } else {
     return luaL_error(L, "unknown elbow method: %s", method);
   }

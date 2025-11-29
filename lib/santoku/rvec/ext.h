@@ -767,4 +767,67 @@ static inline size_t tk_rvec_scores_kneedle (
   return final_knee;
 }
 
+
+
+
+static inline size_t tk_rvec_scores_otsu (
+  tk_rvec_t *v,
+  double *out_val
+) {
+  size_t n = v->n;
+  if (n < 2) {
+    if (out_val) *out_val = (n > 0) ? v->a[0].d : 0.0;
+    return n > 0 ? n - 1 : 0;
+  }
+
+
+  double min_val = v->a[0].d, max_val = v->a[0].d;
+  for (size_t i = 1; i < n; i++) {
+    if (v->a[i].d < min_val) min_val = v->a[i].d;
+    if (v->a[i].d > max_val) max_val = v->a[i].d;
+  }
+  if (max_val - min_val < 1e-10) {
+    if (out_val) *out_val = v->a[n - 1].d;
+    return n - 1;
+  }
+
+
+  double total_sum = 0.0;
+  for (size_t i = 0; i < n; i++) {
+    total_sum += v->a[i].d;
+  }
+
+
+
+
+  double best_variance = -1.0;
+  size_t best_k = 0;
+  double sum0 = 0.0;
+
+  for (size_t k = 0; k < n - 1; k++) {
+    sum0 += v->a[k].d;
+    double sum1 = total_sum - sum0;
+
+    size_t n0 = k + 1;
+    size_t n1 = n - n0;
+
+    double w0 = (double)n0 / (double)n;
+    double w1 = (double)n1 / (double)n;
+
+    double mean0 = sum0 / (double)n0;
+    double mean1 = sum1 / (double)n1;
+
+
+    double variance = w0 * w1 * (mean0 - mean1) * (mean0 - mean1);
+
+    if (variance > best_variance) {
+      best_variance = variance;
+      best_k = k;
+    }
+  }
+
+  if (out_val) *out_val = v->a[best_k].d;
+  return best_k;
+}
+
 #endif

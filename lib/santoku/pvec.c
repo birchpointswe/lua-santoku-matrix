@@ -150,6 +150,8 @@ static inline int tk_pvec_scores_elbow_lua (lua_State *L)
   } else if (strcmp(method, "plateau") == 0) {
     int64_t tolerance = (alpha > 0) ? alpha : 0;
     idx = tk_pvec_scores_plateau(scores, tolerance, &val);
+  } else if (strcmp(method, "otsu") == 0) {
+    idx = tk_pvec_scores_otsu(scores, &val);
   } else {
     return luaL_error(L, "unknown elbow method: %s", method);
   }
