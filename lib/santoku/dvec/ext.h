@@ -309,6 +309,93 @@ static inline size_t tk_dvec_scores_kneedle (
   return final_knee;
 }
 
+
+
+static inline size_t tk_dvec_scores_first_gap (
+  double *scores,
+  size_t n,
+  double threshold,
+  double *out_val
+) {
+  if (n < 2) {
+    if (out_val) *out_val = (n > 0) ? scores[0] : 0.0;
+    return n > 0 ? n - 1 : 0;
+  }
+  for (size_t i = 0; i < n - 1; i++) {
+    double gap = scores[i + 1] - scores[i];
+    if (gap > threshold) {
+      if (out_val) *out_val = scores[i];
+      return i;
+    }
+  }
+
+  if (out_val) *out_val = scores[n - 1];
+  return n - 1;
+}
+
+
+
+
+static inline size_t tk_dvec_scores_otsu (
+  double *scores,
+  size_t n,
+  double *out_val
+) {
+  if (n < 2) {
+    if (out_val) *out_val = (n > 0) ? scores[0] : 0.0;
+    return n > 0 ? n - 1 : 0;
+  }
+
+
+  double min_val = scores[0], max_val = scores[0];
+  for (size_t i = 1; i < n; i++) {
+    if (scores[i] < min_val) min_val = scores[i];
+    if (scores[i] > max_val) max_val = scores[i];
+  }
+  if (max_val - min_val < 1e-10) {
+    if (out_val) *out_val = scores[n - 1];
+    return n - 1;
+  }
+
+
+  double total_sum = 0.0;
+  for (size_t i = 0; i < n; i++) {
+    total_sum += scores[i];
+  }
+
+
+
+
+  double best_variance = -1.0;
+  size_t best_k = 0;
+  double sum0 = 0.0;
+
+  for (size_t k = 0; k < n - 1; k++) {
+    sum0 += scores[k];
+    double sum1 = total_sum - sum0;
+
+    size_t n0 = k + 1;
+    size_t n1 = n - n0;
+
+    double w0 = (double)n0 / (double)n;
+    double w1 = (double)n1 / (double)n;
+
+    double mean0 = sum0 / (double)n0;
+    double mean1 = sum1 / (double)n1;
+
+
+    double variance = w0 * w1 * (mean0 - mean1) * (mean0 - mean1);
+
+    if (variance > best_variance) {
+      best_variance = variance;
+      best_k = k;
+    }
+  }
+
+  if (out_val) *out_val = scores[best_k];
+  return best_k;
+}
+
 static inline void tk_dvec_scores_tolerance (
   double *scores,
   size_t n,

@@ -152,6 +152,9 @@ static inline int tk_pvec_scores_elbow_lua (lua_State *L)
     idx = tk_pvec_scores_plateau(scores, tolerance, &val);
   } else if (strcmp(method, "otsu") == 0) {
     idx = tk_pvec_scores_otsu(scores, &val);
+  } else if (strcmp(method, "first_gap") == 0) {
+    int64_t threshold = (alpha > 0) ? alpha : 5;
+    idx = tk_pvec_scores_first_gap(scores, threshold, &val);
   } else {
     return luaL_error(L, "unknown elbow method: %s", method);
   }
