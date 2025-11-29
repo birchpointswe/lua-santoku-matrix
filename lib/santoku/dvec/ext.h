@@ -335,6 +335,73 @@ static inline size_t tk_dvec_scores_first_gap (
 
 
 
+static inline size_t tk_dvec_scores_first_gap_ratio (
+  double *scores,
+  size_t n,
+  double alpha,
+  double *out_val
+) {
+  if (n < 2) {
+    if (out_val) *out_val = (n > 0) ? scores[0] : 0.0;
+    return n > 0 ? n - 1 : 0;
+  }
+  if (alpha <= 0.0) alpha = 3.0;
+
+  size_t n_gaps = n - 1;
+  double *gaps = (double *)malloc(n_gaps * sizeof(double));
+  if (!gaps) {
+    if (out_val) *out_val = scores[n - 1];
+    return n - 1;
+  }
+
+  for (size_t i = 0; i < n_gaps; i++) {
+    gaps[i] = scores[i + 1] - scores[i];
+  }
+
+
+  for (size_t i = 1; i < n_gaps; i++) {
+    double key = gaps[i];
+    size_t j = i;
+    while (j > 0 && gaps[j - 1] > key) {
+      gaps[j] = gaps[j - 1];
+      j--;
+    }
+    gaps[j] = key;
+  }
+
+
+  double median_gap;
+  if (n_gaps % 2 == 1) {
+    median_gap = gaps[n_gaps / 2];
+  } else {
+    median_gap = (gaps[n_gaps / 2 - 1] + gaps[n_gaps / 2]) / 2.0;
+  }
+  free(gaps);
+
+
+  if (median_gap <= 0.0) {
+    if (out_val) *out_val = scores[n - 1];
+    return n - 1;
+  }
+
+  double threshold = alpha * median_gap;
+
+
+  for (size_t i = 0; i < n - 1; i++) {
+    double gap = scores[i + 1] - scores[i];
+    if (gap > threshold) {
+      if (out_val) *out_val = scores[i];
+      return i;
+    }
+  }
+
+
+  if (out_val) *out_val = scores[n - 1];
+  return n - 1;
+}
+
+
+
 
 static inline size_t tk_dvec_scores_otsu (
   double *scores,
