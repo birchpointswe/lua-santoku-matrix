@@ -130,6 +130,12 @@ static inline int tk_dvec_scores_elbow_lua (lua_State *L)
   } else if (strcmp(method, "plateau") == 0) {
     double tolerance = (alpha > 0.0) ? alpha : 1e-3;
     idx = tk_dvec_scores_plateau(scores->a, scores->n, tolerance, &val);
+  } else if (strcmp(method, "first_gap") == 0) {
+    double threshold = (alpha > 0.0) ? alpha : 5.0;
+    idx = tk_dvec_scores_first_gap(scores->a, scores->n, threshold, &val);
+  } else if (strcmp(method, "first_gap_ratio") == 0) {
+    double ratio = (alpha > 0.0) ? alpha : 3.0;
+    idx = tk_dvec_scores_first_gap_ratio(scores->a, scores->n, ratio, &val);
   } else {
     return luaL_error(L, "unknown elbow method: %s", method);
   }
