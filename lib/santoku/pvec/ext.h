@@ -229,7 +229,7 @@ static inline size_t tk_pvec_scores_max_gap (
   int64_t max_gap = 0;
   size_t max_idx = 0;
   for (size_t i = 0; i < n - 1; i++) {
-    int64_t gap = v->a[i + 1].p - v->a[i].p;
+    int64_t gap = llabs(v->a[i + 1].p - v->a[i].p);
     if (gap > max_gap) {
       max_gap = gap;
       max_idx = i;
@@ -237,33 +237,6 @@ static inline size_t tk_pvec_scores_max_gap (
   }
 
   if (max_gap == 0) {
-    if (out_val) *out_val = v->a[n - 1].p;
-    return n - 1;
-  }
-  if (out_val) *out_val = v->a[max_idx].p;
-  return max_idx;
-}
-
-static inline size_t tk_pvec_scores_max_drop (
-  tk_pvec_t *v,
-  int64_t *out_val
-) {
-  size_t n = v->n;
-  if (n < 2) {
-    if (out_val) *out_val = (n > 0) ? v->a[0].p : 0;
-    return n > 0 ? n - 1 : 0;
-  }
-  int64_t max_drop = 0;
-  size_t max_idx = 0;
-  for (size_t i = 0; i < n - 1; i++) {
-    int64_t drop = v->a[i].p - v->a[i + 1].p;
-    if (drop > max_drop) {
-      max_drop = drop;
-      max_idx = i;
-    }
-  }
-
-  if (max_drop == 0) {
     if (out_val) *out_val = v->a[n - 1].p;
     return n - 1;
   }

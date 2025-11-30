@@ -138,7 +138,7 @@ static inline size_t tk_dvec_scores_max_gap (
   double max_gap = 0.0;
   size_t max_idx = 0;
   for (size_t i = 0; i < n - 1; i++) {
-    double gap = scores[i + 1] - scores[i];
+    double gap = fabs(scores[i + 1] - scores[i]);
     if (gap > max_gap) {
       max_gap = gap;
       max_idx = i;
@@ -146,33 +146,6 @@ static inline size_t tk_dvec_scores_max_gap (
   }
 
   if (max_gap < 1e-10) {
-    if (out_val) *out_val = scores[n - 1];
-    return n - 1;
-  }
-  if (out_val) *out_val = scores[max_idx];
-  return max_idx;
-}
-
-static inline size_t tk_dvec_scores_max_drop (
-  double *scores,
-  size_t n,
-  double *out_val
-) {
-  if (n < 2) {
-    if (out_val) *out_val = (n > 0) ? scores[0] : 0.0;
-    return n > 0 ? n - 1 : 0;
-  }
-  double max_drop = 0.0;
-  size_t max_idx = 0;
-  for (size_t i = 0; i < n - 1; i++) {
-    double drop = scores[i] - scores[i + 1];
-    if (drop > max_drop) {
-      max_drop = drop;
-      max_idx = i;
-    }
-  }
-
-  if (max_drop < 1e-10) {
     if (out_val) *out_val = scores[n - 1];
     return n - 1;
   }

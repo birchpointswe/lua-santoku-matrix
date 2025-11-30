@@ -596,7 +596,7 @@ static inline size_t tk_rvec_scores_max_gap (
   double max_gap = 0.0;
   size_t max_idx = 0;
   for (size_t i = 0; i < n - 1; i++) {
-    double gap = v->a[i + 1].d - v->a[i].d;
+    double gap = fabs(v->a[i + 1].d - v->a[i].d);
     if (gap > max_gap) {
       max_gap = gap;
       max_idx = i;
@@ -604,33 +604,6 @@ static inline size_t tk_rvec_scores_max_gap (
   }
 
   if (max_gap < 1e-10) {
-    if (out_val) *out_val = v->a[n - 1].d;
-    return n - 1;
-  }
-  if (out_val) *out_val = v->a[max_idx].d;
-  return max_idx;
-}
-
-static inline size_t tk_rvec_scores_max_drop (
-  tk_rvec_t *v,
-  double *out_val
-) {
-  size_t n = v->n;
-  if (n < 2) {
-    if (out_val) *out_val = (n > 0) ? v->a[0].d : 0.0;
-    return n > 0 ? n - 1 : 0;
-  }
-  double max_drop = 0.0;
-  size_t max_idx = 0;
-  for (size_t i = 0; i < n - 1; i++) {
-    double drop = v->a[i].d - v->a[i + 1].d;
-    if (drop > max_drop) {
-      max_drop = drop;
-      max_idx = i;
-    }
-  }
-
-  if (max_drop < 1e-10) {
     if (out_val) *out_val = v->a[n - 1].d;
     return n - 1;
   }

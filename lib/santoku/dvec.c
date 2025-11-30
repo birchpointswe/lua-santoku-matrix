@@ -57,17 +57,6 @@ static inline int tk_dvec_scores_max_gap_lua (lua_State *L)
   return 2;
 }
 
-static inline int tk_dvec_scores_max_drop_lua (lua_State *L)
-{
-  lua_settop(L, 1);
-  tk_dvec_t *scores = tk_dvec_peek(L, 1, "dvec");
-  double val;
-  size_t idx = tk_dvec_scores_max_drop(scores->a, scores->n, &val);
-  lua_pushnumber(L, (lua_Number)val);
-  lua_pushnumber(L, (lua_Number)(idx + 1));
-  return 2;
-}
-
 static inline int tk_dvec_scores_max_acceleration_lua (lua_State *L)
 {
   lua_settop(L, 1);
@@ -131,8 +120,6 @@ static inline int tk_dvec_scores_elbow_lua (lua_State *L)
     idx = tk_dvec_scores_lmethod(scores->a, scores->n, &val);
   } else if (strcmp(method, "max_gap") == 0) {
     idx = tk_dvec_scores_max_gap(scores->a, scores->n, &val);
-  } else if (strcmp(method, "max_drop") == 0) {
-    idx = tk_dvec_scores_max_drop(scores->a, scores->n, &val);
   } else if (strcmp(method, "max_curvature") == 0) {
     idx = tk_dvec_scores_max_curvature(scores->a, scores->n, &val);
   } else if (strcmp(method, "max_acceleration") == 0) {
@@ -338,7 +325,6 @@ static luaL_Reg tk_dvec_lua_mt_ext2_fns[] =
   { "scores_max_curvature", tk_dvec_scores_max_curvature_lua },
   { "scores_lmethod", tk_dvec_scores_lmethod_lua },
   { "scores_max_gap", tk_dvec_scores_max_gap_lua },
-  { "scores_max_drop", tk_dvec_scores_max_drop_lua },
   { "scores_max_acceleration", tk_dvec_scores_max_acceleration_lua },
   { "scores_kneedle", tk_dvec_scores_kneedle_lua },
   { "scores_tolerance", tk_dvec_scores_tolerance_lua },
