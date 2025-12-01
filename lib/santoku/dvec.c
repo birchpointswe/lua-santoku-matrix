@@ -57,17 +57,6 @@ static inline int tk_dvec_scores_max_gap_lua (lua_State *L)
   return 2;
 }
 
-static inline int tk_dvec_scores_max_acceleration_lua (lua_State *L)
-{
-  lua_settop(L, 1);
-  tk_dvec_t *scores = tk_dvec_peek(L, 1, "dvec");
-  double val;
-  size_t idx = tk_dvec_scores_max_acceleration(scores->a, scores->n, &val);
-  lua_pushnumber(L, (lua_Number)val);
-  lua_pushnumber(L, (lua_Number)(idx + 1));
-  return 2;
-}
-
 static inline int tk_dvec_scores_kneedle_lua (lua_State *L)
 {
   lua_settop(L, 2);
@@ -122,8 +111,6 @@ static inline int tk_dvec_scores_elbow_lua (lua_State *L)
     idx = tk_dvec_scores_max_gap(scores->a, scores->n, &val);
   } else if (strcmp(method, "max_curvature") == 0) {
     idx = tk_dvec_scores_max_curvature(scores->a, scores->n, &val);
-  } else if (strcmp(method, "max_acceleration") == 0) {
-    idx = tk_dvec_scores_max_acceleration(scores->a, scores->n, &val);
   } else if (strcmp(method, "kneedle") == 0) {
     double sensitivity = (alpha > 0.0) ? alpha : 1.0;
     idx = tk_dvec_scores_kneedle(scores->a, scores->n, sensitivity, &val);
@@ -136,6 +123,8 @@ static inline int tk_dvec_scores_elbow_lua (lua_State *L)
   } else if (strcmp(method, "first_gap_ratio") == 0) {
     double ratio = (alpha > 0.0) ? alpha : 3.0;
     idx = tk_dvec_scores_first_gap_ratio(scores->a, scores->n, ratio, &val);
+  } else if (strcmp(method, "otsu") == 0) {
+    idx = tk_dvec_scores_otsu(scores->a, scores->n, &val);
   } else {
     return luaL_error(L, "unknown elbow method: %s", method);
   }
@@ -331,7 +320,6 @@ static luaL_Reg tk_dvec_lua_mt_ext2_fns[] =
   { "scores_max_curvature", tk_dvec_scores_max_curvature_lua },
   { "scores_lmethod", tk_dvec_scores_lmethod_lua },
   { "scores_max_gap", tk_dvec_scores_max_gap_lua },
-  { "scores_max_acceleration", tk_dvec_scores_max_acceleration_lua },
   { "scores_kneedle", tk_dvec_scores_kneedle_lua },
   { "scores_tolerance", tk_dvec_scores_tolerance_lua },
   { "scores_plateau", tk_dvec_scores_plateau_lua },

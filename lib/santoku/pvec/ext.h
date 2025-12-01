@@ -271,40 +271,6 @@ static inline size_t tk_pvec_scores_plateau (
   return end_idx;
 }
 
-static inline size_t tk_pvec_scores_max_acceleration (
-  tk_pvec_t *v,
-  int64_t *out_val
-) {
-  size_t n = v->n;
-  if (n < 3) {
-    if (out_val) *out_val = (n > 0) ? v->a[0].p : 0;
-    return n > 0 ? n - 1 : 0;
-  }
-
-  int64_t min_val = v->a[0].p, max_val = v->a[0].p;
-  for (size_t i = 1; i < n; i++) {
-    if (v->a[i].p < min_val) min_val = v->a[i].p;
-    if (v->a[i].p > max_val) max_val = v->a[i].p;
-  }
-  if (max_val == min_val) {
-    if (out_val) *out_val = v->a[n - 1].p;
-    return n - 1;
-  }
-  int64_t max_accel = INT64_MIN;
-  size_t max_idx = 0;
-  for (size_t i = 0; i < n - 2; i++) {
-    int64_t gap1 = v->a[i + 1].p - v->a[i].p;
-    int64_t gap2 = v->a[i + 2].p - v->a[i + 1].p;
-    int64_t accel = gap2 - gap1;
-    if (accel > max_accel) {
-      max_accel = accel;
-      max_idx = i;
-    }
-  }
-  if (out_val) *out_val = v->a[max_idx].p;
-  return max_idx;
-}
-
 static inline size_t tk_pvec_scores_kneedle (
   tk_pvec_t *v,
   double sensitivity,
@@ -375,6 +341,7 @@ static inline size_t tk_pvec_scores_kneedle (
 
 
 
+
 static inline size_t tk_pvec_scores_first_gap (
   tk_pvec_t *v,
   int64_t threshold,
@@ -386,7 +353,7 @@ static inline size_t tk_pvec_scores_first_gap (
     return n > 0 ? n - 1 : 0;
   }
   for (size_t i = 0; i < n - 1; i++) {
-    int64_t gap = v->a[i + 1].p - v->a[i].p;
+    int64_t gap = llabs(v->a[i + 1].p - v->a[i].p);
     if (gap > threshold) {
       if (out_val) *out_val = v->a[i].p;
       return i;
@@ -396,6 +363,7 @@ static inline size_t tk_pvec_scores_first_gap (
   if (out_val) *out_val = v->a[n - 1].p;
   return n - 1;
 }
+
 
 
 
@@ -418,8 +386,9 @@ static inline size_t tk_pvec_scores_first_gap_ratio (
     return n - 1;
   }
 
+
   for (size_t i = 0; i < n_gaps; i++) {
-    gaps[i] = v->a[i + 1].p - v->a[i].p;
+    gaps[i] = llabs(v->a[i + 1].p - v->a[i].p);
   }
 
 
@@ -443,9 +412,19 @@ static inline size_t tk_pvec_scores_first_gap_ratio (
   free(gaps);
 
 
+
   if (median_gap == 0) {
-    if (out_val) *out_val = v->a[n - 1].p;
-    return n - 1;
+    int64_t max_gap = 0;
+    size_t max_idx = n - 1;
+    for (size_t i = 0; i < n - 1; i++) {
+      int64_t gap = llabs(v->a[i + 1].p - v->a[i].p);
+      if (gap > max_gap) {
+        max_gap = gap;
+        max_idx = i;
+      }
+    }
+    if (out_val) *out_val = v->a[max_idx].p;
+    return max_idx;
   }
 
   int64_t threshold = (int64_t)(alpha * (double)median_gap);
@@ -453,7 +432,7 @@ static inline size_t tk_pvec_scores_first_gap_ratio (
 
 
   for (size_t i = 0; i < n - 1; i++) {
-    int64_t gap = v->a[i + 1].p - v->a[i].p;
+    int64_t gap = llabs(v->a[i + 1].p - v->a[i].p);
     if (gap > threshold) {
       if (out_val) *out_val = v->a[i].p;
       return i;

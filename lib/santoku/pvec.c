@@ -140,8 +140,6 @@ static inline int tk_pvec_scores_elbow_lua (lua_State *L)
     idx = tk_pvec_scores_max_gap(scores, &val);
   } else if (strcmp(method, "max_curvature") == 0) {
     idx = tk_pvec_scores_max_curvature(scores, &val);
-  } else if (strcmp(method, "max_acceleration") == 0) {
-    idx = tk_pvec_scores_max_acceleration(scores, &val);
   } else if (strcmp(method, "kneedle") == 0) {
     double sensitivity = (alpha > 0) ? (double)alpha : 1.0;
     idx = tk_pvec_scores_kneedle(scores, sensitivity, &val);
