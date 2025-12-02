@@ -721,7 +721,7 @@ static inline size_t tk_rvec_scores_first_gap (
   }
   for (size_t i = 0; i < n - 1; i++) {
     double gap = fabs(v->a[i + 1].d - v->a[i].d);
-    if (gap > threshold) {
+    if (gap >= threshold) {
       if (out_val) *out_val = v->a[i].d;
       return i;
     }

@@ -354,7 +354,7 @@ static inline size_t tk_pvec_scores_first_gap (
   }
   for (size_t i = 0; i < n - 1; i++) {
     int64_t gap = llabs(v->a[i + 1].p - v->a[i].p);
-    if (gap > threshold) {
+    if (gap >= threshold) {
       if (out_val) *out_val = v->a[i].p;
       return i;
     }

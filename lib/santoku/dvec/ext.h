@@ -263,7 +263,7 @@ static inline size_t tk_dvec_scores_first_gap (
   }
   for (size_t i = 0; i < n - 1; i++) {
     double gap = fabs(scores[i + 1] - scores[i]);
-    if (gap > threshold) {
+    if (gap >= threshold) {
       if (out_val) *out_val = scores[i];
       return i;
     }
