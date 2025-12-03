@@ -142,31 +142,36 @@ static inline void tk_rvec_ranks (
 }
 
 static inline double tk_csr_pearson_distance(
-  tk_ivec_t *neighbors_a,
-  tk_dvec_t *weights_a,
-  int64_t start_a,
-  int64_t end_a,
+  tk_ivec_t *expected_ids,
+  tk_ivec_t *expected_neighbors,
+  tk_dvec_t *expected_weights,
+  int64_t exp_start,
+  int64_t exp_end,
+  tk_ivec_t *retrieved_ids,
   tk_pvec_t *bin_ranks,
   tk_dumap_t *rank_buffer_b
 ) {
-  uint64_t m = (uint64_t)(end_a - start_a);
+  uint64_t m = (uint64_t)(exp_end - exp_start);
   if (m == 0 || !bin_ranks || bin_ranks->n == 0)
     return 0.0;
+
   tk_dumap_clear(rank_buffer_b);
   int kha;
   for (uint64_t i = 0; i < bin_ranks->n; i++) {
-    int64_t neighbor_pos = bin_ranks->a[i].i;
+    int64_t neighbor_idx = bin_ranks->a[i].i;
+    int64_t neighbor_id = retrieved_ids->a[neighbor_idx];
     double hamming = (double)bin_ranks->a[i].p;
-    uint32_t khi = tk_dumap_put(rank_buffer_b, neighbor_pos, &kha);
+    uint32_t khi = tk_dumap_put(rank_buffer_b, neighbor_id, &kha);
     tk_dumap_setval(rank_buffer_b, khi, hamming);
   }
   double sum_x = 0.0, sum_y = 0.0, sum_xy = 0.0, sum_x2 = 0.0, sum_y2 = 0.0;
   uint64_t n = 0;
-  for (int64_t j = start_a; j < end_a; j++) {
-    int64_t neighbor_pos = neighbors_a->a[j];
-    uint32_t khi = tk_dumap_get(rank_buffer_b, neighbor_pos);
+  for (int64_t j = exp_start; j < exp_end; j++) {
+    int64_t neighbor_idx = expected_neighbors->a[j];
+    int64_t neighbor_id = expected_ids->a[neighbor_idx];
+    uint32_t khi = tk_dumap_get(rank_buffer_b, neighbor_id);
     if (khi != tk_dumap_end(rank_buffer_b)) {
-      double x = weights_a->a[j];
+      double x = expected_weights->a[j];
       double y = tk_dumap_val(rank_buffer_b, khi);
       sum_x += x;
       sum_y += y;
@@ -188,41 +193,47 @@ static inline double tk_csr_pearson_distance(
 }
 
 static inline double tk_csr_spearman_distance(
-  tk_ivec_t *neighbors_a,
-  tk_dvec_t *weights_a,
-  int64_t start_a,
-  int64_t end_a,
+  tk_ivec_t *expected_ids,
+  tk_ivec_t *expected_neighbors,
+  tk_dvec_t *expected_weights,
+  int64_t exp_start,
+  int64_t exp_end,
+  tk_ivec_t *retrieved_ids,
   tk_pvec_t *sorted_bin_ranks,
   tk_pvec_t *weight_ranks_buffer,
   tk_dumap_t *weight_rank_map
 ) {
-  uint64_t m = (uint64_t)(end_a - start_a);
+  uint64_t m = (uint64_t)(exp_end - exp_start);
   if (m == 0 || !sorted_bin_ranks || sorted_bin_ranks->n == 0)
     return 0.0;
   if (sorted_bin_ranks->n < 2)
     return 0.0;
   if (tk_pvec_ensure(weight_ranks_buffer, m) != 0)
     return 0.0;
+
   weight_ranks_buffer->n = m;
   uint64_t idx = 0;
-  for (int64_t j = start_a; j < end_a; j++) {
-    int64_t neighbor_pos = neighbors_a->a[j];
-    double weight = weights_a->a[j];
-    weight_ranks_buffer->a[idx++] = tk_pair(neighbor_pos, weight);
+  for (int64_t j = exp_start; j < exp_end; j++) {
+    int64_t neighbor_idx = expected_neighbors->a[j];
+    int64_t neighbor_id = expected_ids->a[neighbor_idx];
+    double weight = expected_weights->a[j];
+    weight_ranks_buffer->a[idx++] = tk_pair(neighbor_id, weight);
   }
   tk_pvec_desc(weight_ranks_buffer, 0, weight_ranks_buffer->n);
+
   tk_dumap_clear(weight_rank_map);
   for (uint64_t i = 0; i < weight_ranks_buffer->n; i++) {
-    int64_t neighbor_pos = weight_ranks_buffer->a[i].i;
+    int64_t neighbor_id = weight_ranks_buffer->a[i].i;
     int kha;
-    uint32_t khi = tk_dumap_put(weight_rank_map, neighbor_pos, &kha);
+    uint32_t khi = tk_dumap_put(weight_rank_map, neighbor_id, &kha);
     tk_dumap_setval(weight_rank_map, khi, (double)i);
   }
   double sum_x = 0.0, sum_y = 0.0, sum_xy = 0.0, sum_x2 = 0.0, sum_y2 = 0.0;
   uint64_t n = 0;
   for (uint64_t i = 0; i < sorted_bin_ranks->n; i++) {
-    int64_t neighbor_pos = sorted_bin_ranks->a[i].i;
-    uint32_t khi = tk_dumap_get(weight_rank_map, neighbor_pos);
+    int64_t neighbor_idx = sorted_bin_ranks->a[i].i;
+    int64_t neighbor_id = retrieved_ids->a[neighbor_idx];
+    uint32_t khi = tk_dumap_get(weight_rank_map, neighbor_id);
     if (khi != tk_dumap_end(weight_rank_map)) {
       double x_rank = tk_dumap_val(weight_rank_map, khi);
       double y_rank = (double)i;
@@ -390,14 +401,16 @@ static inline double tk_csr_variance_ratio(
 }
 
 static inline double tk_csr_ndcg_distance(
-  tk_ivec_t *neighbors_a,
-  tk_dvec_t *weights_a,
-  int64_t start_a,
-  int64_t end_a,
+  tk_ivec_t *expected_ids,
+  tk_ivec_t *expected_neighbors,
+  tk_dvec_t *expected_weights,
+  int64_t exp_start,
+  int64_t exp_end,
+  tk_ivec_t *retrieved_ids,
   tk_pvec_t *sorted_bin_ranks,
   tk_dumap_t *weight_map
 ) {
-  uint64_t m = (uint64_t)(end_a - start_a);
+  uint64_t m = (uint64_t)(exp_end - exp_start);
   if (m == 0 || !sorted_bin_ranks || sorted_bin_ranks->n == 0)
     return 0.0;
   if (sorted_bin_ranks->n < 1)
@@ -406,10 +419,11 @@ static inline double tk_csr_ndcg_distance(
 
   tk_dumap_clear(weight_map);
   int kha;
-  for (int64_t j = start_a; j < end_a; j++) {
-    int64_t neighbor_pos = neighbors_a->a[j];
-    double weight = weights_a->a[j];
-    uint32_t khi = tk_dumap_put(weight_map, neighbor_pos, &kha);
+  for (int64_t j = exp_start; j < exp_end; j++) {
+    int64_t neighbor_idx = expected_neighbors->a[j];
+    int64_t neighbor_id = expected_ids->a[neighbor_idx];
+    double weight = expected_weights->a[j];
+    uint32_t khi = tk_dumap_put(weight_map, neighbor_id, &kha);
     tk_dumap_setval(weight_map, khi, weight);
   }
 
@@ -417,8 +431,9 @@ static inline double tk_csr_ndcg_distance(
 
   double dcg = 0.0;
   for (uint64_t i = 0; i < sorted_bin_ranks->n; i++) {
-    int64_t neighbor_pos = sorted_bin_ranks->a[i].i;
-    uint32_t khi = tk_dumap_get(weight_map, neighbor_pos);
+    int64_t neighbor_idx = sorted_bin_ranks->a[i].i;
+    int64_t neighbor_id = retrieved_ids->a[neighbor_idx];
+    uint32_t khi = tk_dumap_get(weight_map, neighbor_id);
     if (khi != tk_dumap_end(weight_map)) {
       double relevance = tk_dumap_val(weight_map, khi);
       double position = (double)(i + 1);
@@ -428,35 +443,26 @@ static inline double tk_csr_ndcg_distance(
   }
 
 
+
+
   double idcg = 0.0;
+  uint64_t k = sorted_bin_ranks->n;
 
-  uint64_t n_items = 0;
-  for (uint64_t i = 0; i < sorted_bin_ranks->n; i++) {
-    int64_t neighbor_pos = sorted_bin_ranks->a[i].i;
-    if (tk_dumap_get(weight_map, neighbor_pos) != tk_dumap_end(weight_map))
-      n_items++;
-  }
-
-  if (n_items == 0)
+  if (m == 0)
     return 0.0;
 
 
-  double *sorted_weights = malloc(n_items * sizeof(double));
+  double *sorted_weights = malloc(m * sizeof(double));
   if (!sorted_weights)
     return 0.0;
 
-  uint64_t idx = 0;
-  for (uint64_t i = 0; i < sorted_bin_ranks->n && idx < n_items; i++) {
-    int64_t neighbor_pos = sorted_bin_ranks->a[i].i;
-    uint32_t khi = tk_dumap_get(weight_map, neighbor_pos);
-    if (khi != tk_dumap_end(weight_map)) {
-      sorted_weights[idx++] = tk_dumap_val(weight_map, khi);
-    }
+  for (uint64_t i = 0; i < m; i++) {
+    sorted_weights[i] = expected_weights->a[(uint64_t)exp_start + i];
   }
 
 
-  for (uint64_t i = 0; i < n_items - 1; i++) {
-    for (uint64_t j = i + 1; j < n_items; j++) {
+  for (uint64_t i = 0; i < m - 1; i++) {
+    for (uint64_t j = i + 1; j < m; j++) {
       if (sorted_weights[j] > sorted_weights[i]) {
         double tmp = sorted_weights[i];
         sorted_weights[i] = sorted_weights[j];
@@ -466,7 +472,8 @@ static inline double tk_csr_ndcg_distance(
   }
 
 
-  for (uint64_t i = 0; i < n_items; i++) {
+  uint64_t idcg_count = (m < k) ? m : k;
+  for (uint64_t i = 0; i < idcg_count; i++) {
     double relevance = sorted_weights[i];
     double position = (double)(i + 1);
     double discount = log2(position + 1.0);
