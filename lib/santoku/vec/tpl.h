@@ -214,6 +214,12 @@ static inline void tk_vec_pfx(shrink) (
 static inline void tk_vec_pfx(clear) (tk_vec_pfx(t) *v) {
   v->n = 0;
 }
+static inline void tk_vec_pfx(clear_range) (tk_vec_pfx(t) *v, int64_t start, int64_t end) {
+  if (start < 0) start = 0;
+  if (end < 0 || end > (int64_t) v->n) end = (int64_t) v->n;
+  if (start < end)
+    memset(v->a + start, 0, (size_t)(end - start) * sizeof(tk_vec_base));
+}
 static inline void tk_vec_pfx(zero) (tk_vec_pfx(t) *v) {
   memset(v->a, 0, v->m * sizeof(tk_vec_base));
 }
@@ -366,8 +372,18 @@ static inline int tk_vec_pfx(ieach_lua) (lua_State *L)
 
 #endif
 
-static inline void tk_vec_pfx(shuffle) (tk_vec_pfx(t) *v) {
-  tk_vec_shuffle(tk_vec_pfx(asc), v->n, v->a);
+static inline void tk_vec_pfx(shuffle) (tk_vec_pfx(t) *v, uint64_t s, uint64_t e) {
+  if (s >= e || s >= v->n) return;
+  if (e > v->n) e = v->n;
+  uint64_t n = e - s;
+  if (n <= 1) return;
+  tk_vec_base *a = v->a + s;
+  for (uint64_t i = n; i > 1; --i) {
+    uint64_t j = tk_fast_index((unsigned int)i);
+    tk_vec_base tmp = a[j];
+    a[j] = a[i-1];
+    a[i-1] = tmp;
+  }
 }
 
 static inline void tk_vec_pfx(asc) (tk_vec_pfx(t) *v, uint64_t s, uint64_t e) {
@@ -669,9 +685,15 @@ static inline int tk_vec_pfx(ensure_lua) (lua_State *L)
 
 static inline int tk_vec_pfx(clear_lua) (lua_State *L)
 {
-  lua_settop(L, 1);
+  int t = lua_gettop(L);
   tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
-  tk_vec_pfx(clear)(m0);
+  if (t == 1) {
+    tk_vec_pfx(clear)(m0);
+  } else {
+    int64_t start = tk_lua_optinteger(L, 2, "start", 0);
+    int64_t end = tk_lua_optinteger(L, 3, "end", (int64_t) m0->n);
+    tk_vec_pfx(clear_range)(m0, start, end);
+  }
   return 0;
 }
 
@@ -703,9 +725,11 @@ static inline int tk_vec_pfx(transpose_lua) (lua_State *L)
 
 static inline int tk_vec_pfx(shuffle_lua) (lua_State *L)
 {
-  lua_settop(L, 1);
+  lua_settop(L, 3);
   tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
-  tk_vec_pfx(shuffle)(m0);
+  uint64_t start = tk_lua_optunsigned(L, 2, "start", 0);
+  uint64_t end = tk_lua_optunsigned(L, 3, "end", m0->n);
+  tk_vec_pfx(shuffle)(m0, start, end);
   return 1;
 }
 

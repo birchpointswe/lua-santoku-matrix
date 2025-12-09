@@ -1,5 +1,6 @@
 #include <santoku/iuset.h>
 #include <santoku/rvec.h>
+#include <santoku/ivec/ext.h>
 
 static inline int tk_rvec_split_lua (lua_State *L) {
   lua_settop(L, 4);
@@ -173,6 +174,21 @@ static inline int tk_rvec_scores_elbow_lua (lua_State *L)
   return 2;
 }
 
+static inline int tk_rvec_rankings_lua (lua_State *L) {
+  lua_settop(L, 3);
+  tk_dvec_t *scores = tk_dvec_peek(L, 1, "scores");
+  uint64_t n_visible = tk_lua_checkunsigned(L, 2, "n_visible");
+  uint64_t n_hidden = tk_lua_checkunsigned(L, 3, "n_hidden");
+  tk_rvec_rankings(L, scores, n_visible, n_hidden);
+  return 1;
+}
+
+static luaL_Reg tk_rvec_lua_ext_fns[] =
+{
+  { "rankings", tk_rvec_rankings_lua },
+  { NULL, NULL }
+};
+
 static luaL_Reg tk_rvec_lua_mt_ext2_fns[] =
 {
   { "get", tk_rvec_get_lua },
@@ -199,6 +215,7 @@ int luaopen_santoku_rvec (lua_State *L)
 {
   lua_newtable(L);
   luaL_register(L, NULL, tk_rvec_lua_fns);
+  luaL_register(L, NULL, tk_rvec_lua_ext_fns);
   tk_rvec_create(L, 0, 0, 0);
   luaL_getmetafield(L, -1, "__index");
   luaL_register(L, NULL, tk_rvec_lua_mt_fns);

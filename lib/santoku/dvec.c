@@ -147,6 +147,23 @@ static inline int tk_dvec_multiply_blas_lua (lua_State *L)
   return 1;
 }
 
+static inline int tk_dvec_multiplyv_blas_lua (lua_State *L)
+{
+  lua_settop(L, 5);
+  tk_dvec_t *y = tk_dvec_peek(L, 1, "y");
+  tk_dvec_t *A = tk_dvec_peek(L, 2, "A");
+  tk_dvec_t *x = tk_dvec_peek(L, 3, "x");
+  uint64_t cols = tk_lua_checkunsigned(L, 4, "cols");
+  bool transpose = lua_toboolean(L, 5);
+  uint64_t rows = A->n / cols;
+  uint64_t out_len = transpose ? cols : rows;
+  tk_dvec_ensure(y, out_len);
+  y->n = out_len;
+  tk_dvec_gemv(transpose, rows, cols, 1.0, A->a, x->a, 0.0, y->a);
+  lua_pushvalue(L, 1);
+  return 1;
+}
+
 static inline int tk_dvec_rsums_blas_lua (lua_State *L)
 {
   lua_settop(L, 2);
@@ -313,6 +330,7 @@ static luaL_Reg tk_dvec_lua_mt_ext2_fns[] =
   { "center", tk_dvec_center_lua },
   { "rnorml2", tk_dvec_rnorml2_lua },
   { "multiply", tk_dvec_multiply_blas_lua },
+  { "multiplyv", tk_dvec_multiplyv_blas_lua },
   { "rsums", tk_dvec_rsums_blas_lua },
   { "csums", tk_dvec_csums_blas_lua },
   { "rmags", tk_dvec_rmags_blas_lua },

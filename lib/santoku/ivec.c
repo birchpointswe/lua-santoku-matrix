@@ -609,9 +609,17 @@ static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
   { NULL, NULL }
 };
 
+static inline int tk_ivec_from_rvec_lua (lua_State *L) {
+  lua_settop(L, 1);
+  tk_rvec_t *R = tk_rvec_peek(L, 1, "rvec");
+  tk_ivec_from_rvec(L, R);
+  return 1;
+}
+
 static luaL_Reg tk_ivec_lua_ext_fns[] =
 {
   { "bits_from_cvec", tk_ivec_bits_from_cvec_lua },
+  { "from_rvec", tk_ivec_from_rvec_lua },
   { NULL, NULL }
 };
 
