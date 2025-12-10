@@ -4,7 +4,6 @@ local err = require("santoku.error")
 local env = require("santoku.env")
 local str = require("santoku.string")
 local sys = require("santoku.system")
-arr.flatten = arr.flatten or function(t, d) d = d or 1; local r = {}; local function f(a, l) for i = 1, #a do local v = a[i]; if l > 0 and type(v) == "table" then f(v, l - 1) else r[#r + 1] = v end end end; f(t, d); return r end
 local base = fs.runfile("make.common.lua")
 local ld_preload = env.var("LD_PRELOAD", nil)
 local asan = sys.sh({ "sh", "-c", str.format([[
