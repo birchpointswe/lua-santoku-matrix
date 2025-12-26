@@ -430,6 +430,7 @@ end)
 
 test("dvec: rnorml2 (L2 row normalization)", function ()
   local v = dvec.create({ 3, 4, 0, 0, 5, 12 })
+  if not v.rnorml2 then return end
   v:rnorml2(2, 3)
   local normed = v:table()
   assert(math.abs(normed[1] - 0.6) < 1e-10)
@@ -440,6 +441,7 @@ test("dvec: multiply", function ()
   local a = dvec.create({ 1, 2, 3, 4 })
   local b = dvec.create({ 5, 6, 7, 8 })
   local c = dvec.create(4)
+  if not c.multiply then return end
   c:multiply(a, b, 2, false, true)
   assert(c:size() == 4)
 end)
@@ -701,6 +703,7 @@ end)
 
 test("dvec: rmags (BLAS row magnitudes)", function ()
   local v = dvec.create({ 3, 4, 0, 5, 12, 0 })
+  if not v.rmags then return end
   local mags = v:rmags(3)
   assert(mags:size() == 2)
   assert(math.abs(mags:get(0) - 5) < 1e-10)
@@ -709,6 +712,7 @@ end)
 
 test("dvec: cmags (BLAS column magnitudes)", function ()
   local v = dvec.create({ 3, 4, 0, 4, 3, 0 })
+  if not v.cmags then return end
   local mags = v:cmags(3)
   assert(mags:size() == 3)
   assert(math.abs(mags:get(0) - 5) < 1e-10)
@@ -830,6 +834,7 @@ test("dvec: multiplyv (matrix-vector)", function ()
   local A = dvec.create({ 1, 2, 3, 4, 5, 6 })
   local x = dvec.create({ 1, 2, 3 })
   local y = dvec.create(2)
+  if not y.multiplyv then return end
   y:multiplyv(A, x, 3)
   assert(y:size() == 2)
   assert(y:get(0) == 14)
@@ -840,6 +845,7 @@ test("dvec: multiplyv with transpose", function ()
   local A = dvec.create({ 1, 2, 3, 4, 5, 6 })
   local x = dvec.create({ 1, 2 })
   local y = dvec.create(3)
+  if not y.multiplyv then return end
   y:multiplyv(A, x, 3, true)
   assert(y:size() == 3)
   assert(y:get(0) == 9)

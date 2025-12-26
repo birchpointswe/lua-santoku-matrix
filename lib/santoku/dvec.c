@@ -133,6 +133,8 @@ static inline int tk_dvec_scores_elbow_lua (lua_State *L)
   return 2;
 }
 
+#if !defined(__EMSCRIPTEN__)
+
 static inline int tk_dvec_multiply_blas_lua (lua_State *L)
 {
   lua_settop(L, 6);
@@ -199,6 +201,8 @@ static inline int tk_dvec_cmags_blas_lua (lua_State *L)
   tk_dvec_cmags_override(L, m, cols);
   return 1;
 }
+
+#endif
 
 static inline int tk_dvec_mtx_select_lua (lua_State *L)
 {
@@ -329,12 +333,14 @@ static luaL_Reg tk_dvec_lua_mt_ext2_fns[] =
 {
   { "center", tk_dvec_center_lua },
   { "rnorml2", tk_dvec_rnorml2_lua },
+#if !defined(__EMSCRIPTEN__)
   { "multiply", tk_dvec_multiply_blas_lua },
   { "multiplyv", tk_dvec_multiplyv_blas_lua },
   { "rsums", tk_dvec_rsums_blas_lua },
   { "csums", tk_dvec_csums_blas_lua },
   { "rmags", tk_dvec_rmags_blas_lua },
   { "cmags", tk_dvec_cmags_blas_lua },
+#endif
   { "scores_max_curvature", tk_dvec_scores_max_curvature_lua },
   { "scores_lmethod", tk_dvec_scores_lmethod_lua },
   { "scores_max_gap", tk_dvec_scores_max_gap_lua },

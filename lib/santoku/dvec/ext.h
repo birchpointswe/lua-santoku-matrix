@@ -1,8 +1,10 @@
 #ifndef TK_DVEC_EXT_H
 #define TK_DVEC_EXT_H
 
+#if !defined(__EMSCRIPTEN__)
 #include <lapacke.h>
 #include <cblas.h>
+#endif
 #if defined(_OPENMP) && !defined(__EMSCRIPTEN__)
 #include <omp.h>
 #endif
@@ -458,6 +460,8 @@ static inline void tk_dvec_scores_tolerance (
   *out_end = best_end;
 }
 
+#if !defined(__EMSCRIPTEN__)
+
 static inline void tk_dvec_gemv(
   bool transpose,
   uint64_t rows,
@@ -543,6 +547,8 @@ static inline void tk_dvec_multiply_override(tk_dvec_t *a, tk_dvec_t *b, tk_dvec
               0.0, c->a, n);
 }
 
+#endif
+
 static inline void tk_dvec_scale_overridev(tk_dvec_t *a, tk_dvec_t *b, uint64_t start, uint64_t end) {
   if (end > a->n) {
     tk_dvec_ensure(a, end);
@@ -552,6 +558,8 @@ static inline void tk_dvec_scale_overridev(tk_dvec_t *a, tk_dvec_t *b, uint64_t 
   for (size_t i = start; i < end; i++)
     a->a[i] *= b->a[i];
 }
+
+#if !defined(__EMSCRIPTEN__)
 
 static inline tk_dvec_t *tk_dvec_rmags_override(lua_State *L, tk_dvec_t *m0, uint64_t cols) {
   uint64_t rows = m0->n / cols;
@@ -596,6 +604,8 @@ static inline tk_dvec_t *tk_dvec_csums_override(lua_State *L, tk_dvec_t *m0, uin
   tk_dvec_destroy(ones);
   return out;
 }
+
+#endif
 
 #include <santoku/iumap.h>
 
