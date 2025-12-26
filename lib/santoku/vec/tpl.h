@@ -1,6 +1,8 @@
 #include <santoku/lua/utils.h>
 #include <santoku/klib.h>
+#if defined(_OPENMP) && !defined(__EMSCRIPTEN__)
 #include <omp.h>
+#endif
 
 #ifndef tk_vec_lt
 #define tk_vec_lt(a, b) ((a) < (b))

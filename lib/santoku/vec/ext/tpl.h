@@ -1,4 +1,6 @@
+#if defined(_OPENMP) && !defined(__EMSCRIPTEN__)
 #include <omp.h>
+#endif
 
 #define tk_vec_pfx(name) tk_pp_strcat(tk_vec_name, name)
 

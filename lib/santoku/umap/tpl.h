@@ -236,7 +236,7 @@ static inline int tk_umap_pfx(keach_lua_iter) (lua_State *L)
     return 0;
 
 
-  lua_pushinteger(L, i + 1);
+  lua_pushinteger(L, (lua_Integer)(i + 1));
   lua_replace(L, lua_upvalueindex(2));
 
 
@@ -249,7 +249,7 @@ static inline int tk_umap_pfx(keach_lua) (lua_State *L)
   lua_settop(L, 1);
   tk_umap_pfx(t) *h = tk_umap_pfx(peek)(L, 1, "umap");
   lua_pushvalue(L, 1);
-  lua_pushinteger(L, tk_umap_pfx(begin)(h));
+  lua_pushinteger(L, (lua_Integer)tk_umap_pfx(begin)(h));
   lua_pushcclosure(L, tk_umap_pfx(keach_lua_iter), 2);
   return 1;
 }
@@ -271,11 +271,11 @@ static inline int tk_umap_pfx(ieach_lua_iter) (lua_State *L)
     return 0;
 
 
-  lua_pushinteger(L, i + 1);
+  lua_pushinteger(L, (lua_Integer)(i + 1));
   lua_replace(L, lua_upvalueindex(2));
 
 
-  lua_pushinteger(L, i);
+  lua_pushinteger(L, (lua_Integer)i);
   return 1;
 }
 
@@ -284,7 +284,7 @@ static inline int tk_umap_pfx(ieach_lua) (lua_State *L)
   lua_settop(L, 1);
   tk_umap_pfx(t) *h = tk_umap_pfx(peek)(L, 1, "umap");
   lua_pushvalue(L, 1);
-  lua_pushinteger(L, tk_umap_pfx(begin)(h));
+  lua_pushinteger(L, (lua_Integer)tk_umap_pfx(begin)(h));
   lua_pushcclosure(L, tk_umap_pfx(ieach_lua_iter), 2);
   return 1;
 }
@@ -354,7 +354,7 @@ static inline int tk_umap_pfx(get_lua) (lua_State *L)
   tk_umap_pfx(t) *h = tk_umap_pfx(peek)(L, 1, "umap");
   tk_umap_key k = tk_umap_peekkey(L, 2, "key");
   uint32_t i = tk_umap_pfx(get)(h, k);
-  lua_pushinteger(L, i);
+  lua_pushinteger(L, (lua_Integer) i);
   lua_pushboolean(L, i != tk_umap_pfx(end)(h));
   return 2;
 }
@@ -367,7 +367,7 @@ static inline int tk_umap_pfx(put_lua) (lua_State *L)
   tk_umap_key k = tk_umap_peekkey(L, 2, "key");
   int absent;
   uint32_t iter = tk_umap_pfx(put)(h, k, &absent);
-  lua_pushinteger(L, iter);
+  lua_pushinteger(L, (lua_Integer) iter);
   lua_pushboolean(L, absent);
   return 2;
 }

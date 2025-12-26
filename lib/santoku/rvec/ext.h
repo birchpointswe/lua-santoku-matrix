@@ -1,7 +1,9 @@
 #ifndef TK_RVEC_EXT_H
 #define TK_RVEC_EXT_H
 
+#if defined(_OPENMP) && !defined(__EMSCRIPTEN__)
 #include <omp.h>
+#endif
 #include <float.h>
 #include <stdlib.h>
 #include <santoku/dumap.h>

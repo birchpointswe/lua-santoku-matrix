@@ -1,7 +1,9 @@
 #ifndef TK_IUSET_EXT_H
 #define TK_IUSET_EXT_H
 
+#if defined(_OPENMP) && !defined(__EMSCRIPTEN__)
 #include <omp.h>
+#endif
 #include <santoku/klib.h>
 #include <santoku/ivec.h>
 #include <santoku/cvec.h>

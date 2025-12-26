@@ -15,7 +15,7 @@
 #define TK_STR(...) TK_STR_HELPER(__VA_ARGS__)
 #endif
 
-#ifdef TK_GENERATE_SINGLE
+#if defined(TK_GENERATE_SINGLE) || !defined(_OPENMP) || defined(__EMSCRIPTEN__)
   #define TK_PARALLEL
   #define TK_PARALLEL_FOR(...)
   #define TK_FOR(...)
@@ -25,8 +25,12 @@
   #define TK_CRITICAL_BEGIN
   #define TK_CRITICAL_END
   #define TK_ATOMIC
-  #define tk_parallel_sfx_helper(base) base##_serial
-  #define tk_parallel_sfx(base) tk_parallel_sfx_helper(base)
+  #ifdef TK_GENERATE_SINGLE
+    #define tk_parallel_sfx_helper(base) base##_serial
+    #define tk_parallel_sfx(base) tk_parallel_sfx_helper(base)
+  #else
+    #define tk_parallel_sfx(base) base
+  #endif
 #else
   #define TK_PARALLEL _Pragma("omp parallel")
   #define TK_PARALLEL_FOR(...) _Pragma(TK_STR(omp parallel for __VA_ARGS__))

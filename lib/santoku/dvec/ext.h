@@ -3,7 +3,9 @@
 
 #include <lapacke.h>
 #include <cblas.h>
+#if defined(_OPENMP) && !defined(__EMSCRIPTEN__)
 #include <omp.h>
+#endif
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>

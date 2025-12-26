@@ -1,7 +1,9 @@
 #ifndef TK_IVEC_EXT_H
 #define TK_IVEC_EXT_H
 
+#if defined(_OPENMP) && !defined(__EMSCRIPTEN__)
 #include <omp.h>
+#endif
 #include <santoku/rvec.h>
 #include <santoku/dvec.h>
 #include <santoku/iumap.h>
