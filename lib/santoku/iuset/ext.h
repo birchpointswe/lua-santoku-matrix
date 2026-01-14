@@ -963,6 +963,124 @@ static inline tk_ivec_t *tk_ivec_bits_top_chi2 (
   }
 }
 
+
+
+
+
+
+static inline tk_ivec_t *tk_ivec_bits_top_coherence (
+  lua_State *L,
+  tk_ivec_t *set_bits,
+  char *codes,
+  uint64_t n_samples,
+  uint64_t n_visible,
+  uint64_t n_hidden,
+  uint64_t top_k,
+  bool filter_baseline
+) {
+  tk_ivec_asc(set_bits, 0, set_bits->n);
+
+  if (!codes) {
+    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_create(L, 0, 0, 0);
+    return out;
+  }
+
+  double baseline_mean_hamming = 0.0;
+  if (filter_baseline) {
+    tk_ivec_t *total_ones = tk_ivec_create(0, n_hidden, 0, 0);
+    tk_ivec_zero(total_ones);
+    #pragma omp parallel
+    {
+      int64_t *local_ones = (int64_t *)calloc(n_hidden, sizeof(int64_t));
+      #pragma omp for nowait
+      for (uint64_t s = 0; s < n_samples; s++) {
+        uint8_t *sc = (uint8_t *)(codes + s * TK_CVEC_BITS_BYTES(n_hidden));
+        for (uint64_t b = 0; b < n_hidden; b++) {
+          if (sc[b / CHAR_BIT] & (1u << (b % CHAR_BIT)))
+            local_ones[b]++;
+        }
+      }
+      #pragma omp critical
+      for (uint64_t b = 0; b < n_hidden; b++)
+        total_ones->a[b] += local_ones[b];
+      free(local_ones);
+    }
+    double total_disagreements = 0.0;
+    for (uint64_t b = 0; b < n_hidden; b++) {
+      int64_t n1 = total_ones->a[b];
+      int64_t n0 = (int64_t)n_samples - n1;
+      total_disagreements += (double)n1 * (double)n0;
+    }
+    double total_pairs = (double)n_samples * (double)(n_samples - 1) / 2.0;
+    baseline_mean_hamming = total_disagreements / total_pairs;
+    tk_ivec_destroy(total_ones);
+  }
+
+  tk_ivec_t *active_counts = tk_ivec_create(0, n_visible * n_hidden, 0, 0);
+  tk_ivec_t *feat_counts = tk_ivec_create(0, n_visible, 0, 0);
+  tk_ivec_zero(active_counts);
+  tk_ivec_zero(feat_counts);
+
+  uint64_t prev_sample = UINT64_MAX;
+  uint8_t *sample_codes = NULL;
+  for (uint64_t i = 0; i < set_bits->n; i++) {
+    int64_t bit_idx = set_bits->a[i];
+    if (bit_idx < 0)
+      continue;
+    uint64_t sample_idx = (uint64_t)bit_idx / n_visible;
+    uint64_t feature_idx = (uint64_t)bit_idx % n_visible;
+    if (sample_idx >= n_samples || feature_idx >= n_visible)
+      continue;
+    feat_counts->a[feature_idx]++;
+    if (sample_idx != prev_sample) {
+      prev_sample = sample_idx;
+      sample_codes = (uint8_t *)(codes + sample_idx * TK_CVEC_BITS_BYTES(n_hidden));
+    }
+    for (uint64_t b = 0; b < n_hidden; b++) {
+      uint64_t byte_idx = b / CHAR_BIT;
+      uint64_t bit_pos = b % CHAR_BIT;
+      if (sample_codes[byte_idx] & (1u << bit_pos)) {
+        active_counts->a[feature_idx * n_hidden + b]++;
+      }
+    }
+  }
+
+  tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+  #pragma omp parallel for
+  for (uint64_t f = 0; f < n_visible; f++) {
+    int64_t k_f = feat_counts->a[f];
+    if (k_f < 2)
+      continue;
+    double sum_disagreements = 0.0;
+    for (uint64_t b = 0; b < n_hidden; b++) {
+      int64_t n1 = active_counts->a[f * n_hidden + b];
+      int64_t n0 = k_f - n1;
+      sum_disagreements += (double)n1 * (double)n0;
+    }
+    double num_pairs = (double)k_f * (double)(k_f - 1) / 2.0;
+    double mean_hamming = sum_disagreements / num_pairs;
+    if (filter_baseline && mean_hamming >= baseline_mean_hamming)
+      continue;
+    double normalized = mean_hamming / (double)n_hidden;
+    double coherence = 1.0 - normalized;
+    tk_rank_t r = { (int64_t)f, coherence };
+    #pragma omp critical
+    tk_rvec_hmin(top_heap, top_k, r);
+  }
+
+  tk_ivec_destroy(active_counts);
+  tk_ivec_destroy(feat_counts);
+
+  tk_rvec_desc(top_heap, 0, top_heap->n);
+  tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+  tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+  tk_rvec_keys(L, top_heap, out);
+  tk_rvec_values(L, top_heap, weights);
+  tk_rvec_destroy(top_heap);
+  return out;
+}
+
 static inline tk_ivec_t *tk_ivec_bits_top_entropy (
   lua_State *L,
   tk_ivec_t *set_bits,
@@ -1612,6 +1730,117 @@ static inline tk_ivec_t *tk_ivec_bits_top_lift (
     return out;
 
   }
+}
+
+
+
+
+static inline tk_ivec_t *tk_cvec_bits_top_coherence (
+  lua_State *L,
+  tk_cvec_t *bitmap,
+  tk_cvec_t *codes,
+  uint64_t n_samples,
+  uint64_t n_features,
+  uint64_t n_hidden,
+  uint64_t top_k,
+  bool filter_baseline
+) {
+  if (!codes) {
+    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_create(L, 0, 0, 0);
+    return out;
+  }
+
+  double baseline_mean_hamming = 0.0;
+  if (filter_baseline) {
+    tk_ivec_t *total_ones = tk_ivec_create(0, n_hidden, 0, 0);
+    tk_ivec_zero(total_ones);
+    #pragma omp parallel
+    {
+      int64_t *local_ones = (int64_t *)calloc(n_hidden, sizeof(int64_t));
+      #pragma omp for nowait
+      for (uint64_t s = 0; s < n_samples; s++) {
+        uint8_t *sc = (uint8_t *)(codes->a + s * TK_CVEC_BITS_BYTES(n_hidden));
+        for (uint64_t b = 0; b < n_hidden; b++) {
+          if (sc[b / CHAR_BIT] & (1u << (b % CHAR_BIT)))
+            local_ones[b]++;
+        }
+      }
+      #pragma omp critical
+      for (uint64_t b = 0; b < n_hidden; b++)
+        total_ones->a[b] += local_ones[b];
+      free(local_ones);
+    }
+    double total_disagreements = 0.0;
+    for (uint64_t b = 0; b < n_hidden; b++) {
+      int64_t n1 = total_ones->a[b];
+      int64_t n0 = (int64_t)n_samples - n1;
+      total_disagreements += (double)n1 * (double)n0;
+    }
+    double total_pairs = (double)n_samples * (double)(n_samples - 1) / 2.0;
+    baseline_mean_hamming = total_disagreements / total_pairs;
+    tk_ivec_destroy(total_ones);
+  }
+
+  tk_ivec_t *active_counts = tk_ivec_create(0, n_features * n_hidden, 0, 0);
+  tk_ivec_t *feat_counts = tk_ivec_create(0, n_features, 0, 0);
+  tk_ivec_zero(active_counts);
+  tk_ivec_zero(feat_counts);
+
+  uint8_t *bitmap_data = (uint8_t *)bitmap->a;
+  uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
+  for (uint64_t s = 0; s < n_samples; s++) {
+    uint64_t sample_offset = s * bytes_per_sample;
+    uint8_t *sample_codes = (uint8_t *)(codes->a + s * TK_CVEC_BITS_BYTES(n_hidden));
+    for (uint64_t f = 0; f < n_features; f++) {
+      uint64_t byte_idx = f / CHAR_BIT;
+      uint8_t bit_idx = f % CHAR_BIT;
+      if (bitmap_data[sample_offset + byte_idx] & (1u << bit_idx)) {
+        feat_counts->a[f]++;
+        for (uint64_t b = 0; b < n_hidden; b++) {
+          uint64_t b_byte = b / CHAR_BIT;
+          uint8_t b_bit = b % CHAR_BIT;
+          if (sample_codes[b_byte] & (1u << b_bit)) {
+            active_counts->a[f * n_hidden + b]++;
+          }
+        }
+      }
+    }
+  }
+
+  tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+  #pragma omp parallel for
+  for (uint64_t f = 0; f < n_features; f++) {
+    int64_t k_f = feat_counts->a[f];
+    if (k_f < 2)
+      continue;
+    double sum_disagreements = 0.0;
+    for (uint64_t b = 0; b < n_hidden; b++) {
+      int64_t n1 = active_counts->a[f * n_hidden + b];
+      int64_t n0 = k_f - n1;
+      sum_disagreements += (double)n1 * (double)n0;
+    }
+    double num_pairs = (double)k_f * (double)(k_f - 1) / 2.0;
+    double mean_hamming = sum_disagreements / num_pairs;
+    if (filter_baseline && mean_hamming >= baseline_mean_hamming)
+      continue;
+    double normalized = mean_hamming / (double)n_hidden;
+    double coherence = 1.0 - normalized;
+    tk_rank_t r = { (int64_t)f, coherence };
+    #pragma omp critical
+    tk_rvec_hmin(top_heap, top_k, r);
+  }
+
+  tk_ivec_destroy(active_counts);
+  tk_ivec_destroy(feat_counts);
+
+  tk_rvec_desc(top_heap, 0, top_heap->n);
+  tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+  tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+  tk_rvec_keys(L, top_heap, out);
+  tk_rvec_values(L, top_heap, weights);
+  tk_rvec_destroy(top_heap);
+  return out;
 }
 
 static inline tk_ivec_t *tk_cvec_bits_top_entropy (

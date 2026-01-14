@@ -47,6 +47,24 @@ static inline int tk_ivec_bits_top_chi2_lua (lua_State *L)
   return 2;
 }
 
+static inline int tk_ivec_bits_top_coherence_lua (lua_State *L)
+{
+  lua_settop(L, 7);
+  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
+  uint64_t n_samples = tk_lua_checkunsigned(L, 3, "samples");
+  uint64_t n_visible = tk_lua_checkunsigned(L, 4, "visible");
+  uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
+  uint64_t top_k = lua_isnil(L, 6) ? n_visible : tk_lua_checkunsigned(L, 6, "top_k");
+  bool filter_baseline = lua_toboolean(L, 7);
+  char *codes = NULL;
+  if (!lua_isnil(L, 2) && tk_lua_testuserdata(L, 2, "tk_cvec_t")) {
+    tk_cvec_t *cvec = tk_cvec_peek(L, 2, "codes");
+    codes = cvec->a;
+  }
+  tk_ivec_bits_top_coherence(L, set_bits, codes, n_samples, n_visible, n_hidden, top_k, filter_baseline);
+  return 2;
+}
+
 static inline int tk_ivec_bits_top_lift_lua (lua_State *L)
 {
   lua_settop(L, 6);
@@ -586,6 +604,7 @@ static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
   { "bits_top_chi2", tk_ivec_bits_top_chi2_lua },
   { "bits_top_mi", tk_ivec_bits_top_mi_lua },
   { "bits_top_lift", tk_ivec_bits_top_lift_lua },
+  { "bits_top_coherence", tk_ivec_bits_top_coherence_lua },
   { "bits_top_entropy", tk_ivec_bits_top_entropy_lua },
   { "bits_top_df", tk_ivec_bits_top_df_lua },
   { "bits_select", tk_ivec_bits_select_lua },
