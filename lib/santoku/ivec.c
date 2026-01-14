@@ -55,13 +55,13 @@ static inline int tk_ivec_bits_top_coherence_lua (lua_State *L)
   uint64_t n_visible = tk_lua_checkunsigned(L, 4, "visible");
   uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
   uint64_t top_k = lua_isnil(L, 6) ? n_visible : tk_lua_checkunsigned(L, 6, "top_k");
-  bool filter_baseline = lua_toboolean(L, 7);
+  double lambda = lua_isnil(L, 7) ? 0.5 : luaL_checknumber(L, 7);
   char *codes = NULL;
   if (!lua_isnil(L, 2) && tk_lua_testuserdata(L, 2, "tk_cvec_t")) {
     tk_cvec_t *cvec = tk_cvec_peek(L, 2, "codes");
     codes = cvec->a;
   }
-  tk_ivec_bits_top_coherence(L, set_bits, codes, n_samples, n_visible, n_hidden, top_k, filter_baseline);
+  tk_ivec_bits_top_coherence(L, set_bits, codes, n_samples, n_visible, n_hidden, top_k, lambda);
   return 2;
 }
 

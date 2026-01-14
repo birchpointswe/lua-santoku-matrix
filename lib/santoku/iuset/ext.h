@@ -976,7 +976,7 @@ static inline tk_ivec_t *tk_ivec_bits_top_coherence (
   uint64_t n_visible,
   uint64_t n_hidden,
   uint64_t top_k,
-  bool filter_baseline
+  double lambda
 ) {
   tk_ivec_asc(set_bits, 0, set_bits->n);
 
@@ -984,37 +984,6 @@ static inline tk_ivec_t *tk_ivec_bits_top_coherence (
     tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
     tk_dvec_create(L, 0, 0, 0);
     return out;
-  }
-
-  double baseline_mean_hamming = 0.0;
-  if (filter_baseline) {
-    tk_ivec_t *total_ones = tk_ivec_create(0, n_hidden, 0, 0);
-    tk_ivec_zero(total_ones);
-    #pragma omp parallel
-    {
-      int64_t *local_ones = (int64_t *)calloc(n_hidden, sizeof(int64_t));
-      #pragma omp for nowait
-      for (uint64_t s = 0; s < n_samples; s++) {
-        uint8_t *sc = (uint8_t *)(codes + s * TK_CVEC_BITS_BYTES(n_hidden));
-        for (uint64_t b = 0; b < n_hidden; b++) {
-          if (sc[b / CHAR_BIT] & (1u << (b % CHAR_BIT)))
-            local_ones[b]++;
-        }
-      }
-      #pragma omp critical
-      for (uint64_t b = 0; b < n_hidden; b++)
-        total_ones->a[b] += local_ones[b];
-      free(local_ones);
-    }
-    double total_disagreements = 0.0;
-    for (uint64_t b = 0; b < n_hidden; b++) {
-      int64_t n1 = total_ones->a[b];
-      int64_t n0 = (int64_t)n_samples - n1;
-      total_disagreements += (double)n1 * (double)n0;
-    }
-    double total_pairs = (double)n_samples * (double)(n_samples - 1) / 2.0;
-    baseline_mean_hamming = total_disagreements / total_pairs;
-    tk_ivec_destroy(total_ones);
   }
 
   tk_ivec_t *active_counts = tk_ivec_create(0, n_visible * n_hidden, 0, 0);
@@ -1060,11 +1029,13 @@ static inline tk_ivec_t *tk_ivec_bits_top_coherence (
     }
     double num_pairs = (double)k_f * (double)(k_f - 1) / 2.0;
     double mean_hamming = sum_disagreements / num_pairs;
-    if (filter_baseline && mean_hamming >= baseline_mean_hamming)
-      continue;
     double normalized = mean_hamming / (double)n_hidden;
     double coherence = 1.0 - normalized;
-    tk_rank_t r = { (int64_t)f, coherence };
+    double penalty = lambda / sqrt(num_pairs);
+    double score = coherence - penalty;
+    if (score <= 0.0)
+      continue;
+    tk_rank_t r = { (int64_t)f, score };
     #pragma omp critical
     tk_rvec_hmin(top_heap, top_k, r);
   }
@@ -1734,7 +1705,6 @@ static inline tk_ivec_t *tk_ivec_bits_top_lift (
 
 
 
-
 static inline tk_ivec_t *tk_cvec_bits_top_coherence (
   lua_State *L,
   tk_cvec_t *bitmap,
@@ -1743,43 +1713,12 @@ static inline tk_ivec_t *tk_cvec_bits_top_coherence (
   uint64_t n_features,
   uint64_t n_hidden,
   uint64_t top_k,
-  bool filter_baseline
+  double lambda
 ) {
   if (!codes) {
     tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
     tk_dvec_create(L, 0, 0, 0);
     return out;
-  }
-
-  double baseline_mean_hamming = 0.0;
-  if (filter_baseline) {
-    tk_ivec_t *total_ones = tk_ivec_create(0, n_hidden, 0, 0);
-    tk_ivec_zero(total_ones);
-    #pragma omp parallel
-    {
-      int64_t *local_ones = (int64_t *)calloc(n_hidden, sizeof(int64_t));
-      #pragma omp for nowait
-      for (uint64_t s = 0; s < n_samples; s++) {
-        uint8_t *sc = (uint8_t *)(codes->a + s * TK_CVEC_BITS_BYTES(n_hidden));
-        for (uint64_t b = 0; b < n_hidden; b++) {
-          if (sc[b / CHAR_BIT] & (1u << (b % CHAR_BIT)))
-            local_ones[b]++;
-        }
-      }
-      #pragma omp critical
-      for (uint64_t b = 0; b < n_hidden; b++)
-        total_ones->a[b] += local_ones[b];
-      free(local_ones);
-    }
-    double total_disagreements = 0.0;
-    for (uint64_t b = 0; b < n_hidden; b++) {
-      int64_t n1 = total_ones->a[b];
-      int64_t n0 = (int64_t)n_samples - n1;
-      total_disagreements += (double)n1 * (double)n0;
-    }
-    double total_pairs = (double)n_samples * (double)(n_samples - 1) / 2.0;
-    baseline_mean_hamming = total_disagreements / total_pairs;
-    tk_ivec_destroy(total_ones);
   }
 
   tk_ivec_t *active_counts = tk_ivec_create(0, n_features * n_hidden, 0, 0);
@@ -1822,11 +1761,13 @@ static inline tk_ivec_t *tk_cvec_bits_top_coherence (
     }
     double num_pairs = (double)k_f * (double)(k_f - 1) / 2.0;
     double mean_hamming = sum_disagreements / num_pairs;
-    if (filter_baseline && mean_hamming >= baseline_mean_hamming)
-      continue;
     double normalized = mean_hamming / (double)n_hidden;
     double coherence = 1.0 - normalized;
-    tk_rank_t r = { (int64_t)f, coherence };
+    double penalty = lambda / sqrt(num_pairs);
+    double score = coherence - penalty;
+    if (score <= 0.0)
+      continue;
+    tk_rank_t r = { (int64_t)f, score };
     #pragma omp critical
     tk_rvec_hmin(top_heap, top_k, r);
   }

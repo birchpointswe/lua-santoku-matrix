@@ -186,8 +186,8 @@ static inline int tk_cvec_bits_top_coherence_lua (lua_State *L) {
   uint64_t n_features = tk_lua_checkunsigned(L, 4, "n_features");
   uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "n_hidden");
   uint64_t top_k = lua_isnil(L, 6) ? n_features : tk_lua_checkunsigned(L, 6, "top_k");
-  bool filter_baseline = lua_toboolean(L, 7);
-  tk_cvec_bits_top_coherence(L, bitmap, codes, n_samples, n_features, n_hidden, top_k, filter_baseline);
+  double lambda = lua_isnil(L, 7) ? 0.5 : luaL_checknumber(L, 7);
+  tk_cvec_bits_top_coherence(L, bitmap, codes, n_samples, n_features, n_hidden, top_k, lambda);
   return 2;
 }
 
