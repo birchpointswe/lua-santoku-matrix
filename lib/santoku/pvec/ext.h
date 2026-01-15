@@ -246,7 +246,7 @@ static inline size_t tk_pvec_scores_max_gap (
 
 static inline size_t tk_pvec_scores_plateau (
   tk_pvec_t *v,
-  int64_t tolerance,
+  double tolerance,
   int64_t *out_val
 ) {
   size_t n = v->n;
@@ -258,10 +258,24 @@ static inline size_t tk_pvec_scores_plateau (
     if (out_val) *out_val = v->a[0].p;
     return 0;
   }
+  if (tolerance <= 0.0) tolerance = 0.01;
+
+  int64_t min_score = v->a[0].p, max_score = v->a[0].p;
+  for (size_t i = 1; i < n; i++) {
+    if (v->a[i].p < min_score) min_score = v->a[i].p;
+    if (v->a[i].p > max_score) max_score = v->a[i].p;
+  }
+  int64_t range = max_score - min_score;
+  if (range <= 0) {
+    if (out_val) *out_val = v->a[n - 1].p;
+    return n - 1;
+  }
+
+  int64_t abs_tolerance = (int64_t)(tolerance * range);
   int64_t base = v->a[0].p;
   size_t end_idx = 0;
   for (size_t i = 1; i < n; i++) {
-    if (llabs(v->a[i].p - base) <= tolerance) {
+    if (llabs(v->a[i].p - base) <= abs_tolerance) {
       end_idx = i;
     } else {
       break;
@@ -344,31 +358,6 @@ static inline size_t tk_pvec_scores_kneedle (
 
 static inline size_t tk_pvec_scores_first_gap (
   tk_pvec_t *v,
-  int64_t threshold,
-  int64_t *out_val
-) {
-  size_t n = v->n;
-  if (n < 2) {
-    if (out_val) *out_val = (n > 0) ? v->a[0].p : 0;
-    return n > 0 ? n - 1 : 0;
-  }
-  for (size_t i = 0; i < n - 1; i++) {
-    int64_t gap = llabs(v->a[i + 1].p - v->a[i].p);
-    if (gap >= threshold) {
-      if (out_val) *out_val = v->a[i].p;
-      return i;
-    }
-  }
-
-  if (out_val) *out_val = v->a[n - 1].p;
-  return n - 1;
-}
-
-
-
-
-static inline size_t tk_pvec_scores_first_gap_ratio (
-  tk_pvec_t *v,
   double alpha,
   int64_t *out_val
 ) {
@@ -386,11 +375,9 @@ static inline size_t tk_pvec_scores_first_gap_ratio (
     return n - 1;
   }
 
-
   for (size_t i = 0; i < n_gaps; i++) {
     gaps[i] = llabs(v->a[i + 1].p - v->a[i].p);
   }
-
 
   for (size_t i = 1; i < n_gaps; i++) {
     int64_t key = gaps[i];
@@ -402,7 +389,6 @@ static inline size_t tk_pvec_scores_first_gap_ratio (
     gaps[j] = key;
   }
 
-
   int64_t median_gap;
   if (n_gaps % 2 == 1) {
     median_gap = gaps[n_gaps / 2];
@@ -410,8 +396,6 @@ static inline size_t tk_pvec_scores_first_gap_ratio (
     median_gap = (gaps[n_gaps / 2 - 1] + gaps[n_gaps / 2]) / 2;
   }
   free(gaps);
-
-
 
   if (median_gap == 0) {
     int64_t max_gap = 0;
@@ -430,7 +414,6 @@ static inline size_t tk_pvec_scores_first_gap_ratio (
   int64_t threshold = (int64_t)(alpha * (double)median_gap);
   if (threshold < 1) threshold = 1;
 
-
   for (size_t i = 0; i < n - 1; i++) {
     int64_t gap = llabs(v->a[i + 1].p - v->a[i].p);
     if (gap > threshold) {
@@ -439,10 +422,11 @@ static inline size_t tk_pvec_scores_first_gap_ratio (
     }
   }
 
-
   if (out_val) *out_val = v->a[n - 1].p;
   return n - 1;
 }
+
+#define tk_pvec_scores_first_gap_ratio tk_pvec_scores_first_gap
 
 
 

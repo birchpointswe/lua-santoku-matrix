@@ -157,6 +157,8 @@ static inline size_t tk_dvec_scores_max_gap (
   return max_idx;
 }
 
+
+
 static inline size_t tk_dvec_scores_plateau (
   double *scores,
   size_t n,
@@ -171,10 +173,24 @@ static inline size_t tk_dvec_scores_plateau (
     if (out_val) *out_val = scores[0];
     return 0;
   }
+  if (tolerance <= 0.0) tolerance = 0.01;
+
+  double min_score = scores[0], max_score = scores[0];
+  for (size_t i = 1; i < n; i++) {
+    if (scores[i] < min_score) min_score = scores[i];
+    if (scores[i] > max_score) max_score = scores[i];
+  }
+  double range = max_score - min_score;
+  if (range <= 0.0) {
+    if (out_val) *out_val = scores[n - 1];
+    return n - 1;
+  }
+
+  double abs_tolerance = tolerance * range;
   double base = scores[0];
   size_t end_idx = 0;
   for (size_t i = 1; i < n; i++) {
-    if (fabs(scores[i] - base) <= tolerance) {
+    if (fabs(scores[i] - base) <= abs_tolerance) {
       end_idx = i;
     } else {
       break;
@@ -255,32 +271,10 @@ static inline size_t tk_dvec_scores_kneedle (
 
 
 
+
+
+
 static inline size_t tk_dvec_scores_first_gap (
-  double *scores,
-  size_t n,
-  double threshold,
-  double *out_val
-) {
-  if (n < 2) {
-    if (out_val) *out_val = (n > 0) ? scores[0] : 0.0;
-    return n > 0 ? n - 1 : 0;
-  }
-  for (size_t i = 0; i < n - 1; i++) {
-    double gap = fabs(scores[i + 1] - scores[i]);
-    if (gap >= threshold) {
-      if (out_val) *out_val = scores[i];
-      return i;
-    }
-  }
-
-  if (out_val) *out_val = scores[n - 1];
-  return n - 1;
-}
-
-
-
-
-static inline size_t tk_dvec_scores_first_gap_ratio (
   double *scores,
   size_t n,
   double alpha,
@@ -299,7 +293,6 @@ static inline size_t tk_dvec_scores_first_gap_ratio (
     return n - 1;
   }
 
-
   for (size_t i = 0; i < n_gaps; i++) {
     gaps[i] = fabs(scores[i + 1] - scores[i]);
   }
@@ -315,7 +308,6 @@ static inline size_t tk_dvec_scores_first_gap_ratio (
     gaps[j] = key;
   }
 
-
   double median_gap;
   if (n_gaps % 2 == 1) {
     median_gap = gaps[n_gaps / 2];
@@ -323,8 +315,6 @@ static inline size_t tk_dvec_scores_first_gap_ratio (
     median_gap = (gaps[n_gaps / 2 - 1] + gaps[n_gaps / 2]) / 2.0;
   }
   free(gaps);
-
-
 
   if (median_gap <= 0.0) {
     double max_gap = 0.0;
@@ -342,7 +332,6 @@ static inline size_t tk_dvec_scores_first_gap_ratio (
 
   double threshold = alpha * median_gap;
 
-
   for (size_t i = 0; i < n - 1; i++) {
     double gap = fabs(scores[i + 1] - scores[i]);
     if (gap > threshold) {
@@ -351,10 +340,11 @@ static inline size_t tk_dvec_scores_first_gap_ratio (
     }
   }
 
-
   if (out_val) *out_val = scores[n - 1];
   return n - 1;
 }
+
+#define tk_dvec_scores_first_gap_ratio tk_dvec_scores_first_gap
 
 
 
