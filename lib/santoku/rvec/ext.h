@@ -801,8 +801,6 @@ static inline size_t tk_rvec_scores_first_gap (
   return n - 1;
 }
 
-#define tk_rvec_scores_first_gap_ratio tk_rvec_scores_first_gap
-
 
 
 

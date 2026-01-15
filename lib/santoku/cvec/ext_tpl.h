@@ -22,24 +22,7 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_popcount) (
     memcpy(&chunk, &data[i * 16], sizeof(__uint128_t));
     uint64_t low = (uint64_t)chunk;
     uint64_t high = (uint64_t)(chunk >> 64);
-
-    count += tk_popcount8((uint8_t)(low));
-    count += tk_popcount8((uint8_t)(low >> 8));
-    count += tk_popcount8((uint8_t)(low >> 16));
-    count += tk_popcount8((uint8_t)(low >> 24));
-    count += tk_popcount8((uint8_t)(low >> 32));
-    count += tk_popcount8((uint8_t)(low >> 40));
-    count += tk_popcount8((uint8_t)(low >> 48));
-    count += tk_popcount8((uint8_t)(low >> 56));
-
-    count += tk_popcount8((uint8_t)(high));
-    count += tk_popcount8((uint8_t)(high >> 8));
-    count += tk_popcount8((uint8_t)(high >> 16));
-    count += tk_popcount8((uint8_t)(high >> 24));
-    count += tk_popcount8((uint8_t)(high >> 32));
-    count += tk_popcount8((uint8_t)(high >> 40));
-    count += tk_popcount8((uint8_t)(high >> 48));
-    count += tk_popcount8((uint8_t)(high >> 56));
+    count += (uint64_t)__builtin_popcountll(low) + (uint64_t)__builtin_popcountll(high);
   }
 
   uint64_t offset = n128 * 16;
@@ -48,14 +31,7 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_popcount) (
   for (uint64_t i = 0; i < n64; i++) {
     uint64_t chunk;
     memcpy(&chunk, &data[offset + i * 8], sizeof(uint64_t));
-    count += tk_popcount8((uint8_t)(chunk));
-    count += tk_popcount8((uint8_t)(chunk >> 8));
-    count += tk_popcount8((uint8_t)(chunk >> 16));
-    count += tk_popcount8((uint8_t)(chunk >> 24));
-    count += tk_popcount8((uint8_t)(chunk >> 32));
-    count += tk_popcount8((uint8_t)(chunk >> 40));
-    count += tk_popcount8((uint8_t)(chunk >> 48));
-    count += tk_popcount8((uint8_t)(chunk >> 56));
+    count += (uint64_t)__builtin_popcountll(chunk);
   }
   offset += n64 * 8;
 #else
@@ -65,14 +41,7 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_popcount) (
   for (uint64_t i = 0; i < n64; i++) {
     uint64_t chunk;
     memcpy(&chunk, &data[i * 8], sizeof(uint64_t));
-    count += tk_popcount8((uint8_t)(chunk));
-    count += tk_popcount8((uint8_t)(chunk >> 8));
-    count += tk_popcount8((uint8_t)(chunk >> 16));
-    count += tk_popcount8((uint8_t)(chunk >> 24));
-    count += tk_popcount8((uint8_t)(chunk >> 32));
-    count += tk_popcount8((uint8_t)(chunk >> 40));
-    count += tk_popcount8((uint8_t)(chunk >> 48));
-    count += tk_popcount8((uint8_t)(chunk >> 56));
+    count += (uint64_t)__builtin_popcountll(chunk);
   }
   uint64_t offset = n64 * 8;
 #endif
@@ -109,24 +78,7 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming) (
     __uint128_t xor_chunk = a_chunk ^ b_chunk;
     uint64_t low = (uint64_t)xor_chunk;
     uint64_t high = (uint64_t)(xor_chunk >> 64);
-
-    dist += tk_popcount8((uint8_t)(low));
-    dist += tk_popcount8((uint8_t)(low >> 8));
-    dist += tk_popcount8((uint8_t)(low >> 16));
-    dist += tk_popcount8((uint8_t)(low >> 24));
-    dist += tk_popcount8((uint8_t)(low >> 32));
-    dist += tk_popcount8((uint8_t)(low >> 40));
-    dist += tk_popcount8((uint8_t)(low >> 48));
-    dist += tk_popcount8((uint8_t)(low >> 56));
-
-    dist += tk_popcount8((uint8_t)(high));
-    dist += tk_popcount8((uint8_t)(high >> 8));
-    dist += tk_popcount8((uint8_t)(high >> 16));
-    dist += tk_popcount8((uint8_t)(high >> 24));
-    dist += tk_popcount8((uint8_t)(high >> 32));
-    dist += tk_popcount8((uint8_t)(high >> 40));
-    dist += tk_popcount8((uint8_t)(high >> 48));
-    dist += tk_popcount8((uint8_t)(high >> 56));
+    dist += (uint64_t)__builtin_popcountll(low) + (uint64_t)__builtin_popcountll(high);
   }
 
   uint64_t offset = n128 * 16;
@@ -137,14 +89,7 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming) (
     memcpy(&a_chunk, &a[offset + i * 8], sizeof(uint64_t));
     memcpy(&b_chunk, &b[offset + i * 8], sizeof(uint64_t));
     uint64_t xor_chunk = a_chunk ^ b_chunk;
-    dist += tk_popcount8((uint8_t)(xor_chunk));
-    dist += tk_popcount8((uint8_t)(xor_chunk >> 8));
-    dist += tk_popcount8((uint8_t)(xor_chunk >> 16));
-    dist += tk_popcount8((uint8_t)(xor_chunk >> 24));
-    dist += tk_popcount8((uint8_t)(xor_chunk >> 32));
-    dist += tk_popcount8((uint8_t)(xor_chunk >> 40));
-    dist += tk_popcount8((uint8_t)(xor_chunk >> 48));
-    dist += tk_popcount8((uint8_t)(xor_chunk >> 56));
+    dist += (uint64_t)__builtin_popcountll(xor_chunk);
   }
   offset += n64 * 8;
 #else
@@ -156,14 +101,7 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming) (
     memcpy(&a_chunk, &a[i * 8], sizeof(uint64_t));
     memcpy(&b_chunk, &b[i * 8], sizeof(uint64_t));
     uint64_t xor_chunk = a_chunk ^ b_chunk;
-    dist += tk_popcount8((uint8_t)(xor_chunk));
-    dist += tk_popcount8((uint8_t)(xor_chunk >> 8));
-    dist += tk_popcount8((uint8_t)(xor_chunk >> 16));
-    dist += tk_popcount8((uint8_t)(xor_chunk >> 24));
-    dist += tk_popcount8((uint8_t)(xor_chunk >> 32));
-    dist += tk_popcount8((uint8_t)(xor_chunk >> 40));
-    dist += tk_popcount8((uint8_t)(xor_chunk >> 48));
-    dist += tk_popcount8((uint8_t)(xor_chunk >> 56));
+    dist += (uint64_t)__builtin_popcountll(xor_chunk);
   }
   uint64_t offset = n64 * 8;
 #endif
@@ -202,24 +140,7 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming_mask) (
     __uint128_t masked = (a_chunk ^ b_chunk) & m_chunk;
     uint64_t low = (uint64_t)masked;
     uint64_t high = (uint64_t)(masked >> 64);
-
-    dist += tk_popcount8((uint8_t)(low));
-    dist += tk_popcount8((uint8_t)(low >> 8));
-    dist += tk_popcount8((uint8_t)(low >> 16));
-    dist += tk_popcount8((uint8_t)(low >> 24));
-    dist += tk_popcount8((uint8_t)(low >> 32));
-    dist += tk_popcount8((uint8_t)(low >> 40));
-    dist += tk_popcount8((uint8_t)(low >> 48));
-    dist += tk_popcount8((uint8_t)(low >> 56));
-
-    dist += tk_popcount8((uint8_t)(high));
-    dist += tk_popcount8((uint8_t)(high >> 8));
-    dist += tk_popcount8((uint8_t)(high >> 16));
-    dist += tk_popcount8((uint8_t)(high >> 24));
-    dist += tk_popcount8((uint8_t)(high >> 32));
-    dist += tk_popcount8((uint8_t)(high >> 40));
-    dist += tk_popcount8((uint8_t)(high >> 48));
-    dist += tk_popcount8((uint8_t)(high >> 56));
+    dist += (uint64_t)__builtin_popcountll(low) + (uint64_t)__builtin_popcountll(high);
   }
 
   uint64_t offset = n128 * 16;
@@ -231,14 +152,7 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming_mask) (
     memcpy(&b_chunk, &b[offset + i * 8], sizeof(uint64_t));
     memcpy(&m_chunk, &mask[offset + i * 8], sizeof(uint64_t));
     uint64_t masked = (a_chunk ^ b_chunk) & m_chunk;
-    dist += tk_popcount8((uint8_t)(masked));
-    dist += tk_popcount8((uint8_t)(masked >> 8));
-    dist += tk_popcount8((uint8_t)(masked >> 16));
-    dist += tk_popcount8((uint8_t)(masked >> 24));
-    dist += tk_popcount8((uint8_t)(masked >> 32));
-    dist += tk_popcount8((uint8_t)(masked >> 40));
-    dist += tk_popcount8((uint8_t)(masked >> 48));
-    dist += tk_popcount8((uint8_t)(masked >> 56));
+    dist += (uint64_t)__builtin_popcountll(masked);
   }
   offset += n64 * 8;
 #else
@@ -251,14 +165,7 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming_mask) (
     memcpy(&b_chunk, &b[i * 8], sizeof(uint64_t));
     memcpy(&m_chunk, &mask[i * 8], sizeof(uint64_t));
     uint64_t masked = (a_chunk ^ b_chunk) & m_chunk;
-    dist += tk_popcount8((uint8_t)(masked));
-    dist += tk_popcount8((uint8_t)(masked >> 8));
-    dist += tk_popcount8((uint8_t)(masked >> 16));
-    dist += tk_popcount8((uint8_t)(masked >> 24));
-    dist += tk_popcount8((uint8_t)(masked >> 32));
-    dist += tk_popcount8((uint8_t)(masked >> 40));
-    dist += tk_popcount8((uint8_t)(masked >> 48));
-    dist += tk_popcount8((uint8_t)(masked >> 56));
+    dist += (uint64_t)__builtin_popcountll(masked);
   }
   uint64_t offset = n64 * 8;
 #endif
@@ -298,47 +205,12 @@ static inline void tk_parallel_sfx(tk_cvec_bits_popcount_andnot) (
     memcpy(&b_chunk, &b[i * 16], sizeof(__uint128_t));
     __uint128_t va = a_chunk;
     __uint128_t vandnot = va & ~b_chunk;
-
     uint64_t a_low = (uint64_t)va;
     uint64_t a_high = (uint64_t)(va >> 64);
     uint64_t n_low = (uint64_t)vandnot;
     uint64_t n_high = (uint64_t)(vandnot >> 64);
-
-    pop_a += tk_popcount8((uint8_t)(a_low));
-    pop_a += tk_popcount8((uint8_t)(a_low >> 8));
-    pop_a += tk_popcount8((uint8_t)(a_low >> 16));
-    pop_a += tk_popcount8((uint8_t)(a_low >> 24));
-    pop_a += tk_popcount8((uint8_t)(a_low >> 32));
-    pop_a += tk_popcount8((uint8_t)(a_low >> 40));
-    pop_a += tk_popcount8((uint8_t)(a_low >> 48));
-    pop_a += tk_popcount8((uint8_t)(a_low >> 56));
-
-    pop_a += tk_popcount8((uint8_t)(a_high));
-    pop_a += tk_popcount8((uint8_t)(a_high >> 8));
-    pop_a += tk_popcount8((uint8_t)(a_high >> 16));
-    pop_a += tk_popcount8((uint8_t)(a_high >> 24));
-    pop_a += tk_popcount8((uint8_t)(a_high >> 32));
-    pop_a += tk_popcount8((uint8_t)(a_high >> 40));
-    pop_a += tk_popcount8((uint8_t)(a_high >> 48));
-    pop_a += tk_popcount8((uint8_t)(a_high >> 56));
-
-    pop_andnot += tk_popcount8((uint8_t)(n_low));
-    pop_andnot += tk_popcount8((uint8_t)(n_low >> 8));
-    pop_andnot += tk_popcount8((uint8_t)(n_low >> 16));
-    pop_andnot += tk_popcount8((uint8_t)(n_low >> 24));
-    pop_andnot += tk_popcount8((uint8_t)(n_low >> 32));
-    pop_andnot += tk_popcount8((uint8_t)(n_low >> 40));
-    pop_andnot += tk_popcount8((uint8_t)(n_low >> 48));
-    pop_andnot += tk_popcount8((uint8_t)(n_low >> 56));
-
-    pop_andnot += tk_popcount8((uint8_t)(n_high));
-    pop_andnot += tk_popcount8((uint8_t)(n_high >> 8));
-    pop_andnot += tk_popcount8((uint8_t)(n_high >> 16));
-    pop_andnot += tk_popcount8((uint8_t)(n_high >> 24));
-    pop_andnot += tk_popcount8((uint8_t)(n_high >> 32));
-    pop_andnot += tk_popcount8((uint8_t)(n_high >> 40));
-    pop_andnot += tk_popcount8((uint8_t)(n_high >> 48));
-    pop_andnot += tk_popcount8((uint8_t)(n_high >> 56));
+    pop_a += (uint64_t)__builtin_popcountll(a_low) + (uint64_t)__builtin_popcountll(a_high);
+    pop_andnot += (uint64_t)__builtin_popcountll(n_low) + (uint64_t)__builtin_popcountll(n_high);
   }
 
   uint64_t offset = n128 * 16;
@@ -350,24 +222,8 @@ static inline void tk_parallel_sfx(tk_cvec_bits_popcount_andnot) (
     memcpy(&b_chunk, &b[offset + i * 8], sizeof(uint64_t));
     uint64_t va = a_chunk;
     uint64_t vandnot = va & ~b_chunk;
-
-    pop_a += tk_popcount8((uint8_t)(va));
-    pop_a += tk_popcount8((uint8_t)(va >> 8));
-    pop_a += tk_popcount8((uint8_t)(va >> 16));
-    pop_a += tk_popcount8((uint8_t)(va >> 24));
-    pop_a += tk_popcount8((uint8_t)(va >> 32));
-    pop_a += tk_popcount8((uint8_t)(va >> 40));
-    pop_a += tk_popcount8((uint8_t)(va >> 48));
-    pop_a += tk_popcount8((uint8_t)(va >> 56));
-
-    pop_andnot += tk_popcount8((uint8_t)(vandnot));
-    pop_andnot += tk_popcount8((uint8_t)(vandnot >> 8));
-    pop_andnot += tk_popcount8((uint8_t)(vandnot >> 16));
-    pop_andnot += tk_popcount8((uint8_t)(vandnot >> 24));
-    pop_andnot += tk_popcount8((uint8_t)(vandnot >> 32));
-    pop_andnot += tk_popcount8((uint8_t)(vandnot >> 40));
-    pop_andnot += tk_popcount8((uint8_t)(vandnot >> 48));
-    pop_andnot += tk_popcount8((uint8_t)(vandnot >> 56));
+    pop_a += (uint64_t)__builtin_popcountll(va);
+    pop_andnot += (uint64_t)__builtin_popcountll(vandnot);
   }
   offset += n64 * 8;
 #else
@@ -380,24 +236,8 @@ static inline void tk_parallel_sfx(tk_cvec_bits_popcount_andnot) (
     memcpy(&b_chunk, &b[i * 8], sizeof(uint64_t));
     uint64_t va = a_chunk;
     uint64_t vandnot = va & ~b_chunk;
-
-    pop_a += tk_popcount8((uint8_t)(va));
-    pop_a += tk_popcount8((uint8_t)(va >> 8));
-    pop_a += tk_popcount8((uint8_t)(va >> 16));
-    pop_a += tk_popcount8((uint8_t)(va >> 24));
-    pop_a += tk_popcount8((uint8_t)(va >> 32));
-    pop_a += tk_popcount8((uint8_t)(va >> 40));
-    pop_a += tk_popcount8((uint8_t)(va >> 48));
-    pop_a += tk_popcount8((uint8_t)(va >> 56));
-
-    pop_andnot += tk_popcount8((uint8_t)(vandnot));
-    pop_andnot += tk_popcount8((uint8_t)(vandnot >> 8));
-    pop_andnot += tk_popcount8((uint8_t)(vandnot >> 16));
-    pop_andnot += tk_popcount8((uint8_t)(vandnot >> 24));
-    pop_andnot += tk_popcount8((uint8_t)(vandnot >> 32));
-    pop_andnot += tk_popcount8((uint8_t)(vandnot >> 40));
-    pop_andnot += tk_popcount8((uint8_t)(vandnot >> 48));
-    pop_andnot += tk_popcount8((uint8_t)(vandnot >> 56));
+    pop_a += (uint64_t)__builtin_popcountll(va);
+    pop_andnot += (uint64_t)__builtin_popcountll(vandnot);
   }
   uint64_t offset = n64 * 8;
 #endif

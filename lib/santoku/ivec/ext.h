@@ -771,8 +771,6 @@ static inline size_t tk_ivec_scores_first_gap (
   return n - 1;
 }
 
-#define tk_ivec_scores_first_gap_ratio tk_ivec_scores_first_gap
-
 
 
 static inline size_t tk_ivec_scores_otsu (

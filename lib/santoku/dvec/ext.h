@@ -344,8 +344,6 @@ static inline size_t tk_dvec_scores_first_gap (
   return n - 1;
 }
 
-#define tk_dvec_scores_first_gap_ratio tk_dvec_scores_first_gap
-
 
 
 

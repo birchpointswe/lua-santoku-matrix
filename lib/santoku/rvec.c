@@ -161,11 +161,8 @@ static inline int tk_rvec_scores_elbow_lua (lua_State *L)
   } else if (strcmp(method, "otsu") == 0) {
     idx = tk_rvec_scores_otsu(scores, &val);
   } else if (strcmp(method, "first_gap") == 0) {
-    double threshold = (alpha > 0.0) ? alpha : 5.0;
-    idx = tk_rvec_scores_first_gap(scores, threshold, &val);
-  } else if (strcmp(method, "first_gap_ratio") == 0) {
     double ratio = (alpha > 0.0) ? alpha : 3.0;
-    idx = tk_rvec_scores_first_gap_ratio(scores, ratio, &val);
+    idx = tk_rvec_scores_first_gap(scores, ratio, &val);
   } else {
     return luaL_error(L, "unknown elbow method: %s", method);
   }
