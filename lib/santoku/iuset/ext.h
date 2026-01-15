@@ -578,7 +578,7 @@ static inline tk_ivec_t *tk_ivec_bits_top_mi (
     tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
     #pragma omp parallel for
     for (uint64_t f = 0; f < n_visible; f++) {
-      double max_mi = 0.0;
+      double sum_mi = 0.0;
       for (uint64_t j = 0; j < n_hidden; j++) {
         int64_t c[4];
         int64_t *counts_ptr = counts->a + f * n_hidden * 4 + j * 4;
@@ -601,9 +601,9 @@ static inline tk_ivec_t *tk_ivec_bits_top_mi (
             if (d > 0) mi += p_fb * log2(p_fb / d);
           }
         }
-        if (mi > max_mi) max_mi = mi;
+        sum_mi += mi;
       }
-      tk_rank_t r = { (int64_t)f, max_mi };
+      tk_rank_t r = { (int64_t)f, sum_mi };
       #pragma omp critical
       tk_rvec_hmin(top_heap, top_k, r);
     }
@@ -673,8 +673,8 @@ static inline tk_ivec_t *tk_ivec_bits_top_mi (
     }
 
     tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
-    tk_dvec_t *feat_max_mi = tk_dvec_create(0, n_visible, 0, 0);
-    tk_dvec_zero(feat_max_mi);
+    tk_dvec_t *feat_sum_mi = tk_dvec_create(0, n_visible, 0, 0);
+    tk_dvec_zero(feat_sum_mi);
 
     int64_t k, v;
     tk_umap_foreach(active_counts, k, v, ({
@@ -710,15 +710,13 @@ static inline tk_ivec_t *tk_ivec_bits_top_mi (
           if (d > 0) mi += p_fb * log2(p_fb / d);
         }
       }
-      if (mi > feat_max_mi->a[f]) {
-        feat_max_mi->a[f] = mi;
-      }
+      feat_sum_mi->a[f] += mi;
     }));
 
     #pragma omp parallel for
     for (uint64_t f = 0; f < n_visible; f++) {
-      if (feat_max_mi->a[f] > 0) {
-        tk_rank_t r = { (int64_t)f, feat_max_mi->a[f] };
+      if (feat_sum_mi->a[f] > 0) {
+        tk_rank_t r = { (int64_t)f, feat_sum_mi->a[f] };
         #pragma omp critical
         tk_rvec_hmin(top_heap, top_k, r);
       }
@@ -727,7 +725,7 @@ static inline tk_ivec_t *tk_ivec_bits_top_mi (
     tk_iumap_destroy(active_counts);
     tk_ivec_destroy(feat_counts);
     tk_ivec_destroy(label_counts);
-    tk_dvec_destroy(feat_max_mi);
+    tk_dvec_destroy(feat_sum_mi);
 
     tk_rvec_desc(top_heap, 0, top_heap->n);
     tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
@@ -805,7 +803,7 @@ static inline tk_ivec_t *tk_ivec_bits_top_chi2 (
     tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
     #pragma omp parallel for
     for (uint64_t f = 0; f < n_visible; f++) {
-      double max_chi2 = 0.0;
+      double sum_chi2 = 0.0;
       for (uint64_t b = 0; b < n_hidden; b++) {
         int64_t A = active_counts->a[f * n_hidden + b];
         int64_t G = label_counts->a[b];
@@ -825,9 +823,9 @@ static inline tk_ivec_t *tk_ivec_bits_top_chi2 (
         if (E_B > 0) chi2 += ((B - E_B) * (B - E_B)) / E_B;
         if (E_C > 0) chi2 += ((C_ - E_C) * (C_ - E_C)) / E_C;
         if (E_D > 0) chi2 += ((D - E_D) * (D - E_D)) / E_D;
-        if (chi2 > max_chi2) max_chi2 = chi2;
+        sum_chi2 += chi2;
       }
-      tk_rank_t r = { (int64_t)f, max_chi2 };
+      tk_rank_t r = { (int64_t)f, sum_chi2 };
       #pragma omp critical
       tk_rvec_hmin(top_heap, top_k, r);
     }
@@ -899,8 +897,8 @@ static inline tk_ivec_t *tk_ivec_bits_top_chi2 (
     }
 
     tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
-    tk_dvec_t *feat_max_chi2 = tk_dvec_create(0, n_visible, 0, 0);
-    tk_dvec_zero(feat_max_chi2);
+    tk_dvec_t *feat_sum_chi2 = tk_dvec_create(0, n_visible, 0, 0);
+    tk_dvec_zero(feat_sum_chi2);
 
     int64_t k, v;
     tk_umap_foreach(active_counts, k, v, ({
@@ -928,14 +926,13 @@ static inline tk_ivec_t *tk_ivec_bits_top_chi2 (
       if (E_B > 0) chi2 += ((B - E_B) * (B - E_B)) / E_B;
       if (E_C > 0) chi2 += ((C_ - E_C) * (C_ - E_C)) / E_C;
       if (E_D > 0) chi2 += ((D - E_D) * (D - E_D)) / E_D;
-      if (chi2 > feat_max_chi2->a[f])
-        feat_max_chi2->a[f] = chi2;
+      feat_sum_chi2->a[f] += chi2;
     }));
 
     #pragma omp parallel for
     for (uint64_t f = 0; f < n_visible; f++) {
-      if (feat_max_chi2->a[f] > 0) {
-        tk_rank_t r = { (int64_t)f, feat_max_chi2->a[f] };
+      if (feat_sum_chi2->a[f] > 0) {
+        tk_rank_t r = { (int64_t)f, feat_sum_chi2->a[f] };
         #pragma omp critical
         tk_rvec_hmin(top_heap, top_k, r);
       }
@@ -944,7 +941,7 @@ static inline tk_ivec_t *tk_ivec_bits_top_chi2 (
     tk_iumap_destroy(active_counts);
     tk_ivec_destroy(feat_counts);
     tk_ivec_destroy(label_counts);
-    tk_dvec_destroy(feat_max_chi2);
+    tk_dvec_destroy(feat_sum_chi2);
 
     tk_rvec_desc(top_heap, 0, top_heap->n);
     tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
@@ -1128,7 +1125,7 @@ static inline tk_ivec_t *tk_cvec_bits_top_mi (
     tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
     #pragma omp parallel for
     for (uint64_t f = 0; f < n_features; f++) {
-      double max_mi = 0.0;
+      double sum_mi = 0.0;
       for (uint64_t j = 0; j < n_hidden; j++) {
         int64_t c[4];
         int64_t *counts_ptr = counts->a + f * n_hidden * 4 + j * 4;
@@ -1152,9 +1149,9 @@ static inline tk_ivec_t *tk_cvec_bits_top_mi (
             if (d > 0) mi += p_fb * log2(p_fb / d);
           }
         }
-        if (mi > max_mi) max_mi = mi;
+        sum_mi += mi;
       }
-      tk_rank_t r = { (int64_t)f, max_mi };
+      tk_rank_t r = { (int64_t)f, sum_mi };
       #pragma omp critical
       tk_rvec_hmin(top_heap, top_k, r);
     }
@@ -1219,8 +1216,8 @@ static inline tk_ivec_t *tk_cvec_bits_top_mi (
     }
 
     tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
-    tk_dvec_t *feat_max_mi = tk_dvec_create(0, n_features, 0, 0);
-    tk_dvec_zero(feat_max_mi);
+    tk_dvec_t *feat_sum_mi = tk_dvec_create(0, n_features, 0, 0);
+    tk_dvec_zero(feat_sum_mi);
 
     int64_t k, v;
     tk_umap_foreach(active_counts, k, v, ({
@@ -1256,15 +1253,13 @@ static inline tk_ivec_t *tk_cvec_bits_top_mi (
           if (d > 0) mi += p_fb * log2(p_fb / d);
         }
       }
-      if (mi > feat_max_mi->a[f]) {
-        feat_max_mi->a[f] = mi;
-      }
+      feat_sum_mi->a[f] += mi;
     }));
 
     #pragma omp parallel for
     for (uint64_t f = 0; f < n_features; f++) {
-      if (feat_max_mi->a[f] > 0) {
-        tk_rank_t r = { (int64_t)f, feat_max_mi->a[f] };
+      if (feat_sum_mi->a[f] > 0) {
+        tk_rank_t r = { (int64_t)f, feat_sum_mi->a[f] };
         #pragma omp critical
         tk_rvec_hmin(top_heap, top_k, r);
       }
@@ -1272,7 +1267,7 @@ static inline tk_ivec_t *tk_cvec_bits_top_mi (
 
     tk_ivec_destroy(feat_counts);
     tk_ivec_destroy(label_counts);
-    tk_dvec_destroy(feat_max_mi);
+    tk_dvec_destroy(feat_sum_mi);
     tk_iumap_destroy(active_counts);
     tk_rvec_desc(top_heap, 0, top_heap->n);
     tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
@@ -1347,7 +1342,7 @@ static inline tk_ivec_t *tk_cvec_bits_top_chi2 (
     tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
     #pragma omp parallel for
     for (uint64_t f = 0; f < n_features; f++) {
-      double max_chi2 = 0.0;
+      double sum_chi2 = 0.0;
       for (uint64_t b = 0; b < n_hidden; b++) {
         int64_t A = active_counts->a[f * n_hidden + b];
         int64_t G = label_counts->a[b];
@@ -1367,9 +1362,9 @@ static inline tk_ivec_t *tk_cvec_bits_top_chi2 (
         if (E_B > 0) chi2 += ((B - E_B) * (B - E_B)) / E_B;
         if (E_C > 0) chi2 += ((C_ - E_C) * (C_ - E_C)) / E_C;
         if (E_D > 0) chi2 += ((D - E_D) * (D - E_D)) / E_D;
-        if (chi2 > max_chi2) max_chi2 = chi2;
+        sum_chi2 += chi2;
       }
-      tk_rank_t r = { (int64_t)f, max_chi2 };
+      tk_rank_t r = { (int64_t)f, sum_chi2 };
       #pragma omp critical
       tk_rvec_hmin(top_heap, top_k, r);
     }
@@ -1441,8 +1436,8 @@ static inline tk_ivec_t *tk_cvec_bits_top_chi2 (
     }
 
     tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
-    tk_dvec_t *feat_max_chi2 = tk_dvec_create(0, n_features, 0, 0);
-    tk_dvec_zero(feat_max_chi2);
+    tk_dvec_t *feat_sum_chi2 = tk_dvec_create(0, n_features, 0, 0);
+    tk_dvec_zero(feat_sum_chi2);
 
     int64_t k, v;
     tk_umap_foreach(active_counts, k, v, ({
@@ -1470,14 +1465,13 @@ static inline tk_ivec_t *tk_cvec_bits_top_chi2 (
       if (E_B > 0) chi2 += ((B - E_B) * (B - E_B)) / E_B;
       if (E_C > 0) chi2 += ((C_ - E_C) * (C_ - E_C)) / E_C;
       if (E_D > 0) chi2 += ((D - E_D) * (D - E_D)) / E_D;
-      if (chi2 > feat_max_chi2->a[f])
-        feat_max_chi2->a[f] = chi2;
+      feat_sum_chi2->a[f] += chi2;
     }));
 
     #pragma omp parallel for
     for (uint64_t f = 0; f < n_features; f++) {
-      if (feat_max_chi2->a[f] > 0) {
-        tk_rank_t r = { (int64_t)f, feat_max_chi2->a[f] };
+      if (feat_sum_chi2->a[f] > 0) {
+        tk_rank_t r = { (int64_t)f, feat_sum_chi2->a[f] };
         #pragma omp critical
         tk_rvec_hmin(top_heap, top_k, r);
       }
@@ -1486,7 +1480,7 @@ static inline tk_ivec_t *tk_cvec_bits_top_chi2 (
     tk_iumap_destroy(active_counts);
     tk_ivec_destroy(feat_counts);
     tk_ivec_destroy(label_counts);
-    tk_dvec_destroy(feat_max_chi2);
+    tk_dvec_destroy(feat_sum_chi2);
 
     tk_rvec_desc(top_heap, 0, top_heap->n);
     tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
@@ -1562,7 +1556,7 @@ static inline tk_ivec_t *tk_ivec_bits_top_lift (
     tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
     #pragma omp parallel for
     for (uint64_t f = 0; f < n_visible; f++) {
-      double max_score = 0.0;
+      double sum_score = 0.0;
       int64_t feat_total = feat_counts->a[f];
       if (feat_total == 0)
         continue;
@@ -1577,11 +1571,10 @@ static inline tk_ivec_t *tk_ivec_bits_top_lift (
         double p_label = (double)label_total / n_samples;
         double lift = p_label_given_feature / (p_label + 1e-10);
         double weighted_lift = lift * log2(1 + cooccur);
-        if (weighted_lift > max_score)
-          max_score = weighted_lift;
+        sum_score += weighted_lift;
       }
-      if (max_score > 0) {
-        tk_rank_t r = { (int64_t)f, max_score };
+      if (sum_score > 0) {
+        tk_rank_t r = { (int64_t)f, sum_score };
         #pragma omp critical
         tk_rvec_hmin(top_heap, top_k, r);
       }
@@ -1654,8 +1647,8 @@ static inline tk_ivec_t *tk_ivec_bits_top_lift (
     }
 
     tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
-    tk_dvec_t *feat_max_score = tk_dvec_create(0, n_visible, 0, 0);
-    tk_dvec_zero(feat_max_score);
+    tk_dvec_t *feat_sum_score = tk_dvec_create(0, n_visible, 0, 0);
+    tk_dvec_zero(feat_sum_score);
 
     int64_t k, v;
     tk_umap_foreach(active_counts, k, v, ({
@@ -1670,13 +1663,12 @@ static inline tk_ivec_t *tk_ivec_bits_top_lift (
       double p_label = (double)label_total / n_samples;
       double lift = p_label_given_feature / (p_label + 1e-10);
       double weighted_lift = lift * log2(1 + cooccur);
-      if (weighted_lift > feat_max_score->a[f])
-        feat_max_score->a[f] = weighted_lift;
+      feat_sum_score->a[f] += weighted_lift;
     }));
     #pragma omp parallel for
     for (uint64_t f = 0; f < n_visible; f++) {
-      if (feat_max_score->a[f] > 0) {
-        tk_rank_t r = { (int64_t)f, feat_max_score->a[f] };
+      if (feat_sum_score->a[f] > 0) {
+        tk_rank_t r = { (int64_t)f, feat_sum_score->a[f] };
         #pragma omp critical
         tk_rvec_hmin(top_heap, top_k, r);
       }
@@ -1685,6 +1677,7 @@ static inline tk_ivec_t *tk_ivec_bits_top_lift (
     tk_iumap_destroy(active_counts);
     tk_ivec_destroy(feat_counts);
     tk_ivec_destroy(label_counts);
+    tk_dvec_destroy(feat_sum_score);
 
     tk_rvec_desc(top_heap, 0, top_heap->n);
     tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
@@ -1938,8 +1931,8 @@ static inline tk_ivec_t *tk_cvec_bits_top_lift (
     }
 
     tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
-    tk_dvec_t *feat_max_score = tk_dvec_create(0, n_features, 0, 0);
-    tk_dvec_zero(feat_max_score);
+    tk_dvec_t *feat_sum_score = tk_dvec_create(0, n_features, 0, 0);
+    tk_dvec_zero(feat_sum_score);
 
     int64_t k, v;
     tk_umap_foreach(active_counts, k, v, ({
@@ -1954,14 +1947,13 @@ static inline tk_ivec_t *tk_cvec_bits_top_lift (
       double p_label = (double)label_total / n_samples;
       double lift = p_label_given_feature / (p_label + 1e-10);
       double weighted_lift = lift * log2(1 + cooccur);
-      if (weighted_lift > feat_max_score->a[f])
-        feat_max_score->a[f] = weighted_lift;
+      feat_sum_score->a[f] += weighted_lift;
     }));
 
     #pragma omp parallel for
     for (uint64_t f = 0; f < n_features; f++) {
-      if (feat_max_score->a[f] > 0) {
-        tk_rank_t r = { (int64_t)f, feat_max_score->a[f] };
+      if (feat_sum_score->a[f] > 0) {
+        tk_rank_t r = { (int64_t)f, feat_sum_score->a[f] };
         #pragma omp critical
         tk_rvec_hmin(top_heap, top_k, r);
       }
@@ -1970,7 +1962,7 @@ static inline tk_ivec_t *tk_cvec_bits_top_lift (
     tk_iumap_destroy(active_counts);
     tk_ivec_destroy(feat_counts);
     tk_ivec_destroy(label_counts);
-    tk_dvec_destroy(feat_max_score);
+    tk_dvec_destroy(feat_sum_score);
 
     tk_rvec_desc(top_heap, 0, top_heap->n);
     tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
@@ -2031,8 +2023,8 @@ static inline tk_ivec_t *tk_cvec_bits_top_lift (
     }
 
     tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
-    tk_dvec_t *feat_max_score = tk_dvec_create(0, n_features, 0, 0);
-    tk_dvec_zero(feat_max_score);
+    tk_dvec_t *feat_sum_score = tk_dvec_create(0, n_features, 0, 0);
+    tk_dvec_zero(feat_sum_score);
 
     int64_t k, v;
     tk_umap_foreach(active_counts, k, v, ({
@@ -2047,14 +2039,13 @@ static inline tk_ivec_t *tk_cvec_bits_top_lift (
       double p_label = (double)label_total / n_samples;
       double lift = p_label_given_feature / (p_label + 1e-10);
       double weighted_lift = lift * log2(1 + cooccur);
-      if (weighted_lift > feat_max_score->a[f])
-        feat_max_score->a[f] = weighted_lift;
+      feat_sum_score->a[f] += weighted_lift;
     }));
 
     #pragma omp parallel for
     for (uint64_t f = 0; f < n_features; f++) {
-      if (feat_max_score->a[f] > 0) {
-        tk_rank_t r = { (int64_t)f, feat_max_score->a[f] };
+      if (feat_sum_score->a[f] > 0) {
+        tk_rank_t r = { (int64_t)f, feat_sum_score->a[f] };
         #pragma omp critical
         tk_rvec_hmin(top_heap, top_k, r);
       }
@@ -2063,7 +2054,7 @@ static inline tk_ivec_t *tk_cvec_bits_top_lift (
     tk_iumap_destroy(active_counts);
     tk_ivec_destroy(feat_counts);
     tk_ivec_destroy(label_counts);
-    tk_dvec_destroy(feat_max_score);
+    tk_dvec_destroy(feat_sum_score);
 
     tk_rvec_desc(top_heap, 0, top_heap->n);
     tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
