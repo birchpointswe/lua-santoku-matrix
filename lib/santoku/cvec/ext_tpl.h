@@ -47,11 +47,11 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_popcount) (
 #endif
 
   for (uint64_t i = offset; i < main_bytes; i++)
-    count += tk_popcount8(data[i]);
+    count += (uint64_t)__builtin_popcount(data[i]);
 
   if (rem_bits > 0) {
     uint8_t mask = (1U << rem_bits) - 1;
-    count += tk_popcount8(data[full_bytes - 1] & mask);
+    count += (uint64_t)__builtin_popcount(data[full_bytes - 1] & mask);
   }
 
   return count;
@@ -107,11 +107,11 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming) (
 #endif
 
   for (uint64_t i = offset; i < main_bytes; i++)
-    dist += tk_popcount8(a[i] ^ b[i]);
+    dist += (uint64_t)__builtin_popcount(a[i] ^ b[i]);
 
   if (rem_bits > 0) {
     uint8_t mask = (1U << rem_bits) - 1;
-    dist += tk_popcount8((a[full_bytes - 1] ^ b[full_bytes - 1]) & mask);
+    dist += (uint64_t)__builtin_popcount((a[full_bytes - 1] ^ b[full_bytes - 1]) & mask);
   }
 
   return dist;
@@ -171,11 +171,11 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming_mask) (
 #endif
 
   for (uint64_t i = offset; i < main_bytes; i++)
-    dist += tk_popcount8((a[i] ^ b[i]) & mask[i]);
+    dist += (uint64_t)__builtin_popcount((a[i] ^ b[i]) & mask[i]);
 
   if (rem_bits > 0) {
     uint8_t m = mask[full_bytes - 1] & ((1U << rem_bits) - 1);
-    dist += tk_popcount8((a[full_bytes - 1] ^ b[full_bytes - 1]) & m);
+    dist += (uint64_t)__builtin_popcount((a[full_bytes - 1] ^ b[full_bytes - 1]) & m);
   }
 
   return dist;
@@ -245,8 +245,8 @@ static inline void tk_parallel_sfx(tk_cvec_bits_popcount_andnot) (
   for (uint64_t i = offset; i < main_bytes; i++) {
     uint8_t va = a[i];
     uint8_t vandnot = va & ~b[i];
-    pop_a += tk_popcount8(va);
-    pop_andnot += tk_popcount8(vandnot);
+    pop_a += (uint64_t)__builtin_popcount(va);
+    pop_andnot += (uint64_t)__builtin_popcount(vandnot);
   }
 
   if (rem_bits > 0) {
@@ -254,8 +254,8 @@ static inline void tk_parallel_sfx(tk_cvec_bits_popcount_andnot) (
     uint8_t va = a[full_bytes - 1] & mask;
     uint8_t vandnot = va & ~b[full_bytes - 1];
 
-    pop_a += tk_popcount8(va);
-    pop_andnot += tk_popcount8(vandnot);
+    pop_a += (uint64_t)__builtin_popcount(va);
+    pop_andnot += (uint64_t)__builtin_popcount(vandnot);
   }
 
   *pop_a_out = pop_a;

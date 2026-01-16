@@ -47,6 +47,50 @@ static inline int tk_ivec_bits_top_chi2_lua (lua_State *L)
   return 2;
 }
 
+static inline int tk_ivec_bits_top_chi2_ind_lua (lua_State *L)
+{
+  lua_settop(L, 6);
+  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
+  uint64_t n_samples = tk_lua_checkunsigned(L, 3, "samples");
+  uint64_t n_visible = tk_lua_checkunsigned(L, 4, "visible");
+  uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
+  uint64_t top_k = lua_isnil(L, 6) ? n_visible : tk_lua_checkunsigned(L, 6, "top_k");
+  char *codes = NULL;
+  tk_ivec_t *labels = NULL;
+  if (lua_isnil(L, 2)) {
+  } else if (tk_lua_testuserdata(L, 2, "tk_cvec_t")) {
+    tk_cvec_t *cvec = tk_cvec_peek(L, 2, "codes");
+    codes = cvec->a;
+  } else {
+    labels = tk_ivec_peek(L, 2, "labels");
+  }
+  tk_ivec_bits_top_chi2_ind(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, top_k);
+  return 4;
+}
+
+static inline int tk_ivec_bits_individualize_lua (lua_State *L)
+{
+  lua_settop(L, 4);
+  tk_ivec_t *toks = tk_ivec_peek(L, 1, "toks");
+  tk_ivec_t *offsets = tk_ivec_peek(L, 2, "offsets");
+  tk_ivec_t *ids = tk_ivec_peek(L, 3, "ids");
+  uint64_t union_size = tk_lua_checkunsigned(L, 4, "union_size");
+  uint64_t n_hidden = (uint64_t)offsets->n - 1;
+  tk_ivec_bits_individualize(L, toks, offsets, ids, union_size, n_hidden);
+  return 2;
+}
+
+static inline int tk_ivec_bits_to_cvec_ind_lua (lua_State *L)
+{
+  lua_settop(L, 4);
+  tk_ivec_t *ind_toks = tk_ivec_peek(L, 1, "ind_toks");
+  tk_ivec_t *ind_offsets = tk_ivec_peek(L, 2, "ind_offsets");
+  tk_ivec_t *feat_offsets = tk_ivec_peek(L, 3, "feat_offsets");
+  uint64_t n_samples = tk_lua_checkunsigned(L, 4, "n_samples");
+  tk_cvec_bits_from_ind(L, ind_toks, ind_offsets, feat_offsets, n_samples);
+  return 2;
+}
+
 static inline int tk_ivec_bits_top_coherence_lua (lua_State *L)
 {
   lua_settop(L, 7);
@@ -599,6 +643,9 @@ static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
   { "copy_pvalues", tk_ivec_copy_pvalues_lua },
   { "copy_rvalues", tk_ivec_copy_rvalues_lua },
   { "bits_top_chi2", tk_ivec_bits_top_chi2_lua },
+  { "bits_top_chi2_ind", tk_ivec_bits_top_chi2_ind_lua },
+  { "bits_individualize", tk_ivec_bits_individualize_lua },
+  { "bits_to_cvec_ind", tk_ivec_bits_to_cvec_ind_lua },
   { "bits_top_mi", tk_ivec_bits_top_mi_lua },
   { "bits_top_lift", tk_ivec_bits_top_lift_lua },
   { "bits_top_coherence", tk_ivec_bits_top_coherence_lua },
