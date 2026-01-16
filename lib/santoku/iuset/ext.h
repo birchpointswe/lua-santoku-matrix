@@ -2881,7 +2881,8 @@ static inline void tk_cvec_bits_from_ind (
   tk_ivec_t *ind_toks,
   tk_ivec_t *ind_offsets,
   tk_ivec_t *feat_offsets,
-  uint64_t n_samples
+  uint64_t n_samples,
+  bool flip_interleave
 ) {
   uint64_t n_hidden = feat_offsets->n - 1;
 
@@ -2896,7 +2897,8 @@ static inline void tk_cvec_bits_from_ind (
   uint64_t total_bytes = 0;
   for (uint64_t h = 0; h < n_hidden; h++) {
     uint64_t k_h = (uint64_t)(feat_offsets->a[h + 1] - feat_offsets->a[h]);
-    uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(k_h);
+    uint64_t output_bits = flip_interleave ? (2 * k_h) : k_h;
+    uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(output_bits);
     total_bytes += n_samples * bytes_per_sample;
   }
 
@@ -2910,7 +2912,20 @@ static inline void tk_cvec_bits_from_ind (
   uint64_t byte_offset = 0;
   for (uint64_t h = 0; h < n_hidden; h++) {
     uint64_t k_h = (uint64_t)(feat_offsets->a[h + 1] - feat_offsets->a[h]);
-    uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(k_h);
+    uint64_t output_bits = flip_interleave ? (2 * k_h) : k_h;
+    uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(output_bits);
+
+    if (flip_interleave) {
+      for (uint64_t s = 0; s < n_samples; s++) {
+        uint8_t *row = (uint8_t *)(bitmap->a + byte_offset + s * bytes_per_sample);
+        for (uint64_t k = 0; k < k_h; k++) {
+          uint64_t absent_bit = k_h + k;
+          uint64_t byte_idx = absent_bit / CHAR_BIT;
+          uint8_t bit_idx = absent_bit % CHAR_BIT;
+          row[byte_idx] |= (1u << bit_idx);
+        }
+      }
+    }
 
     for (uint64_t s = 0; s < n_samples; s++) {
       uint64_t ind_slot = s * n_hidden + h;
@@ -2924,12 +2939,18 @@ static inline void tk_cvec_bits_from_ind (
           uint64_t byte_idx = (uint64_t)local_idx / CHAR_BIT;
           uint8_t bit_idx = (uint8_t)(local_idx % CHAR_BIT);
           row[byte_idx] |= (1u << bit_idx);
+          if (flip_interleave) {
+            uint64_t absent_bit = k_h + (uint64_t)local_idx;
+            uint64_t absent_byte = absent_bit / CHAR_BIT;
+            uint8_t absent_bit_idx = absent_bit % CHAR_BIT;
+            row[absent_byte] &= ~(1u << absent_bit_idx);
+          }
         }
       }
     }
 
     byte_offset += n_samples * bytes_per_sample;
-    dim_offsets->a[h + 1] = (int64_t)((h + 1) * n_samples);
+    dim_offsets->a[h + 1] = (int64_t)byte_offset;
   }
 }
 

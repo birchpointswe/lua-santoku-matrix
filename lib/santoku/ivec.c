@@ -82,12 +82,13 @@ static inline int tk_ivec_bits_individualize_lua (lua_State *L)
 
 static inline int tk_ivec_bits_to_cvec_ind_lua (lua_State *L)
 {
-  lua_settop(L, 4);
+  lua_settop(L, 5);
   tk_ivec_t *ind_toks = tk_ivec_peek(L, 1, "ind_toks");
   tk_ivec_t *ind_offsets = tk_ivec_peek(L, 2, "ind_offsets");
   tk_ivec_t *feat_offsets = tk_ivec_peek(L, 3, "feat_offsets");
   uint64_t n_samples = tk_lua_checkunsigned(L, 4, "n_samples");
-  tk_cvec_bits_from_ind(L, ind_toks, ind_offsets, feat_offsets, n_samples);
+  bool flip_interleave = lua_toboolean(L, 5);
+  tk_cvec_bits_from_ind(L, ind_toks, ind_offsets, feat_offsets, n_samples, flip_interleave);
   return 2;
 }
 
