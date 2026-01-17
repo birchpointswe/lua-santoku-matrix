@@ -196,6 +196,92 @@ static inline int tk_ivec_bits_select_lua (lua_State *L)
   return 0;
 }
 
+static inline int tk_ivec_bits_select_ind_lua (lua_State *L)
+{
+  lua_settop(L, 3);
+  tk_ivec_t *feat_ids = tk_ivec_peek(L, 1, "feat_ids");
+  tk_ivec_t *feat_offsets = tk_ivec_peek(L, 2, "feat_offsets");
+  tk_ivec_t *selected_dims = tk_ivec_peek(L, 3, "selected_dims");
+
+  uint64_t n_orig_dims = feat_offsets->n - 1;
+  uint64_t n_selected = selected_dims->n;
+
+  if (n_selected == 0) {
+    feat_ids->n = 0;
+    feat_offsets->a[0] = 0;
+    feat_offsets->n = 1;
+    return 0;
+  }
+
+  for (uint64_t i = 0; i < n_selected; i++) {
+    int64_t dim = selected_dims->a[i];
+    if (dim < 0 || (uint64_t)dim >= n_orig_dims)
+      return luaL_error(L, "selected_dims[%d] = %d out of range [0, %d)", (int)i, (int)dim, (int)n_orig_dims);
+    for (uint64_t j = i + 1; j < n_selected; j++)
+      if (selected_dims->a[i] == selected_dims->a[j])
+        return luaL_error(L, "duplicate dimension %d in selected_dims", (int)dim);
+  }
+
+  int64_t *orig_offsets = (int64_t *)malloc((n_orig_dims + 1) * sizeof(int64_t));
+  if (!orig_offsets)
+    return luaL_error(L, "malloc failed in bits_select_ind");
+  memcpy(orig_offsets, feat_offsets->a, (n_orig_dims + 1) * sizeof(int64_t));
+
+  uint64_t new_total = 0;
+  for (uint64_t i = 0; i < n_selected; i++) {
+    int64_t dim = selected_dims->a[i];
+    new_total += (uint64_t)(orig_offsets[dim + 1] - orig_offsets[dim]);
+  }
+
+  int64_t *temp_ids = (int64_t *)malloc(new_total * sizeof(int64_t));
+  if (!temp_ids) {
+    free(orig_offsets);
+    return luaL_error(L, "malloc failed in bits_select_ind");
+  }
+
+  uint64_t write_pos = 0;
+  for (uint64_t i = 0; i < n_selected; i++) {
+    int64_t dim = selected_dims->a[i];
+    int64_t start = orig_offsets[dim];
+    int64_t end = orig_offsets[dim + 1];
+    uint64_t count = (uint64_t)(end - start);
+    memcpy(&temp_ids[write_pos], &feat_ids->a[start], count * sizeof(int64_t));
+    write_pos += count;
+  }
+
+  if (new_total > feat_ids->n) {
+    int64_t *new_a = (int64_t *)realloc(feat_ids->a, new_total * sizeof(int64_t));
+    if (!new_a) {
+      free(temp_ids);
+      free(orig_offsets);
+      return luaL_error(L, "realloc failed in bits_select_ind");
+    }
+    feat_ids->a = new_a;
+  }
+  memcpy(feat_ids->a, temp_ids, new_total * sizeof(int64_t));
+  feat_ids->n = new_total;
+  free(temp_ids);
+
+  if (n_selected + 1 > feat_offsets->n) {
+    int64_t *new_off = (int64_t *)realloc(feat_offsets->a, (n_selected + 1) * sizeof(int64_t));
+    if (!new_off) {
+      free(orig_offsets);
+      return luaL_error(L, "realloc failed in bits_select_ind");
+    }
+    feat_offsets->a = new_off;
+  }
+  feat_offsets->a[0] = 0;
+  for (uint64_t i = 0; i < n_selected; i++) {
+    int64_t dim = selected_dims->a[i];
+    int64_t size = orig_offsets[dim + 1] - orig_offsets[dim];
+    feat_offsets->a[i + 1] = feat_offsets->a[i] + size;
+  }
+  feat_offsets->n = n_selected + 1;
+
+  free(orig_offsets);
+  return 0;
+}
+
 static inline int tk_ivec_bits_to_cvec_lua (lua_State *L)
 {
   lua_settop(L, 4);
@@ -653,6 +739,7 @@ static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
   { "bits_top_entropy", tk_ivec_bits_top_entropy_lua },
   { "bits_top_df", tk_ivec_bits_top_df_lua },
   { "bits_select", tk_ivec_bits_select_lua },
+  { "bits_select_ind", tk_ivec_bits_select_ind_lua },
   { "bits_to_cvec", tk_ivec_bits_to_cvec_lua },
   { "bits_extend", tk_ivec_bits_extend_lua },
   { "set_stats", tk_ivec_set_stats_lua },
