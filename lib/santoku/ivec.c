@@ -68,6 +68,27 @@ static inline int tk_ivec_bits_top_chi2_ind_lua (lua_State *L)
   return 4;
 }
 
+static inline int tk_ivec_bits_top_mi_ind_lua (lua_State *L)
+{
+  lua_settop(L, 6);
+  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
+  uint64_t n_samples = tk_lua_checkunsigned(L, 3, "samples");
+  uint64_t n_visible = tk_lua_checkunsigned(L, 4, "visible");
+  uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
+  uint64_t top_k = lua_isnil(L, 6) ? n_visible : tk_lua_checkunsigned(L, 6, "top_k");
+  char *codes = NULL;
+  tk_ivec_t *labels = NULL;
+  if (lua_isnil(L, 2)) {
+  } else if (tk_lua_testuserdata(L, 2, "tk_cvec_t")) {
+    tk_cvec_t *cvec = tk_cvec_peek(L, 2, "codes");
+    codes = cvec->a;
+  } else {
+    labels = tk_ivec_peek(L, 2, "labels");
+  }
+  tk_ivec_bits_top_mi_ind(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, top_k);
+  return 4;
+}
+
 static inline int tk_ivec_bits_individualize_lua (lua_State *L)
 {
   lua_settop(L, 4);
@@ -90,6 +111,24 @@ static inline int tk_ivec_bits_to_cvec_ind_lua (lua_State *L)
   bool flip_interleave = lua_toboolean(L, 5);
   tk_cvec_bits_from_ind(L, ind_toks, ind_offsets, feat_offsets, n_samples, flip_interleave);
   return 2;
+}
+
+static inline int tk_ivec_bits_extend_ind_lua (lua_State *L)
+{
+  lua_settop(L, 9);
+  tk_ivec_t *base_toks = tk_ivec_peek(L, 1, "base_toks");
+  tk_ivec_t *base_offsets = tk_ivec_peek(L, 2, "base_offsets");
+  tk_ivec_t *base_ids = tk_ivec_peek(L, 3, "base_ids");
+  tk_ivec_t *ext_toks = tk_ivec_peek(L, 4, "ext_toks");
+  tk_ivec_t *ext_offsets = tk_ivec_peek(L, 5, "ext_offsets");
+  tk_ivec_t *ext_ids = tk_ivec_peek(L, 6, "ext_ids");
+  tk_ivec_t *base_feat_offsets = tk_ivec_peek(L, 7, "base_feat_offsets");
+  tk_ivec_t *ext_feat_offsets = tk_ivec_peek(L, 8, "ext_feat_offsets");
+  bool project = lua_toboolean(L, 9);
+  uint64_t n_hidden = (base_feat_offsets->n > 0) ? (base_feat_offsets->n - 1) : 0;
+  if (tk_ivec_bits_extend_ind(L, base_toks, base_offsets, base_ids, ext_toks, ext_offsets, ext_ids, base_feat_offsets, ext_feat_offsets, n_hidden, project) != 0)
+    return luaL_error(L, "bits_extend_ind: allocation failed");
+  return 0;
 }
 
 static inline int tk_ivec_bits_top_coherence_lua (lua_State *L)
@@ -733,7 +772,9 @@ static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
   { "bits_top_chi2_ind", tk_ivec_bits_top_chi2_ind_lua },
   { "bits_individualize", tk_ivec_bits_individualize_lua },
   { "bits_to_cvec_ind", tk_ivec_bits_to_cvec_ind_lua },
+  { "bits_extend_ind", tk_ivec_bits_extend_ind_lua },
   { "bits_top_mi", tk_ivec_bits_top_mi_lua },
+  { "bits_top_mi_ind", tk_ivec_bits_top_mi_ind_lua },
   { "bits_top_lift", tk_ivec_bits_top_lift_lua },
   { "bits_top_coherence", tk_ivec_bits_top_coherence_lua },
   { "bits_top_entropy", tk_ivec_bits_top_entropy_lua },
