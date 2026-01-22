@@ -1,6 +1,6 @@
 local env = {
   name = "santoku-matrix",
-  version = "0.0.219-1",
+  version = "0.0.220-1",
   variable_prefix = "TK_MATRIX",
   license = "MIT",
   public = true,
