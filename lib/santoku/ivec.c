@@ -916,6 +916,29 @@ static inline int tk_ivec_bits_to_csr_lua (lua_State *L)
   return 2;
 }
 
+static inline int tk_ivec_bits_transpose_lua (lua_State *L)
+{
+  lua_settop(L, 3);
+  tk_ivec_t *bits = tk_ivec_peek(L, 1, "bits");
+  uint64_t n_rows = tk_lua_checkunsigned(L, 2, "n_rows");
+  uint64_t n_cols = tk_lua_checkunsigned(L, 3, "n_cols");
+  if (n_cols == 0)
+    return luaL_error(L, "n_cols must be > 0");
+  tk_ivec_t *out = tk_ivec_create(L, bits->n, NULL, NULL);
+  for (uint64_t i = 0; i < bits->n; i++) {
+    int64_t v = bits->a[i];
+    if (v < 0) {
+      out->a[i] = v;
+      continue;
+    }
+    uint64_t row = (uint64_t)v / n_cols;
+    uint64_t col = (uint64_t)v % n_cols;
+    out->a[i] = (int64_t)(col * n_rows + row);
+  }
+  tk_ivec_asc(out, 0, out->n);
+  return 1;
+}
+
 static inline int tk_ivec_to_dvec_lua (lua_State *L) {
   lua_settop(L, 1);
   tk_ivec_t *v = tk_ivec_peek(L, 1, "ivec");
@@ -926,6 +949,7 @@ static inline int tk_ivec_to_dvec_lua (lua_State *L) {
 static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
 {
   { "bits_to_csr", tk_ivec_bits_to_csr_lua },
+  { "bits_transpose", tk_ivec_bits_transpose_lua },
   { "copy_pkeys", tk_ivec_copy_pkeys_lua },
   { "copy_rkeys", tk_ivec_copy_rkeys_lua },
   { "copy_pvalues", tk_ivec_copy_pvalues_lua },

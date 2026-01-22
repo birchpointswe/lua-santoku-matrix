@@ -941,3 +941,56 @@ test("ivec: from_rvec", function ()
   assert(keys:get(1) == 20)
   assert(keys:get(2) == 30)
 end)
+
+test("ivec: bits_transpose", function ()
+  local bits = ivec.create({
+    0 * 3 + 0, 0 * 3 + 2,
+    1 * 3 + 1,
+    2 * 3 + 0, 2 * 3 + 1
+  })
+  local transposed = bits:bits_transpose(3, 3)
+  transposed:asc()
+  assert(teq(transposed:table(), {
+    0 * 3 + 0, 0 * 3 + 2,
+    1 * 3 + 1, 1 * 3 + 2,
+    2 * 3 + 0
+  }))
+end)
+
+test("ivec: bits_transpose non-square", function ()
+  local bits = ivec.create({
+    0 * 4 + 1, 0 * 4 + 3,
+    1 * 4 + 0,
+    2 * 4 + 2
+  })
+  local transposed = bits:bits_transpose(3, 4)
+  transposed:asc()
+  assert(teq(transposed:table(), {
+    0 * 3 + 1,
+    1 * 3 + 0,
+    2 * 3 + 2,
+    3 * 3 + 0
+  }))
+end)
+
+test("cvec: bits_transpose", function ()
+  require("santoku.cvec")
+  local n_rows, n_cols = 3, 4
+  local bits = ivec.create({
+    0 * 4 + 0, 0 * 4 + 2,
+    1 * 4 + 1, 1 * 4 + 3,
+    2 * 4 + 0, 2 * 4 + 1
+  })
+  local bitmap = bits:bits_to_cvec(n_rows, n_cols)
+  local transposed = bitmap:bits_transpose(n_rows, n_cols)
+  local result_bits = transposed:bits_to_ivec(n_rows)
+  result_bits:asc()
+  local expected = ivec.create({
+    0 * 3 + 0, 0 * 3 + 2,
+    1 * 3 + 1, 1 * 3 + 2,
+    2 * 3 + 0,
+    3 * 3 + 1
+  })
+  expected:asc()
+  assert(teq(result_bits:table(), expected:table()))
+end)

@@ -462,6 +462,33 @@ static inline int tk_cvec_bits_to_ascii_lua (lua_State *L) {
   return 1;
 }
 
+static inline int tk_cvec_bits_transpose_lua (lua_State *L)
+{
+  lua_settop(L, 3);
+  tk_cvec_t *bitmap = tk_cvec_peek(L, 1, "bitmap");
+  uint64_t n_rows = tk_lua_checkunsigned(L, 2, "n_rows");
+  uint64_t n_cols = tk_lua_checkunsigned(L, 3, "n_cols");
+  if (n_cols == 0)
+    return luaL_error(L, "n_cols must be > 0");
+  uint64_t in_bytes_per_row = TK_CVEC_BITS_BYTES(n_cols);
+  uint64_t out_bytes_per_row = TK_CVEC_BITS_BYTES(n_rows);
+  uint64_t out_size = n_cols * out_bytes_per_row;
+  tk_cvec_t *out = tk_cvec_create(L, out_size, NULL, NULL);
+  memset(out->a, 0, out_size);
+  for (uint64_t row = 0; row < n_rows; row++) {
+    for (uint64_t col = 0; col < n_cols; col++) {
+      uint64_t in_byte = row * in_bytes_per_row + col / CHAR_BIT;
+      uint64_t in_bit = col % CHAR_BIT;
+      if ((uint8_t)bitmap->a[in_byte] & (1 << in_bit)) {
+        uint64_t out_byte = col * out_bytes_per_row + row / CHAR_BIT;
+        uint64_t out_bit = row % CHAR_BIT;
+        out->a[out_byte] |= (1 << out_bit);
+      }
+    }
+  }
+  return 1;
+}
+
 static luaL_Reg tk_cvec_lua_mt_ext2_fns[] =
 {
   { "bits_flip_interleave", tk_cvec_bits_flip_interleave_lua },
@@ -491,6 +518,7 @@ static luaL_Reg tk_cvec_lua_mt_ext2_fns[] =
   { "bits_or", tk_cvec_bits_or_lua },
   { "bits_xor", tk_cvec_bits_xor_lua },
   { "bits_to_ascii", tk_cvec_bits_to_ascii_lua },
+  { "bits_transpose", tk_cvec_bits_transpose_lua },
   { NULL, NULL }
 };
 
