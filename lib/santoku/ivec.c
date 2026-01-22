@@ -762,8 +762,45 @@ static inline int tk_ivec_scores_elbow_lua (lua_State *L)
   return 2;
 }
 
+static inline int tk_ivec_bits_to_csr_lua (lua_State *L)
+{
+  lua_settop(L, 3);
+  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
+  uint64_t n_samples = tk_lua_checkunsigned(L, 2, "n_samples");
+  uint64_t n_labels = tk_lua_checkunsigned(L, 3, "n_labels");
+  tk_ivec_t *offsets = tk_ivec_create(L, n_samples + 1, NULL, NULL);
+  memset(offsets->a, 0, (n_samples + 1) * sizeof(int64_t));
+  for (uint64_t i = 0; i < set_bits->n; i++) {
+    int64_t v = set_bits->a[i];
+    if (v < 0) continue;
+    uint64_t s = (uint64_t)v / n_labels;
+    if (s < n_samples)
+      offsets->a[s + 1]++;
+  }
+  for (uint64_t i = 1; i <= n_samples; i++)
+    offsets->a[i] += offsets->a[i - 1];
+  uint64_t total = (uint64_t)offsets->a[n_samples];
+  tk_ivec_t *labels = tk_ivec_create(L, total, NULL, NULL);
+  tk_ivec_t *counts = tk_ivec_create(L, n_samples, NULL, NULL);
+  memset(counts->a, 0, n_samples * sizeof(int64_t));
+  for (uint64_t i = 0; i < set_bits->n; i++) {
+    int64_t v = set_bits->a[i];
+    if (v < 0) continue;
+    uint64_t s = (uint64_t)v / n_labels;
+    uint64_t label = (uint64_t)v % n_labels;
+    if (s < n_samples) {
+      uint64_t pos = (uint64_t)offsets->a[s] + (uint64_t)counts->a[s];
+      labels->a[pos] = (int64_t)label;
+      counts->a[s]++;
+    }
+  }
+  lua_pop(L, 1);
+  return 2;
+}
+
 static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
 {
+  { "bits_to_csr", tk_ivec_bits_to_csr_lua },
   { "copy_pkeys", tk_ivec_copy_pkeys_lua },
   { "copy_rkeys", tk_ivec_copy_rkeys_lua },
   { "copy_pvalues", tk_ivec_copy_pvalues_lua },
