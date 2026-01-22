@@ -63,13 +63,14 @@ static inline void tk_vec_pfx(scalev) (tk_vec_pfx(t) *m0, tk_vec_pfx(t) *m1, uin
 static inline void tk_vec_pfx(addv) (tk_vec_pfx(t) *m0, tk_vec_pfx(t) *m1, uint64_t start, uint64_t end);
 static inline void tk_vec_pfx(abs) (tk_vec_pfx(t) *m0, uint64_t start, uint64_t end);
 static inline double tk_vec_pfx(dot) (tk_vec_pfx(t) *a, tk_vec_pfx(t) *b);
-static inline void tk_vec_pfx(fill) (tk_vec_pfx(t) *v, tk_vec_base x, uint64_t start, uint64_t end);
 static inline void tk_vec_pfx(multiply) (tk_vec_pfx(t) *a, tk_vec_pfx(t) *b, tk_vec_pfx(t) *c, uint64_t k, bool transpose_a, bool transpose_b);
 static inline void tk_vec_pfx(pow) (tk_vec_pfx(t) *v, double exponent, uint64_t start, uint64_t end);
 static inline void tk_vec_pfx(log) (tk_vec_pfx(t) *v, uint64_t start, uint64_t end);
 static inline void tk_vec_pfx(exp) (tk_vec_pfx(t) *v, uint64_t start, uint64_t end);
 static inline void tk_vec_pfx(fill_indices) (tk_vec_pfx(t) *v);
+static inline void tk_vec_pfx(clamp) (tk_vec_pfx(t) *v, tk_vec_base lo, tk_vec_base hi, uint64_t start, uint64_t end);
 #endif
+static inline void tk_vec_pfx(fill) (tk_vec_pfx(t) *v, tk_vec_base x, uint64_t start, uint64_t end);
 
 static inline tk_vec_pfx(t) tk_vec_name (tk_vec_base *a, uint64_t n)
 {
@@ -1258,6 +1259,27 @@ static inline int tk_vec_pfx(fill_indices_lua) (lua_State *L)
   return 1;
 }
 
+static inline int tk_vec_pfx(clamp_lua) (lua_State *L)
+{
+  int t = lua_gettop(L);
+  tk_vec_pfx(t) *v = tk_vec_pfx(peek)(L, 1, "vector");
+  tk_vec_base lo = tk_vec_peekbase(L, 2);
+  tk_vec_base hi = tk_vec_peekbase(L, 3);
+  uint64_t start, end;
+  if (t == 3) {
+    start = 0;
+    end = v->n;
+  } else if (t == 5) {
+    start = tk_lua_checkunsigned(L, 4, "start");
+    end = tk_lua_checkunsigned(L, 5, "end");
+  } else {
+    tk_vec_err(L, clamp, 1, "expected 3 or 5 arguments (vec, lo, hi or vec, lo, hi, start, end)");
+    return 0;
+  }
+  tk_vec_pfx(clamp)(v, lo, hi, start, end);
+  return 1;
+}
+
 #endif
 
 static inline int tk_vec_pfx(raw_lua) (lua_State *L)
@@ -1338,6 +1360,7 @@ static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
   { "rmins", tk_vec_pfx(cmins_lua) },
   { "fill", tk_vec_pfx(fill_lua) },
   { "fill_indices", tk_vec_pfx(fill_indices_lua) },
+  { "clamp", tk_vec_pfx(clamp_lua) },
 #endif
 
   { NULL, NULL }
