@@ -597,6 +597,37 @@ static inline tk_dvec_t *tk_dvec_csums_override(lua_State *L, tk_dvec_t *m0, uin
 
 #include <santoku/iumap.h>
 
+static inline void tk_dvec_round (tk_dvec_t *v, uint64_t start, uint64_t end) {
+  if (end > v->n) end = v->n;
+  for (uint64_t i = start; i < end; i++)
+    v->a[i] = round(v->a[i]);
+}
+
+static inline void tk_dvec_trunc (tk_dvec_t *v, uint64_t start, uint64_t end) {
+  if (end > v->n) end = v->n;
+  for (uint64_t i = start; i < end; i++)
+    v->a[i] = trunc(v->a[i]);
+}
+
+static inline void tk_dvec_floor (tk_dvec_t *v, uint64_t start, uint64_t end) {
+  if (end > v->n) end = v->n;
+  for (uint64_t i = start; i < end; i++)
+    v->a[i] = floor(v->a[i]);
+}
+
+static inline void tk_dvec_ceil (tk_dvec_t *v, uint64_t start, uint64_t end) {
+  if (end > v->n) end = v->n;
+  for (uint64_t i = start; i < end; i++)
+    v->a[i] = ceil(v->a[i]);
+}
+
+static inline tk_ivec_t *tk_dvec_to_ivec (lua_State *L, tk_dvec_t *v) {
+  tk_ivec_t *out = tk_ivec_create(L, v->n, NULL, NULL);
+  for (uint64_t i = 0; i < v->n; i++)
+    out->a[i] = (int64_t)v->a[i];
+  return out;
+}
+
 static inline tk_dvec_t *tk_dvec_mtx_extend (
   tk_dvec_t *base,
   tk_dvec_t *ext,

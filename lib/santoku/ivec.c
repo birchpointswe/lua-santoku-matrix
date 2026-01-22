@@ -768,6 +768,8 @@ static inline int tk_ivec_bits_to_csr_lua (lua_State *L)
   tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
   uint64_t n_samples = tk_lua_checkunsigned(L, 2, "n_samples");
   uint64_t n_labels = tk_lua_checkunsigned(L, 3, "n_labels");
+  if (n_labels == 0)
+    return luaL_error(L, "n_labels must be > 0");
   tk_ivec_t *offsets = tk_ivec_create(L, n_samples + 1, NULL, NULL);
   memset(offsets->a, 0, (n_samples + 1) * sizeof(int64_t));
   for (uint64_t i = 0; i < set_bits->n; i++) {
@@ -796,6 +798,13 @@ static inline int tk_ivec_bits_to_csr_lua (lua_State *L)
   }
   lua_pop(L, 1);
   return 2;
+}
+
+static inline int tk_ivec_to_dvec_lua (lua_State *L) {
+  lua_settop(L, 1);
+  tk_ivec_t *v = tk_ivec_peek(L, 1, "ivec");
+  tk_ivec_to_dvec(L, v);
+  return 1;
 }
 
 static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
@@ -835,6 +844,7 @@ static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
   { "lookup", tk_ivec_lookup_lua },
   { "index", tk_ivec_index_lua },
   { "scores_elbow", tk_ivec_scores_elbow_lua },
+  { "to_dvec", tk_ivec_to_dvec_lua },
   { NULL, NULL }
 };
 

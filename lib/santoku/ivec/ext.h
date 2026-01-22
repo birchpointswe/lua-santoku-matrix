@@ -87,6 +87,13 @@ static inline tk_ivec_t *tk_ivec_from_rvec (lua_State *L, tk_rvec_t *R) {
   return result;
 }
 
+static inline tk_dvec_t *tk_ivec_to_dvec (lua_State *L, tk_ivec_t *v) {
+  tk_dvec_t *out = tk_dvec_create(L, v->n, NULL, NULL);
+  for (uint64_t i = 0; i < v->n; i++)
+    out->a[i] = (double)v->a[i];
+  return out;
+}
+
 static inline void tk_ivec_lookup (tk_ivec_t *indices, tk_ivec_t *source) {
   int64_t write_pos = 0;
   for (uint64_t i = 0; i < indices->n; i++) {

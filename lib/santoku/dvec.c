@@ -326,6 +326,58 @@ static inline int tk_dvec_mtx_top_dip_lua (lua_State *L)
   return 2;
 }
 
+static inline int tk_dvec_round_lua (lua_State *L)
+{
+  int t = lua_gettop(L);
+  tk_dvec_t *v = tk_dvec_peek(L, 1, "dvec");
+  uint64_t start = (t >= 2) ? tk_lua_checkunsigned(L, 2, "start") : 0;
+  uint64_t end = (t >= 3) ? tk_lua_checkunsigned(L, 3, "end") : v->n;
+  tk_dvec_round(v, start, end);
+  lua_pushvalue(L, 1);
+  return 1;
+}
+
+static inline int tk_dvec_trunc_lua (lua_State *L)
+{
+  int t = lua_gettop(L);
+  tk_dvec_t *v = tk_dvec_peek(L, 1, "dvec");
+  uint64_t start = (t >= 2) ? tk_lua_checkunsigned(L, 2, "start") : 0;
+  uint64_t end = (t >= 3) ? tk_lua_checkunsigned(L, 3, "end") : v->n;
+  tk_dvec_trunc(v, start, end);
+  lua_pushvalue(L, 1);
+  return 1;
+}
+
+static inline int tk_dvec_floor_lua (lua_State *L)
+{
+  int t = lua_gettop(L);
+  tk_dvec_t *v = tk_dvec_peek(L, 1, "dvec");
+  uint64_t start = (t >= 2) ? tk_lua_checkunsigned(L, 2, "start") : 0;
+  uint64_t end = (t >= 3) ? tk_lua_checkunsigned(L, 3, "end") : v->n;
+  tk_dvec_floor(v, start, end);
+  lua_pushvalue(L, 1);
+  return 1;
+}
+
+static inline int tk_dvec_ceil_lua (lua_State *L)
+{
+  int t = lua_gettop(L);
+  tk_dvec_t *v = tk_dvec_peek(L, 1, "dvec");
+  uint64_t start = (t >= 2) ? tk_lua_checkunsigned(L, 2, "start") : 0;
+  uint64_t end = (t >= 3) ? tk_lua_checkunsigned(L, 3, "end") : v->n;
+  tk_dvec_ceil(v, start, end);
+  lua_pushvalue(L, 1);
+  return 1;
+}
+
+static inline int tk_dvec_to_ivec_lua (lua_State *L)
+{
+  lua_settop(L, 1);
+  tk_dvec_t *v = tk_dvec_peek(L, 1, "dvec");
+  tk_dvec_to_ivec(L, v);
+  return 1;
+}
+
 static luaL_Reg tk_dvec_lua_mt_ext2_fns[] =
 {
   { "center", tk_dvec_center_lua },
@@ -352,6 +404,11 @@ static luaL_Reg tk_dvec_lua_mt_ext2_fns[] =
   { "mtx_top_entropy", tk_dvec_mtx_top_entropy_lua },
   { "mtx_top_bimodality", tk_dvec_mtx_top_bimodality_lua },
   { "mtx_top_dip", tk_dvec_mtx_top_dip_lua },
+  { "round", tk_dvec_round_lua },
+  { "trunc", tk_dvec_trunc_lua },
+  { "floor", tk_dvec_floor_lua },
+  { "ceil", tk_dvec_ceil_lua },
+  { "to_ivec", tk_dvec_to_ivec_lua },
   { NULL, NULL }
 };
 
