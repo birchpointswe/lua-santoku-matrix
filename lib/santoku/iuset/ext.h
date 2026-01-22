@@ -3601,4 +3601,542 @@ static inline int tk_ivec_bits_extend_ind (
   return 0;
 }
 
+
+
+
+
+
+
+
+static inline tk_ivec_t *tk_ivec_bits_top_reg_f (
+  lua_State *L,
+  tk_ivec_t *set_bits,
+  tk_dvec_t *targets,
+  uint64_t n_samples,
+  uint64_t n_features,
+  uint64_t top_k
+) {
+  tk_ivec_asc(set_bits, 0, set_bits->n);
+
+  double overall_sum = 0.0;
+  for (uint64_t i = 0; i < n_samples; i++)
+    overall_sum += targets->a[i];
+  double overall_mean = overall_sum / (double)n_samples;
+
+  tk_ivec_t *feat_counts = tk_ivec_create(0, n_features, 0, 0);
+  tk_dvec_t *feat_sums = tk_dvec_create(0, n_features, 0, 0);
+  tk_dvec_t *feat_sum_sq = tk_dvec_create(0, n_features, 0, 0);
+  tk_ivec_zero(feat_counts);
+  tk_dvec_zero(feat_sums);
+  tk_dvec_zero(feat_sum_sq);
+
+  for (uint64_t i = 0; i < set_bits->n; i++) {
+    int64_t bit = set_bits->a[i];
+    if (bit < 0) continue;
+    uint64_t sample = (uint64_t)bit / n_features;
+    uint64_t feature = (uint64_t)bit % n_features;
+    if (sample >= n_samples || feature >= n_features) continue;
+    double y = targets->a[sample];
+    feat_counts->a[feature]++;
+    feat_sums->a[feature] += y;
+    feat_sum_sq->a[feature] += y * y;
+  }
+
+  double total_sum_sq = 0.0;
+  for (uint64_t i = 0; i < n_samples; i++) {
+    double y = targets->a[i];
+    total_sum_sq += y * y;
+  }
+
+  tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+
+  #pragma omp parallel for
+  for (uint64_t f = 0; f < n_features; f++) {
+    int64_t n1 = feat_counts->a[f];
+    int64_t n0 = (int64_t)n_samples - n1;
+    if (n1 <= 1 || n0 <= 1) continue;
+
+    double sum1 = feat_sums->a[f];
+    double sum0 = overall_sum - sum1;
+    double mean1 = sum1 / (double)n1;
+    double mean0 = sum0 / (double)n0;
+
+    double ssb = (double)n1 * (mean1 - overall_mean) * (mean1 - overall_mean) +
+                 (double)n0 * (mean0 - overall_mean) * (mean0 - overall_mean);
+
+    double sum_sq1 = feat_sum_sq->a[f];
+    double sum_sq0 = total_sum_sq - sum_sq1;
+    double ssw1 = sum_sq1 - (sum1 * sum1) / (double)n1;
+    double ssw0 = sum_sq0 - (sum0 * sum0) / (double)n0;
+    double ssw = ssw1 + ssw0;
+
+    if (ssw < 1e-12) continue;
+    double F = ssb / (ssw / (double)(n_samples - 2));
+
+    tk_rank_t r = { (int64_t)f, F };
+    #pragma omp critical
+    tk_rvec_hmin(top_heap, top_k, r);
+  }
+
+  tk_ivec_destroy(feat_counts);
+  tk_dvec_destroy(feat_sums);
+  tk_dvec_destroy(feat_sum_sq);
+
+  tk_rvec_desc(top_heap, 0, top_heap->n);
+  tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+  tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+  tk_rvec_keys(L, top_heap, out);
+  tk_rvec_values(L, top_heap, weights);
+  tk_rvec_destroy(top_heap);
+  return out;
+}
+
+
+
+static inline tk_ivec_t *tk_ivec_bits_top_reg_pearson (
+  lua_State *L,
+  tk_ivec_t *set_bits,
+  tk_dvec_t *targets,
+  uint64_t n_samples,
+  uint64_t n_features,
+  uint64_t top_k
+) {
+  tk_ivec_asc(set_bits, 0, set_bits->n);
+
+  double overall_sum = 0.0, overall_sum_sq = 0.0;
+  for (uint64_t i = 0; i < n_samples; i++) {
+    double y = targets->a[i];
+    overall_sum += y;
+    overall_sum_sq += y * y;
+  }
+  double overall_mean = overall_sum / (double)n_samples;
+  double overall_var = (overall_sum_sq / (double)n_samples) - (overall_mean * overall_mean);
+  double overall_std = sqrt(overall_var);
+  if (overall_std < 1e-12) {
+    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_create(L, 0, 0, 0);
+    return out;
+  }
+
+  tk_ivec_t *feat_counts = tk_ivec_create(0, n_features, 0, 0);
+  tk_dvec_t *feat_sums = tk_dvec_create(0, n_features, 0, 0);
+  tk_ivec_zero(feat_counts);
+  tk_dvec_zero(feat_sums);
+
+  for (uint64_t i = 0; i < set_bits->n; i++) {
+    int64_t bit = set_bits->a[i];
+    if (bit < 0) continue;
+    uint64_t sample = (uint64_t)bit / n_features;
+    uint64_t feature = (uint64_t)bit % n_features;
+    if (sample >= n_samples || feature >= n_features) continue;
+    feat_counts->a[feature]++;
+    feat_sums->a[feature] += targets->a[sample];
+  }
+
+  tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+
+  #pragma omp parallel for
+  for (uint64_t f = 0; f < n_features; f++) {
+    int64_t n1 = feat_counts->a[f];
+    int64_t n0 = (int64_t)n_samples - n1;
+    if (n1 == 0 || n0 == 0) continue;
+
+    double sum1 = feat_sums->a[f];
+    double sum0 = overall_sum - sum1;
+    double mean1 = sum1 / (double)n1;
+    double mean0 = sum0 / (double)n0;
+
+    double r = (mean1 - mean0) / overall_std * sqrt((double)n1 * (double)n0 / ((double)n_samples * (double)n_samples));
+    double abs_r = r < 0 ? -r : r;
+
+    tk_rank_t rank = { (int64_t)f, abs_r };
+    #pragma omp critical
+    tk_rvec_hmin(top_heap, top_k, rank);
+  }
+
+  tk_ivec_destroy(feat_counts);
+  tk_dvec_destroy(feat_sums);
+
+  tk_rvec_desc(top_heap, 0, top_heap->n);
+  tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+  tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+  tk_rvec_keys(L, top_heap, out);
+  tk_rvec_values(L, top_heap, weights);
+  tk_rvec_destroy(top_heap);
+  return out;
+}
+
+
+static inline tk_ivec_t *tk_ivec_bits_top_reg_mi (
+  lua_State *L,
+  tk_ivec_t *set_bits,
+  tk_dvec_t *targets,
+  uint64_t n_samples,
+  uint64_t n_features,
+  uint64_t top_k,
+  uint64_t n_bins
+) {
+  tk_ivec_asc(set_bits, 0, set_bits->n);
+
+  if (n_bins == 0) n_bins = 10;
+
+  double y_min = targets->a[0], y_max = targets->a[0];
+  for (uint64_t i = 1; i < n_samples; i++) {
+    if (targets->a[i] < y_min) y_min = targets->a[i];
+    if (targets->a[i] > y_max) y_max = targets->a[i];
+  }
+  double y_range = y_max - y_min;
+  if (y_range < 1e-12) {
+    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_create(L, 0, 0, 0);
+    return out;
+  }
+
+  tk_ivec_t *bin_assignments = tk_ivec_create(0, n_samples, 0, 0);
+  tk_ivec_t *bin_counts = tk_ivec_create(0, n_bins, 0, 0);
+  tk_ivec_zero(bin_counts);
+  for (uint64_t i = 0; i < n_samples; i++) {
+    double normalized = (targets->a[i] - y_min) / y_range;
+    uint64_t bin = (uint64_t)(normalized * (double)(n_bins - 1) + 0.5);
+    if (bin >= n_bins) bin = n_bins - 1;
+    bin_assignments->a[i] = (int64_t)bin;
+    bin_counts->a[bin]++;
+  }
+
+  tk_ivec_t *feat_counts = tk_ivec_create(0, n_features, 0, 0);
+  tk_ivec_t *joint_counts = tk_ivec_create(0, n_features * n_bins, 0, 0);
+  tk_ivec_zero(feat_counts);
+  tk_ivec_zero(joint_counts);
+
+  for (uint64_t i = 0; i < set_bits->n; i++) {
+    int64_t bit = set_bits->a[i];
+    if (bit < 0) continue;
+    uint64_t sample = (uint64_t)bit / n_features;
+    uint64_t feature = (uint64_t)bit % n_features;
+    if (sample >= n_samples || feature >= n_features) continue;
+    feat_counts->a[feature]++;
+    uint64_t bin = (uint64_t)bin_assignments->a[sample];
+    joint_counts->a[feature * n_bins + bin]++;
+  }
+
+  tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+
+  #pragma omp parallel for
+  for (uint64_t f = 0; f < n_features; f++) {
+    int64_t n1 = feat_counts->a[f];
+    int64_t n0 = (int64_t)n_samples - n1;
+    if (n1 == 0 || n0 == 0) continue;
+
+    double mi = 0.0;
+    double p1 = (double)n1 / (double)n_samples;
+    double p0 = (double)n0 / (double)n_samples;
+
+    for (uint64_t b = 0; b < n_bins; b++) {
+      int64_t n_b = bin_counts->a[b];
+      if (n_b == 0) continue;
+      double p_b = (double)n_b / (double)n_samples;
+
+      int64_t n_1b = joint_counts->a[f * n_bins + b];
+      int64_t n_0b = n_b - n_1b;
+
+      if (n_1b > 0) {
+        double p_1b = (double)n_1b / (double)n_samples;
+        mi += p_1b * (log(p_1b) - log(p1) - log(p_b));
+      }
+      if (n_0b > 0) {
+        double p_0b = (double)n_0b / (double)n_samples;
+        mi += p_0b * (log(p_0b) - log(p0) - log(p_b));
+      }
+    }
+
+    tk_rank_t r = { (int64_t)f, mi };
+    #pragma omp critical
+    tk_rvec_hmin(top_heap, top_k, r);
+  }
+
+  tk_ivec_destroy(bin_assignments);
+  tk_ivec_destroy(bin_counts);
+  tk_ivec_destroy(feat_counts);
+  tk_ivec_destroy(joint_counts);
+
+  tk_rvec_desc(top_heap, 0, top_heap->n);
+  tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+  tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+  tk_rvec_keys(L, top_heap, out);
+  tk_rvec_values(L, top_heap, weights);
+  tk_rvec_destroy(top_heap);
+  return out;
+}
+
+
+
+
+
+static inline tk_ivec_t *tk_cvec_bits_top_reg_f (
+  lua_State *L,
+  tk_cvec_t *bitmap,
+  tk_dvec_t *targets,
+  uint64_t n_samples,
+  uint64_t n_features,
+  uint64_t top_k
+) {
+  double overall_sum = 0.0;
+  for (uint64_t i = 0; i < n_samples; i++)
+    overall_sum += targets->a[i];
+  double overall_mean = overall_sum / (double)n_samples;
+
+  tk_ivec_t *feat_counts = tk_ivec_create(0, n_features, 0, 0);
+  tk_dvec_t *feat_sums = tk_dvec_create(0, n_features, 0, 0);
+  tk_dvec_t *feat_sum_sq = tk_dvec_create(0, n_features, 0, 0);
+  tk_ivec_zero(feat_counts);
+  tk_dvec_zero(feat_sums);
+  tk_dvec_zero(feat_sum_sq);
+
+  uint8_t *bitmap_data = (uint8_t *)bitmap->a;
+  uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
+
+  for (uint64_t s = 0; s < n_samples; s++) {
+    uint64_t sample_offset = s * bytes_per_sample;
+    double y = targets->a[s];
+    for (uint64_t f = 0; f < n_features; f++) {
+      uint64_t byte_idx = f / CHAR_BIT;
+      uint8_t bit_idx = f % CHAR_BIT;
+      if (bitmap_data[sample_offset + byte_idx] & (1u << bit_idx)) {
+        feat_counts->a[f]++;
+        feat_sums->a[f] += y;
+        feat_sum_sq->a[f] += y * y;
+      }
+    }
+  }
+
+  double total_sum_sq = 0.0;
+  for (uint64_t i = 0; i < n_samples; i++) {
+    double y = targets->a[i];
+    total_sum_sq += y * y;
+  }
+
+  tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+
+  #pragma omp parallel for
+  for (uint64_t f = 0; f < n_features; f++) {
+    int64_t n1 = feat_counts->a[f];
+    int64_t n0 = (int64_t)n_samples - n1;
+    if (n1 <= 1 || n0 <= 1) continue;
+
+    double sum1 = feat_sums->a[f];
+    double sum0 = overall_sum - sum1;
+    double mean1 = sum1 / (double)n1;
+    double mean0 = sum0 / (double)n0;
+
+    double ssb = (double)n1 * (mean1 - overall_mean) * (mean1 - overall_mean) +
+                 (double)n0 * (mean0 - overall_mean) * (mean0 - overall_mean);
+
+    double sum_sq1 = feat_sum_sq->a[f];
+    double sum_sq0 = total_sum_sq - sum_sq1;
+    double ssw1 = sum_sq1 - (sum1 * sum1) / (double)n1;
+    double ssw0 = sum_sq0 - (sum0 * sum0) / (double)n0;
+    double ssw = ssw1 + ssw0;
+
+    if (ssw < 1e-12) continue;
+    double F = ssb / (ssw / (double)(n_samples - 2));
+
+    tk_rank_t r = { (int64_t)f, F };
+    #pragma omp critical
+    tk_rvec_hmin(top_heap, top_k, r);
+  }
+
+  tk_ivec_destroy(feat_counts);
+  tk_dvec_destroy(feat_sums);
+  tk_dvec_destroy(feat_sum_sq);
+
+  tk_rvec_desc(top_heap, 0, top_heap->n);
+  tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+  tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+  tk_rvec_keys(L, top_heap, out);
+  tk_rvec_values(L, top_heap, weights);
+  tk_rvec_destroy(top_heap);
+  return out;
+}
+
+static inline tk_ivec_t *tk_cvec_bits_top_reg_pearson (
+  lua_State *L,
+  tk_cvec_t *bitmap,
+  tk_dvec_t *targets,
+  uint64_t n_samples,
+  uint64_t n_features,
+  uint64_t top_k
+) {
+  double overall_sum = 0.0, overall_sum_sq = 0.0;
+  for (uint64_t i = 0; i < n_samples; i++) {
+    double y = targets->a[i];
+    overall_sum += y;
+    overall_sum_sq += y * y;
+  }
+  double overall_mean = overall_sum / (double)n_samples;
+  double overall_var = (overall_sum_sq / (double)n_samples) - (overall_mean * overall_mean);
+  double overall_std = sqrt(overall_var);
+  if (overall_std < 1e-12) {
+    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_create(L, 0, 0, 0);
+    return out;
+  }
+
+  tk_ivec_t *feat_counts = tk_ivec_create(0, n_features, 0, 0);
+  tk_dvec_t *feat_sums = tk_dvec_create(0, n_features, 0, 0);
+  tk_ivec_zero(feat_counts);
+  tk_dvec_zero(feat_sums);
+
+  uint8_t *bitmap_data = (uint8_t *)bitmap->a;
+  uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
+
+  for (uint64_t s = 0; s < n_samples; s++) {
+    uint64_t sample_offset = s * bytes_per_sample;
+    double y = targets->a[s];
+    for (uint64_t f = 0; f < n_features; f++) {
+      uint64_t byte_idx = f / CHAR_BIT;
+      uint8_t bit_idx = f % CHAR_BIT;
+      if (bitmap_data[sample_offset + byte_idx] & (1u << bit_idx)) {
+        feat_counts->a[f]++;
+        feat_sums->a[f] += y;
+      }
+    }
+  }
+
+  tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+
+  #pragma omp parallel for
+  for (uint64_t f = 0; f < n_features; f++) {
+    int64_t n1 = feat_counts->a[f];
+    int64_t n0 = (int64_t)n_samples - n1;
+    if (n1 == 0 || n0 == 0) continue;
+
+    double sum1 = feat_sums->a[f];
+    double sum0 = overall_sum - sum1;
+    double mean1 = sum1 / (double)n1;
+    double mean0 = sum0 / (double)n0;
+
+    double r = (mean1 - mean0) / overall_std * sqrt((double)n1 * (double)n0 / ((double)n_samples * (double)n_samples));
+    double abs_r = r < 0 ? -r : r;
+
+    tk_rank_t rank = { (int64_t)f, abs_r };
+    #pragma omp critical
+    tk_rvec_hmin(top_heap, top_k, rank);
+  }
+
+  tk_ivec_destroy(feat_counts);
+  tk_dvec_destroy(feat_sums);
+
+  tk_rvec_desc(top_heap, 0, top_heap->n);
+  tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+  tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+  tk_rvec_keys(L, top_heap, out);
+  tk_rvec_values(L, top_heap, weights);
+  tk_rvec_destroy(top_heap);
+  return out;
+}
+
+static inline tk_ivec_t *tk_cvec_bits_top_reg_mi (
+  lua_State *L,
+  tk_cvec_t *bitmap,
+  tk_dvec_t *targets,
+  uint64_t n_samples,
+  uint64_t n_features,
+  uint64_t top_k,
+  uint64_t n_bins
+) {
+  if (n_bins == 0) n_bins = 10;
+
+  double y_min = targets->a[0], y_max = targets->a[0];
+  for (uint64_t i = 1; i < n_samples; i++) {
+    if (targets->a[i] < y_min) y_min = targets->a[i];
+    if (targets->a[i] > y_max) y_max = targets->a[i];
+  }
+  double y_range = y_max - y_min;
+  if (y_range < 1e-12) {
+    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_create(L, 0, 0, 0);
+    return out;
+  }
+
+  tk_ivec_t *bin_assignments = tk_ivec_create(0, n_samples, 0, 0);
+  tk_ivec_t *bin_counts = tk_ivec_create(0, n_bins, 0, 0);
+  tk_ivec_zero(bin_counts);
+  for (uint64_t i = 0; i < n_samples; i++) {
+    double normalized = (targets->a[i] - y_min) / y_range;
+    uint64_t bin = (uint64_t)(normalized * (double)(n_bins - 1) + 0.5);
+    if (bin >= n_bins) bin = n_bins - 1;
+    bin_assignments->a[i] = (int64_t)bin;
+    bin_counts->a[bin]++;
+  }
+
+  tk_ivec_t *feat_counts = tk_ivec_create(0, n_features, 0, 0);
+  tk_ivec_t *joint_counts = tk_ivec_create(0, n_features * n_bins, 0, 0);
+  tk_ivec_zero(feat_counts);
+  tk_ivec_zero(joint_counts);
+
+  uint8_t *bitmap_data = (uint8_t *)bitmap->a;
+  uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
+
+  for (uint64_t s = 0; s < n_samples; s++) {
+    uint64_t sample_offset = s * bytes_per_sample;
+    uint64_t bin = (uint64_t)bin_assignments->a[s];
+    for (uint64_t f = 0; f < n_features; f++) {
+      uint64_t byte_idx = f / CHAR_BIT;
+      uint8_t bit_idx = f % CHAR_BIT;
+      if (bitmap_data[sample_offset + byte_idx] & (1u << bit_idx)) {
+        feat_counts->a[f]++;
+        joint_counts->a[f * n_bins + bin]++;
+      }
+    }
+  }
+
+  tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+
+  #pragma omp parallel for
+  for (uint64_t f = 0; f < n_features; f++) {
+    int64_t n1 = feat_counts->a[f];
+    int64_t n0 = (int64_t)n_samples - n1;
+    if (n1 == 0 || n0 == 0) continue;
+
+    double mi = 0.0;
+    double p1 = (double)n1 / (double)n_samples;
+    double p0 = (double)n0 / (double)n_samples;
+
+    for (uint64_t b = 0; b < n_bins; b++) {
+      int64_t n_b = bin_counts->a[b];
+      if (n_b == 0) continue;
+      double p_b = (double)n_b / (double)n_samples;
+
+      int64_t n_1b = joint_counts->a[f * n_bins + b];
+      int64_t n_0b = n_b - n_1b;
+
+      if (n_1b > 0) {
+        double p_1b = (double)n_1b / (double)n_samples;
+        mi += p_1b * (log(p_1b) - log(p1) - log(p_b));
+      }
+      if (n_0b > 0) {
+        double p_0b = (double)n_0b / (double)n_samples;
+        mi += p_0b * (log(p_0b) - log(p0) - log(p_b));
+      }
+    }
+
+    tk_rank_t r = { (int64_t)f, mi };
+    #pragma omp critical
+    tk_rvec_hmin(top_heap, top_k, r);
+  }
+
+  tk_ivec_destroy(bin_assignments);
+  tk_ivec_destroy(bin_counts);
+  tk_ivec_destroy(feat_counts);
+  tk_ivec_destroy(joint_counts);
+
+  tk_rvec_desc(top_heap, 0, top_heap->n);
+  tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+  tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+  tk_rvec_keys(L, top_heap, out);
+  tk_rvec_values(L, top_heap, weights);
+  tk_rvec_destroy(top_heap);
+  return out;
+}
+
 #endif
