@@ -1118,7 +1118,7 @@ static inline tk_ivec_t *tk_cvec_bits_top_mi (
           uint64_t j_byte = j / CHAR_BIT;
           uint8_t j_bit = j % CHAR_BIT;
           bool hidden = (sample_codes[j_byte] & (1u << j_bit)) != 0;
-          counts->a[f * n_hidden * 4 + j * 4 + (visible ? 2 : 0) + (hidden ? 1 : 0)]++;
+          counts->a[f * n_hidden * 4 + j * 4 + (visible ? 2u : 0u) + (hidden ? 1u : 0u)]++;
         }
       }
     }
@@ -4175,7 +4175,7 @@ static inline void tk_cvec_bits_top_mi_ind (
           uint64_t h_byte_idx = h / CHAR_BIT;
           uint8_t h_bit_idx = h % CHAR_BIT;
           bool hidden = (codes_data[codes_offset + h_byte_idx] & (1u << h_bit_idx)) != 0;
-          unsigned int cell = (visible ? 2 : 0) + (hidden ? 1 : 0);
+          unsigned int cell = (visible ? 2u : 0u) + (hidden ? 1u : 0u);
           counts->a[f * n_hidden * 4 + h * 4 + cell]++;
         }
       }
