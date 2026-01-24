@@ -6466,9 +6466,10 @@ static inline void tk_ivec_bits_top_bns_ind (
       tk_rvec_desc(per_dim_heaps[h], 0, per_dim_heaps[h]->n);
 
     tk_iuset_t *union_set = tk_iuset_create(0, 0);
+    int absent;
     for (uint64_t h = 0; h < n_hidden; h++) {
       for (uint64_t i = 0; i < per_dim_heaps[h]->n; i++)
-        tk_iuset_put(union_set, per_dim_heaps[h]->a[i].i, NULL);
+        tk_iuset_put(union_set, per_dim_heaps[h]->a[i].i, &absent);
     }
 
     tk_ivec_t *ids_union = tk_ivec_create(L, tk_iuset_size(union_set), 0, 0);
@@ -6586,9 +6587,10 @@ static inline void tk_ivec_bits_top_bns_ind (
       tk_rvec_desc(per_dim_heaps[h], 0, per_dim_heaps[h]->n);
 
     tk_iuset_t *union_set = tk_iuset_create(0, 0);
+    int absent;
     for (uint64_t h = 0; h < n_hidden; h++) {
       for (uint64_t i = 0; i < per_dim_heaps[h]->n; i++)
-        tk_iuset_put(union_set, per_dim_heaps[h]->a[i].i, NULL);
+        tk_iuset_put(union_set, per_dim_heaps[h]->a[i].i, &absent);
     }
 
     tk_ivec_t *ids_union = tk_ivec_create(L, tk_iuset_size(union_set), 0, 0);
@@ -6915,9 +6917,10 @@ static inline void tk_cvec_bits_top_bns_ind (
       tk_rvec_desc(per_dim_heaps[h], 0, per_dim_heaps[h]->n);
 
     tk_iuset_t *union_set = tk_iuset_create(0, 0);
+    int absent;
     for (uint64_t h = 0; h < n_hidden; h++) {
       for (uint64_t i = 0; i < per_dim_heaps[h]->n; i++)
-        tk_iuset_put(union_set, per_dim_heaps[h]->a[i].i, NULL);
+        tk_iuset_put(union_set, per_dim_heaps[h]->a[i].i, &absent);
     }
 
     tk_ivec_t *ids_union = tk_ivec_create(L, tk_iuset_size(union_set), 0, 0);
@@ -7044,9 +7047,10 @@ static inline void tk_cvec_bits_top_bns_ind (
       tk_rvec_desc(per_dim_heaps[h], 0, per_dim_heaps[h]->n);
 
     tk_iuset_t *union_set = tk_iuset_create(0, 0);
+    int absent;
     for (uint64_t h = 0; h < n_hidden; h++) {
       for (uint64_t i = 0; i < per_dim_heaps[h]->n; i++)
-        tk_iuset_put(union_set, per_dim_heaps[h]->a[i].i, NULL);
+        tk_iuset_put(union_set, per_dim_heaps[h]->a[i].i, &absent);
     }
 
     tk_ivec_t *ids_union = tk_ivec_create(L, tk_iuset_size(union_set), 0, 0);
