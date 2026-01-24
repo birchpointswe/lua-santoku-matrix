@@ -946,6 +946,48 @@ static inline int tk_ivec_to_dvec_lua (lua_State *L) {
   return 1;
 }
 
+static inline int tk_ivec_bits_top_bns_lua (lua_State *L)
+{
+  lua_settop(L, 6);
+  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
+  uint64_t n_samples = tk_lua_checkunsigned(L, 3, "samples");
+  uint64_t n_visible = tk_lua_checkunsigned(L, 4, "visible");
+  uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
+  uint64_t top_k = lua_isnil(L, 6) ? n_visible : tk_lua_checkunsigned(L, 6, "top_k");
+  char *codes = NULL;
+  tk_ivec_t *labels = NULL;
+  if (lua_isnil(L, 2)) {
+  } else if (tk_lua_testuserdata(L, 2, "tk_cvec_t")) {
+    tk_cvec_t *cvec = tk_cvec_peek(L, 2, "codes");
+    codes = cvec->a;
+  } else {
+    labels = tk_ivec_peek(L, 2, "labels");
+  }
+  tk_ivec_bits_top_bns(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, top_k);
+  return 2;
+}
+
+static inline int tk_ivec_bits_top_bns_ind_lua (lua_State *L)
+{
+  lua_settop(L, 6);
+  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
+  uint64_t n_samples = tk_lua_checkunsigned(L, 3, "samples");
+  uint64_t n_visible = tk_lua_checkunsigned(L, 4, "visible");
+  uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
+  uint64_t top_k = lua_isnil(L, 6) ? n_visible : tk_lua_checkunsigned(L, 6, "top_k");
+  char *codes = NULL;
+  tk_ivec_t *labels = NULL;
+  if (lua_isnil(L, 2)) {
+  } else if (tk_lua_testuserdata(L, 2, "tk_cvec_t")) {
+    tk_cvec_t *cvec = tk_cvec_peek(L, 2, "codes");
+    codes = cvec->a;
+  } else {
+    labels = tk_ivec_peek(L, 2, "labels");
+  }
+  tk_ivec_bits_top_bns_ind(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, top_k);
+  return 4;
+}
+
 static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
 {
   { "bits_to_csr", tk_ivec_bits_to_csr_lua },
@@ -993,6 +1035,8 @@ static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
   { "index", tk_ivec_index_lua },
   { "scores_elbow", tk_ivec_scores_elbow_lua },
   { "to_dvec", tk_ivec_to_dvec_lua },
+  { "bits_top_bns", tk_ivec_bits_top_bns_lua },
+  { "bits_top_bns_ind", tk_ivec_bits_top_bns_ind_lua },
   { NULL, NULL }
 };
 

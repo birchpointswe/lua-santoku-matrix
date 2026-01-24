@@ -489,6 +489,46 @@ static inline int tk_cvec_bits_transpose_lua (lua_State *L)
   return 1;
 }
 
+static inline int tk_cvec_bits_top_bns_lua (lua_State *L)
+{
+  lua_settop(L, 6);
+  tk_cvec_t *bitmap = tk_cvec_peek(L, 1, "bitmap");
+  uint64_t n_samples = tk_lua_checkunsigned(L, 3, "samples");
+  uint64_t n_features = tk_lua_checkunsigned(L, 4, "features");
+  uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
+  uint64_t top_k = lua_isnil(L, 6) ? n_features : tk_lua_checkunsigned(L, 6, "top_k");
+  tk_cvec_t *codes = NULL;
+  tk_ivec_t *labels = NULL;
+  if (lua_isnil(L, 2)) {
+  } else if (tk_lua_testuserdata(L, 2, "tk_cvec_t")) {
+    codes = tk_cvec_peek(L, 2, "codes");
+  } else {
+    labels = tk_ivec_peek(L, 2, "labels");
+  }
+  tk_cvec_bits_top_bns(L, bitmap, codes, labels, n_samples, n_features, n_hidden, top_k);
+  return 2;
+}
+
+static inline int tk_cvec_bits_top_bns_ind_lua (lua_State *L)
+{
+  lua_settop(L, 6);
+  tk_cvec_t *bitmap = tk_cvec_peek(L, 1, "bitmap");
+  uint64_t n_samples = tk_lua_checkunsigned(L, 3, "samples");
+  uint64_t n_features = tk_lua_checkunsigned(L, 4, "features");
+  uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
+  uint64_t top_k = lua_isnil(L, 6) ? n_features : tk_lua_checkunsigned(L, 6, "top_k");
+  tk_cvec_t *codes = NULL;
+  tk_ivec_t *labels = NULL;
+  if (lua_isnil(L, 2)) {
+  } else if (tk_lua_testuserdata(L, 2, "tk_cvec_t")) {
+    codes = tk_cvec_peek(L, 2, "codes");
+  } else {
+    labels = tk_ivec_peek(L, 2, "labels");
+  }
+  tk_cvec_bits_top_bns_ind(L, bitmap, codes, labels, n_samples, n_features, n_hidden, top_k);
+  return 4;
+}
+
 static luaL_Reg tk_cvec_lua_mt_ext2_fns[] =
 {
   { "bits_flip_interleave", tk_cvec_bits_flip_interleave_lua },
@@ -519,6 +559,8 @@ static luaL_Reg tk_cvec_lua_mt_ext2_fns[] =
   { "bits_xor", tk_cvec_bits_xor_lua },
   { "bits_to_ascii", tk_cvec_bits_to_ascii_lua },
   { "bits_transpose", tk_cvec_bits_transpose_lua },
+  { "bits_top_bns", tk_cvec_bits_top_bns_lua },
+  { "bits_top_bns_ind", tk_cvec_bits_top_bns_ind_lua },
   { NULL, NULL }
 };
 

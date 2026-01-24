@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
+#include <math.h>
 
 #include <santoku/iumap.h>
 
@@ -6143,6 +6144,958 @@ static inline void tk_cvec_bits_top_reg_mi_ind (
   for (uint64_t t = 0; t < n_targets; t++)
     tk_rvec_destroy(per_target_heaps[t]);
   free(per_target_heaps);
+}
+
+static inline double tk_probit (double p)
+{
+  if (p <= 0.0) return -1e10;
+  if (p >= 1.0) return 1e10;
+  static const double a[] = {
+    -3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02,
+     1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00
+  };
+  static const double b[] = {
+    -5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02,
+     6.680131188771972e+01, -1.328068155288572e+01
+  };
+  static const double c[] = {
+    -7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00,
+    -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00
+  };
+  static const double d[] = {
+    7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00,
+    3.754408661907416e+00
+  };
+  double plow = 0.02425;
+  double phigh = 1.0 - plow;
+  double q, r;
+  if (p < plow) {
+    q = sqrt(-2.0 * log(p));
+    return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) /
+           ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1.0);
+  } else if (p <= phigh) {
+    q = p - 0.5;
+    r = q * q;
+    return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q /
+           (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1.0);
+  } else {
+    q = sqrt(-2.0 * log(1.0 - p));
+    return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) /
+            ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1.0);
+  }
+}
+
+static inline tk_ivec_t *tk_ivec_bits_top_bns (
+  lua_State *L,
+  tk_ivec_t *set_bits,
+  char *codes,
+  tk_ivec_t *labels,
+  uint64_t n_samples,
+  uint64_t n_visible,
+  uint64_t n_hidden,
+  uint64_t top_k
+) {
+  tk_ivec_asc(set_bits, 0, set_bits->n);
+
+  if (codes) {
+
+    tk_ivec_t *active_counts = tk_ivec_create(0, n_visible * n_hidden, 0, 0);
+    tk_ivec_t *label_counts = tk_ivec_create(0, n_hidden, 0, 0);
+    tk_ivec_t *feat_counts = tk_ivec_create(0, n_visible, 0, 0);
+    tk_ivec_zero(active_counts);
+    tk_ivec_zero(label_counts);
+    tk_ivec_zero(feat_counts);
+
+    uint64_t prev_sample = UINT64_MAX;
+    uint8_t *sample_codes = NULL;
+    for (uint64_t i = 0; i < set_bits->n; i++) {
+      int64_t bit_idx = set_bits->a[i];
+      if (bit_idx < 0)
+        continue;
+      uint64_t sample_idx = (uint64_t)bit_idx / n_visible;
+      uint64_t feature_idx = (uint64_t)bit_idx % n_visible;
+      if (sample_idx >= n_samples || feature_idx >= n_visible)
+        continue;
+      feat_counts->a[feature_idx]++;
+      if (sample_idx != prev_sample) {
+        prev_sample = sample_idx;
+        sample_codes = (uint8_t *)(codes + sample_idx * TK_CVEC_BITS_BYTES(n_hidden));
+      }
+      for (uint64_t b = 0; b < n_hidden; b++) {
+        uint64_t byte_idx = b / CHAR_BIT;
+        uint64_t bit_pos = b % CHAR_BIT;
+        if (sample_codes[byte_idx] & (1u << bit_pos)) {
+          active_counts->a[feature_idx * n_hidden + b]++;
+        }
+      }
+    }
+
+    for (uint64_t s = 0; s < n_samples; s++) {
+      uint8_t *s_codes = (uint8_t *)(codes + s * TK_CVEC_BITS_BYTES(n_hidden));
+      for (uint64_t b = 0; b < n_hidden; b++) {
+        uint64_t byte_idx = b / CHAR_BIT;
+        uint64_t bit_pos = b % CHAR_BIT;
+        if (s_codes[byte_idx] & (1u << bit_pos)) {
+          label_counts->a[b]++;
+        }
+      }
+    }
+
+    double N = (double)n_samples;
+    double eps = 0.5 / N;
+    tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+
+    #pragma omp parallel for
+    for (uint64_t f = 0; f < n_visible; f++) {
+      double C = (double)feat_counts->a[f];
+      if (C == 0 || C == N) continue;
+      double sum_bns = 0.0;
+      for (uint64_t b = 0; b < n_hidden; b++) {
+        double P = (double)label_counts->a[b];
+        if (P == 0 || P == N) continue;
+        double a = (double)active_counts->a[f * n_hidden + b];
+        double tpr_raw = a / P;
+        double fpr_raw = (C - a) / (N - P);
+        double tpr = tpr_raw < eps ? eps : (tpr_raw > 1.0 - eps ? 1.0 - eps : tpr_raw);
+        double fpr = fpr_raw < eps ? eps : (fpr_raw > 1.0 - eps ? 1.0 - eps : fpr_raw);
+        double bns = fabs(tk_probit(tpr) - tk_probit(fpr));
+        sum_bns += bns;
+      }
+      if (sum_bns > 0) {
+        tk_rank_t r = { (int64_t)f, sum_bns };
+        #pragma omp critical
+        tk_rvec_hmin(top_heap, top_k, r);
+      }
+    }
+
+    tk_ivec_destroy(active_counts);
+    tk_ivec_destroy(feat_counts);
+    tk_ivec_destroy(label_counts);
+
+    tk_rvec_desc(top_heap, 0, top_heap->n);
+    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+    tk_rvec_keys(L, top_heap, out);
+    tk_rvec_values(L, top_heap, weights);
+    tk_rvec_destroy(top_heap);
+    return out;
+
+  } else if (labels) {
+
+    tk_ivec_asc(labels, 0, labels->n);
+    tk_iumap_t *active_counts = tk_iumap_create(0, 0);
+    tk_ivec_t *feat_counts = tk_ivec_create(0, n_visible, 0, 0);
+    tk_ivec_t *label_counts = tk_ivec_create(0, n_hidden, 0, 0);
+    tk_ivec_zero(feat_counts);
+    tk_ivec_zero(label_counts);
+
+    for (uint64_t i = 0; i < set_bits->n; i++) {
+      int64_t bit = set_bits->a[i];
+      if (bit >= 0) {
+        uint64_t f = (uint64_t)bit % n_visible;
+        feat_counts->a[f]++;
+      }
+    }
+
+    for (uint64_t i = 0; i < labels->n; i++) {
+      int64_t bit = labels->a[i];
+      if (bit >= 0) {
+        uint64_t h = (uint64_t)bit % n_hidden;
+        label_counts->a[h]++;
+      }
+    }
+
+    size_t si = 0, li = 0;
+    while (si < set_bits->n) {
+      if (set_bits->a[si] < 0) { si++; continue; }
+      uint64_t s_sample = (uint64_t)set_bits->a[si] / n_visible;
+      uint64_t f = (uint64_t)set_bits->a[si] % n_visible;
+      while (li < labels->n && labels->a[li] >= 0 && (uint64_t)labels->a[li] / n_hidden < s_sample)
+        li++;
+      if (li >= labels->n || labels->a[li] < 0 || (uint64_t)labels->a[li] / n_hidden > s_sample) {
+        si++; continue;
+      }
+      size_t li_start = li;
+      while (li < labels->n && labels->a[li] >= 0 && (uint64_t)labels->a[li] / n_hidden == s_sample) {
+        uint64_t h = (uint64_t)labels->a[li] % n_hidden;
+        int64_t key = (int64_t)(f * n_hidden + h);
+        tk_iumap_inc(active_counts, key);
+        li++;
+      }
+      si++;
+      if (si < set_bits->n && set_bits->a[si] >= 0 && (uint64_t)set_bits->a[si] / n_visible == s_sample)
+        li = li_start;
+    }
+
+    double N = (double)n_samples;
+    double eps = 0.5 / N;
+    tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+    tk_dvec_t *feat_sum_bns = tk_dvec_create(0, n_visible, 0, 0);
+    tk_dvec_zero(feat_sum_bns);
+
+    int64_t k, v;
+    tk_umap_foreach(active_counts, k, v, ({
+      uint64_t f = (uint64_t)k / n_hidden;
+      uint64_t b = (uint64_t)k % n_hidden;
+      if (f >= n_visible || b >= n_hidden) continue;
+      double C = (double)feat_counts->a[f];
+      double P = (double)label_counts->a[b];
+      if (C == 0 || P == 0 || C == N || P == N) continue;
+      double a = (double)v;
+      double tpr_raw = a / P;
+      double fpr_raw = (C - a) / (N - P);
+      double tpr = tpr_raw < eps ? eps : (tpr_raw > 1.0 - eps ? 1.0 - eps : tpr_raw);
+      double fpr = fpr_raw < eps ? eps : (fpr_raw > 1.0 - eps ? 1.0 - eps : fpr_raw);
+      double bns = fabs(tk_probit(tpr) - tk_probit(fpr));
+      feat_sum_bns->a[f] += bns;
+    }));
+
+    #pragma omp parallel for
+    for (uint64_t f = 0; f < n_visible; f++) {
+      if (feat_sum_bns->a[f] > 0) {
+        tk_rank_t r = { (int64_t)f, feat_sum_bns->a[f] };
+        #pragma omp critical
+        tk_rvec_hmin(top_heap, top_k, r);
+      }
+    }
+
+    tk_iumap_destroy(active_counts);
+    tk_ivec_destroy(feat_counts);
+    tk_ivec_destroy(label_counts);
+    tk_dvec_destroy(feat_sum_bns);
+
+    tk_rvec_desc(top_heap, 0, top_heap->n);
+    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+    tk_rvec_keys(L, top_heap, out);
+    tk_rvec_values(L, top_heap, weights);
+    tk_rvec_destroy(top_heap);
+    return out;
+
+  } else {
+    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_create(L, 0, 0, 0);
+    return out;
+  }
+}
+
+static inline void tk_ivec_bits_top_bns_ind (
+  lua_State *L,
+  tk_ivec_t *set_bits,
+  char *codes,
+  tk_ivec_t *labels,
+  uint64_t n_samples,
+  uint64_t n_visible,
+  uint64_t n_hidden,
+  uint64_t top_k
+) {
+  tk_ivec_asc(set_bits, 0, set_bits->n);
+
+  if (codes) {
+
+    tk_ivec_t *active_counts = tk_ivec_create(0, n_visible * n_hidden, 0, 0);
+    tk_ivec_t *label_counts = tk_ivec_create(0, n_hidden, 0, 0);
+    tk_ivec_t *feat_counts = tk_ivec_create(0, n_visible, 0, 0);
+    tk_ivec_zero(active_counts);
+    tk_ivec_zero(label_counts);
+    tk_ivec_zero(feat_counts);
+
+    uint64_t prev_sample = UINT64_MAX;
+    uint8_t *sample_codes = NULL;
+    for (uint64_t i = 0; i < set_bits->n; i++) {
+      int64_t bit_idx = set_bits->a[i];
+      if (bit_idx < 0) continue;
+      uint64_t sample_idx = (uint64_t)bit_idx / n_visible;
+      uint64_t feature_idx = (uint64_t)bit_idx % n_visible;
+      if (sample_idx >= n_samples || feature_idx >= n_visible) continue;
+      feat_counts->a[feature_idx]++;
+      if (sample_idx != prev_sample) {
+        prev_sample = sample_idx;
+        sample_codes = (uint8_t *)(codes + sample_idx * TK_CVEC_BITS_BYTES(n_hidden));
+      }
+      for (uint64_t b = 0; b < n_hidden; b++) {
+        uint64_t byte_idx = b / CHAR_BIT;
+        uint64_t bit_pos = b % CHAR_BIT;
+        if (sample_codes[byte_idx] & (1u << bit_pos))
+          active_counts->a[feature_idx * n_hidden + b]++;
+      }
+    }
+
+    for (uint64_t s = 0; s < n_samples; s++) {
+      uint8_t *s_codes = (uint8_t *)(codes + s * TK_CVEC_BITS_BYTES(n_hidden));
+      for (uint64_t b = 0; b < n_hidden; b++) {
+        uint64_t byte_idx = b / CHAR_BIT;
+        uint64_t bit_pos = b % CHAR_BIT;
+        if (s_codes[byte_idx] & (1u << bit_pos))
+          label_counts->a[b]++;
+      }
+    }
+
+    double N = (double)n_samples;
+    double eps = 0.5 / N;
+    tk_rvec_t **per_dim_heaps = (tk_rvec_t **)malloc(n_hidden * sizeof(tk_rvec_t *));
+    for (uint64_t h = 0; h < n_hidden; h++)
+      per_dim_heaps[h] = tk_rvec_create(0, 0, 0, 0);
+
+    #pragma omp parallel for
+    for (uint64_t f = 0; f < n_visible; f++) {
+      double C = (double)feat_counts->a[f];
+      if (C == 0 || C == N) continue;
+      for (uint64_t b = 0; b < n_hidden; b++) {
+        double P = (double)label_counts->a[b];
+        if (P == 0 || P == N) continue;
+        double a = (double)active_counts->a[f * n_hidden + b];
+        double tpr_raw = a / P;
+        double fpr_raw = (C - a) / (N - P);
+        double tpr = tpr_raw < eps ? eps : (tpr_raw > 1.0 - eps ? 1.0 - eps : tpr_raw);
+        double fpr = fpr_raw < eps ? eps : (fpr_raw > 1.0 - eps ? 1.0 - eps : fpr_raw);
+        double bns = fabs(tk_probit(tpr) - tk_probit(fpr));
+        if (bns > 0) {
+          tk_rank_t r = { (int64_t)f, bns };
+          #pragma omp critical
+          tk_rvec_hmin(per_dim_heaps[b], top_k, r);
+        }
+      }
+    }
+
+    tk_ivec_destroy(active_counts);
+    tk_ivec_destroy(feat_counts);
+    tk_ivec_destroy(label_counts);
+
+    for (uint64_t h = 0; h < n_hidden; h++)
+      tk_rvec_desc(per_dim_heaps[h], 0, per_dim_heaps[h]->n);
+
+    tk_iuset_t *union_set = tk_iuset_create(0, 0);
+    for (uint64_t h = 0; h < n_hidden; h++) {
+      for (uint64_t i = 0; i < per_dim_heaps[h]->n; i++)
+        tk_iuset_put(union_set, per_dim_heaps[h]->a[i].i, NULL);
+    }
+
+    tk_ivec_t *ids_union = tk_ivec_create(L, tk_iuset_size(union_set), 0, 0);
+    ids_union->n = 0;
+    int64_t key;
+    tk_umap_foreach_keys(union_set, key, ({ ids_union->a[ids_union->n++] = key; }));
+    tk_ivec_asc(ids_union, 0, ids_union->n);
+
+    tk_iumap_t *id_to_union_idx = tk_iumap_create(0, 0);
+    for (uint64_t i = 0; i < ids_union->n; i++) {
+      int absent;
+      khint_t k = tk_iumap_put(id_to_union_idx, ids_union->a[i], &absent);
+      kh_value(id_to_union_idx, k) = (int64_t)i;
+    }
+
+    uint64_t total_ids = 0;
+    for (uint64_t h = 0; h < n_hidden; h++)
+      total_ids += per_dim_heaps[h]->n;
+
+    tk_ivec_t *offsets = tk_ivec_create(L, n_hidden + 1, 0, 0);
+    tk_ivec_t *ids = tk_ivec_create(L, total_ids, 0, 0);
+    tk_dvec_t *weights = tk_dvec_create(L, total_ids, 0, 0);
+
+    offsets->a[0] = 0;
+    ids->n = 0;
+    weights->n = 0;
+    for (uint64_t h = 0; h < n_hidden; h++) {
+      for (uint64_t i = 0; i < per_dim_heaps[h]->n; i++) {
+        int64_t feat_id = per_dim_heaps[h]->a[i].i;
+        khint_t k = tk_iumap_get(id_to_union_idx, feat_id);
+        ids->a[ids->n++] = kh_value(id_to_union_idx, k);
+        weights->a[weights->n++] = per_dim_heaps[h]->a[i].d;
+      }
+      offsets->a[h + 1] = (int64_t)ids->n;
+    }
+    offsets->n = n_hidden + 1;
+
+    tk_iumap_destroy(id_to_union_idx);
+    tk_iuset_destroy(union_set);
+    for (uint64_t h = 0; h < n_hidden; h++)
+      tk_rvec_destroy(per_dim_heaps[h]);
+    free(per_dim_heaps);
+
+  } else if (labels) {
+
+    tk_ivec_asc(labels, 0, labels->n);
+    tk_iumap_t *active_counts = tk_iumap_create(0, 0);
+    tk_ivec_t *feat_counts = tk_ivec_create(0, n_visible, 0, 0);
+    tk_ivec_t *label_counts = tk_ivec_create(0, n_hidden, 0, 0);
+    tk_ivec_zero(feat_counts);
+    tk_ivec_zero(label_counts);
+
+    for (uint64_t i = 0; i < set_bits->n; i++) {
+      int64_t bit = set_bits->a[i];
+      if (bit >= 0) feat_counts->a[(uint64_t)bit % n_visible]++;
+    }
+
+    for (uint64_t i = 0; i < labels->n; i++) {
+      int64_t bit = labels->a[i];
+      if (bit >= 0) label_counts->a[(uint64_t)bit % n_hidden]++;
+    }
+
+    size_t si = 0, li = 0;
+    while (si < set_bits->n) {
+      if (set_bits->a[si] < 0) { si++; continue; }
+      uint64_t s_sample = (uint64_t)set_bits->a[si] / n_visible;
+      uint64_t f = (uint64_t)set_bits->a[si] % n_visible;
+      while (li < labels->n && labels->a[li] >= 0 && (uint64_t)labels->a[li] / n_hidden < s_sample)
+        li++;
+      if (li >= labels->n || labels->a[li] < 0 || (uint64_t)labels->a[li] / n_hidden > s_sample) {
+        si++; continue;
+      }
+      size_t li_start = li;
+      while (li < labels->n && labels->a[li] >= 0 && (uint64_t)labels->a[li] / n_hidden == s_sample) {
+        uint64_t h = (uint64_t)labels->a[li] % n_hidden;
+        tk_iumap_inc(active_counts, (int64_t)(f * n_hidden + h));
+        li++;
+      }
+      si++;
+      if (si < set_bits->n && set_bits->a[si] >= 0 && (uint64_t)set_bits->a[si] / n_visible == s_sample)
+        li = li_start;
+    }
+
+    double N = (double)n_samples;
+    double eps = 0.5 / N;
+    tk_rvec_t **per_dim_heaps = (tk_rvec_t **)malloc(n_hidden * sizeof(tk_rvec_t *));
+    for (uint64_t h = 0; h < n_hidden; h++)
+      per_dim_heaps[h] = tk_rvec_create(0, 0, 0, 0);
+
+    int64_t k, v;
+    tk_umap_foreach(active_counts, k, v, ({
+      uint64_t f = (uint64_t)k / n_hidden;
+      uint64_t b = (uint64_t)k % n_hidden;
+      if (f >= n_visible || b >= n_hidden) continue;
+      double C = (double)feat_counts->a[f];
+      double P = (double)label_counts->a[b];
+      if (C == 0 || P == 0 || C == N || P == N) continue;
+      double a = (double)v;
+      double tpr_raw = a / P;
+      double fpr_raw = (C - a) / (N - P);
+      double tpr = tpr_raw < eps ? eps : (tpr_raw > 1.0 - eps ? 1.0 - eps : tpr_raw);
+      double fpr = fpr_raw < eps ? eps : (fpr_raw > 1.0 - eps ? 1.0 - eps : fpr_raw);
+      double bns = fabs(tk_probit(tpr) - tk_probit(fpr));
+      if (bns > 0) {
+        tk_rank_t r = { (int64_t)f, bns };
+        tk_rvec_hmin(per_dim_heaps[b], top_k, r);
+      }
+    }));
+
+    tk_iumap_destroy(active_counts);
+    tk_ivec_destroy(feat_counts);
+    tk_ivec_destroy(label_counts);
+
+    for (uint64_t h = 0; h < n_hidden; h++)
+      tk_rvec_desc(per_dim_heaps[h], 0, per_dim_heaps[h]->n);
+
+    tk_iuset_t *union_set = tk_iuset_create(0, 0);
+    for (uint64_t h = 0; h < n_hidden; h++) {
+      for (uint64_t i = 0; i < per_dim_heaps[h]->n; i++)
+        tk_iuset_put(union_set, per_dim_heaps[h]->a[i].i, NULL);
+    }
+
+    tk_ivec_t *ids_union = tk_ivec_create(L, tk_iuset_size(union_set), 0, 0);
+    ids_union->n = 0;
+    int64_t key;
+    tk_umap_foreach_keys(union_set, key, ({ ids_union->a[ids_union->n++] = key; }));
+    tk_ivec_asc(ids_union, 0, ids_union->n);
+
+    tk_iumap_t *id_to_union_idx = tk_iumap_create(0, 0);
+    for (uint64_t i = 0; i < ids_union->n; i++) {
+      int absent;
+      khint_t k = tk_iumap_put(id_to_union_idx, ids_union->a[i], &absent);
+      kh_value(id_to_union_idx, k) = (int64_t)i;
+    }
+
+    uint64_t total_ids = 0;
+    for (uint64_t h = 0; h < n_hidden; h++)
+      total_ids += per_dim_heaps[h]->n;
+
+    tk_ivec_t *offsets = tk_ivec_create(L, n_hidden + 1, 0, 0);
+    tk_ivec_t *ids = tk_ivec_create(L, total_ids, 0, 0);
+    tk_dvec_t *weights = tk_dvec_create(L, total_ids, 0, 0);
+
+    offsets->a[0] = 0;
+    ids->n = 0;
+    weights->n = 0;
+    for (uint64_t h = 0; h < n_hidden; h++) {
+      for (uint64_t i = 0; i < per_dim_heaps[h]->n; i++) {
+        int64_t feat_id = per_dim_heaps[h]->a[i].i;
+        khint_t k = tk_iumap_get(id_to_union_idx, feat_id);
+        ids->a[ids->n++] = kh_value(id_to_union_idx, k);
+        weights->a[weights->n++] = per_dim_heaps[h]->a[i].d;
+      }
+      offsets->a[h + 1] = (int64_t)ids->n;
+    }
+    offsets->n = n_hidden + 1;
+
+    tk_iumap_destroy(id_to_union_idx);
+    tk_iuset_destroy(union_set);
+    for (uint64_t h = 0; h < n_hidden; h++)
+      tk_rvec_destroy(per_dim_heaps[h]);
+    free(per_dim_heaps);
+
+  } else {
+    tk_ivec_create(L, 0, 0, 0);
+    tk_ivec_create(L, 1, 0, 0);
+    tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_create(L, 0, 0, 0);
+  }
+}
+
+static inline tk_ivec_t *tk_cvec_bits_top_bns (
+  lua_State *L,
+  tk_cvec_t *bitmap,
+  tk_cvec_t *codes,
+  tk_ivec_t *labels,
+  uint64_t n_samples,
+  uint64_t n_features,
+  uint64_t n_hidden,
+  uint64_t top_k
+) {
+
+  if (codes) {
+
+    tk_ivec_t *active_counts = tk_ivec_create(0, n_features * n_hidden, 0, 0);
+    tk_ivec_t *label_counts = tk_ivec_create(0, n_hidden, 0, 0);
+    tk_ivec_t *feat_counts = tk_ivec_create(0, n_features, 0, 0);
+    tk_ivec_zero(active_counts);
+    tk_ivec_zero(label_counts);
+    tk_ivec_zero(feat_counts);
+
+    uint8_t *bitmap_data = (uint8_t *)bitmap->a;
+    uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
+    for (uint64_t s = 0; s < n_samples; s++) {
+      uint64_t sample_offset = s * bytes_per_sample;
+      uint8_t *sample_codes = (uint8_t *)(codes->a + s * TK_CVEC_BITS_BYTES(n_hidden));
+      for (uint64_t f = 0; f < n_features; f++) {
+        uint64_t byte_idx = f / CHAR_BIT;
+        uint8_t bit_idx = f % CHAR_BIT;
+        if (bitmap_data[sample_offset + byte_idx] & (1u << bit_idx)) {
+          feat_counts->a[f]++;
+          for (uint64_t b = 0; b < n_hidden; b++) {
+            uint64_t b_byte = b / CHAR_BIT;
+            uint8_t b_bit = b % CHAR_BIT;
+            if (sample_codes[b_byte] & (1u << b_bit))
+              active_counts->a[f * n_hidden + b]++;
+          }
+        }
+      }
+    }
+
+    for (uint64_t s = 0; s < n_samples; s++) {
+      uint8_t *s_codes = (uint8_t *)(codes->a + s * TK_CVEC_BITS_BYTES(n_hidden));
+      for (uint64_t b = 0; b < n_hidden; b++) {
+        uint64_t byte_idx = b / CHAR_BIT;
+        uint8_t bit_pos = b % CHAR_BIT;
+        if (s_codes[byte_idx] & (1u << bit_pos))
+          label_counts->a[b]++;
+      }
+    }
+
+    double N = (double)n_samples;
+    double eps = 0.5 / N;
+    tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+
+    #pragma omp parallel for
+    for (uint64_t f = 0; f < n_features; f++) {
+      double C = (double)feat_counts->a[f];
+      if (C == 0 || C == N) continue;
+      double sum_bns = 0.0;
+      for (uint64_t b = 0; b < n_hidden; b++) {
+        double P = (double)label_counts->a[b];
+        if (P == 0 || P == N) continue;
+        double a = (double)active_counts->a[f * n_hidden + b];
+        double tpr_raw = a / P;
+        double fpr_raw = (C - a) / (N - P);
+        double tpr = tpr_raw < eps ? eps : (tpr_raw > 1.0 - eps ? 1.0 - eps : tpr_raw);
+        double fpr = fpr_raw < eps ? eps : (fpr_raw > 1.0 - eps ? 1.0 - eps : fpr_raw);
+        double bns = fabs(tk_probit(tpr) - tk_probit(fpr));
+        sum_bns += bns;
+      }
+      if (sum_bns > 0) {
+        tk_rank_t r = { (int64_t)f, sum_bns };
+        #pragma omp critical
+        tk_rvec_hmin(top_heap, top_k, r);
+      }
+    }
+
+    tk_ivec_destroy(active_counts);
+    tk_ivec_destroy(feat_counts);
+    tk_ivec_destroy(label_counts);
+
+    tk_rvec_desc(top_heap, 0, top_heap->n);
+    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+    tk_rvec_keys(L, top_heap, out);
+    tk_rvec_values(L, top_heap, weights);
+    tk_rvec_destroy(top_heap);
+    return out;
+
+  } else if (labels) {
+
+    tk_ivec_asc(labels, 0, labels->n);
+    tk_iumap_t *active_counts = tk_iumap_create(0, 0);
+    tk_ivec_t *feat_counts = tk_ivec_create(0, n_features, 0, 0);
+    tk_ivec_t *label_counts = tk_ivec_create(0, n_hidden, 0, 0);
+    tk_ivec_zero(feat_counts);
+    tk_ivec_zero(label_counts);
+
+    uint8_t *bitmap_data = (uint8_t *)bitmap->a;
+    uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
+    for (uint64_t s = 0; s < n_samples; s++) {
+      uint64_t sample_offset = s * bytes_per_sample;
+      for (uint64_t f = 0; f < n_features; f++) {
+        uint64_t byte_idx = f / CHAR_BIT;
+        uint8_t bit_idx = f % CHAR_BIT;
+        if (bitmap_data[sample_offset + byte_idx] & (1u << bit_idx))
+          feat_counts->a[f]++;
+      }
+    }
+
+    for (uint64_t i = 0; i < labels->n; i++) {
+      int64_t bit = labels->a[i];
+      if (bit >= 0)
+        label_counts->a[(uint64_t)bit % n_hidden]++;
+    }
+
+    size_t li = 0;
+    for (uint64_t s = 0; s < n_samples; s++) {
+      uint64_t sample_offset = s * bytes_per_sample;
+      while (li < labels->n && labels->a[li] >= 0 && (uint64_t)labels->a[li] / n_hidden < s)
+        li++;
+      if (li >= labels->n || labels->a[li] < 0 || (uint64_t)labels->a[li] / n_hidden != s)
+        continue;
+      size_t li_start = li;
+      for (uint64_t f = 0; f < n_features; f++) {
+        uint64_t byte_idx = f / CHAR_BIT;
+        uint8_t bit_idx = f % CHAR_BIT;
+        if (!(bitmap_data[sample_offset + byte_idx] & (1u << bit_idx)))
+          continue;
+        li = li_start;
+        while (li < labels->n && labels->a[li] >= 0 && (uint64_t)labels->a[li] / n_hidden == s) {
+          uint64_t h = (uint64_t)labels->a[li] % n_hidden;
+          tk_iumap_inc(active_counts, (int64_t)(f * n_hidden + h));
+          li++;
+        }
+      }
+    }
+
+    double N = (double)n_samples;
+    double eps = 0.5 / N;
+    tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+    tk_dvec_t *feat_sum_bns = tk_dvec_create(0, n_features, 0, 0);
+    tk_dvec_zero(feat_sum_bns);
+
+    int64_t k, v;
+    tk_umap_foreach(active_counts, k, v, ({
+      uint64_t f = (uint64_t)k / n_hidden;
+      uint64_t b = (uint64_t)k % n_hidden;
+      if (f >= n_features || b >= n_hidden) continue;
+      double C = (double)feat_counts->a[f];
+      double P = (double)label_counts->a[b];
+      if (C == 0 || P == 0 || C == N || P == N) continue;
+      double a = (double)v;
+      double tpr_raw = a / P;
+      double fpr_raw = (C - a) / (N - P);
+      double tpr = tpr_raw < eps ? eps : (tpr_raw > 1.0 - eps ? 1.0 - eps : tpr_raw);
+      double fpr = fpr_raw < eps ? eps : (fpr_raw > 1.0 - eps ? 1.0 - eps : fpr_raw);
+      double bns = fabs(tk_probit(tpr) - tk_probit(fpr));
+      feat_sum_bns->a[f] += bns;
+    }));
+
+    #pragma omp parallel for
+    for (uint64_t f = 0; f < n_features; f++) {
+      if (feat_sum_bns->a[f] > 0) {
+        tk_rank_t r = { (int64_t)f, feat_sum_bns->a[f] };
+        #pragma omp critical
+        tk_rvec_hmin(top_heap, top_k, r);
+      }
+    }
+
+    tk_iumap_destroy(active_counts);
+    tk_ivec_destroy(feat_counts);
+    tk_ivec_destroy(label_counts);
+    tk_dvec_destroy(feat_sum_bns);
+
+    tk_rvec_desc(top_heap, 0, top_heap->n);
+    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+    tk_rvec_keys(L, top_heap, out);
+    tk_rvec_values(L, top_heap, weights);
+    tk_rvec_destroy(top_heap);
+    return out;
+
+  } else {
+    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_create(L, 0, 0, 0);
+    return out;
+  }
+}
+
+static inline void tk_cvec_bits_top_bns_ind (
+  lua_State *L,
+  tk_cvec_t *bitmap,
+  tk_cvec_t *codes,
+  tk_ivec_t *labels,
+  uint64_t n_samples,
+  uint64_t n_features,
+  uint64_t n_hidden,
+  uint64_t top_k
+) {
+
+  if (codes) {
+
+    tk_ivec_t *active_counts = tk_ivec_create(0, n_features * n_hidden, 0, 0);
+    tk_ivec_t *label_counts = tk_ivec_create(0, n_hidden, 0, 0);
+    tk_ivec_t *feat_counts = tk_ivec_create(0, n_features, 0, 0);
+    tk_ivec_zero(active_counts);
+    tk_ivec_zero(label_counts);
+    tk_ivec_zero(feat_counts);
+
+    uint8_t *bitmap_data = (uint8_t *)bitmap->a;
+    uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
+    for (uint64_t s = 0; s < n_samples; s++) {
+      uint64_t sample_offset = s * bytes_per_sample;
+      uint8_t *sample_codes = (uint8_t *)(codes->a + s * TK_CVEC_BITS_BYTES(n_hidden));
+      for (uint64_t f = 0; f < n_features; f++) {
+        uint64_t byte_idx = f / CHAR_BIT;
+        uint8_t bit_idx = f % CHAR_BIT;
+        if (bitmap_data[sample_offset + byte_idx] & (1u << bit_idx)) {
+          feat_counts->a[f]++;
+          for (uint64_t b = 0; b < n_hidden; b++) {
+            uint64_t b_byte = b / CHAR_BIT;
+            uint8_t b_bit = b % CHAR_BIT;
+            if (sample_codes[b_byte] & (1u << b_bit))
+              active_counts->a[f * n_hidden + b]++;
+          }
+        }
+      }
+    }
+
+    for (uint64_t s = 0; s < n_samples; s++) {
+      uint8_t *s_codes = (uint8_t *)(codes->a + s * TK_CVEC_BITS_BYTES(n_hidden));
+      for (uint64_t b = 0; b < n_hidden; b++) {
+        uint64_t byte_idx = b / CHAR_BIT;
+        uint8_t bit_pos = b % CHAR_BIT;
+        if (s_codes[byte_idx] & (1u << bit_pos))
+          label_counts->a[b]++;
+      }
+    }
+
+    double N = (double)n_samples;
+    double eps = 0.5 / N;
+    tk_rvec_t **per_dim_heaps = (tk_rvec_t **)malloc(n_hidden * sizeof(tk_rvec_t *));
+    for (uint64_t h = 0; h < n_hidden; h++)
+      per_dim_heaps[h] = tk_rvec_create(0, 0, 0, 0);
+
+    #pragma omp parallel for
+    for (uint64_t f = 0; f < n_features; f++) {
+      double C = (double)feat_counts->a[f];
+      if (C == 0 || C == N) continue;
+      for (uint64_t b = 0; b < n_hidden; b++) {
+        double P = (double)label_counts->a[b];
+        if (P == 0 || P == N) continue;
+        double a = (double)active_counts->a[f * n_hidden + b];
+        double tpr_raw = a / P;
+        double fpr_raw = (C - a) / (N - P);
+        double tpr = tpr_raw < eps ? eps : (tpr_raw > 1.0 - eps ? 1.0 - eps : tpr_raw);
+        double fpr = fpr_raw < eps ? eps : (fpr_raw > 1.0 - eps ? 1.0 - eps : fpr_raw);
+        double bns = fabs(tk_probit(tpr) - tk_probit(fpr));
+        if (bns > 0) {
+          tk_rank_t r = { (int64_t)f, bns };
+          #pragma omp critical
+          tk_rvec_hmin(per_dim_heaps[b], top_k, r);
+        }
+      }
+    }
+
+    tk_ivec_destroy(active_counts);
+    tk_ivec_destroy(feat_counts);
+    tk_ivec_destroy(label_counts);
+
+    for (uint64_t h = 0; h < n_hidden; h++)
+      tk_rvec_desc(per_dim_heaps[h], 0, per_dim_heaps[h]->n);
+
+    tk_iuset_t *union_set = tk_iuset_create(0, 0);
+    for (uint64_t h = 0; h < n_hidden; h++) {
+      for (uint64_t i = 0; i < per_dim_heaps[h]->n; i++)
+        tk_iuset_put(union_set, per_dim_heaps[h]->a[i].i, NULL);
+    }
+
+    tk_ivec_t *ids_union = tk_ivec_create(L, tk_iuset_size(union_set), 0, 0);
+    ids_union->n = 0;
+    int64_t key;
+    tk_umap_foreach_keys(union_set, key, ({ ids_union->a[ids_union->n++] = key; }));
+    tk_ivec_asc(ids_union, 0, ids_union->n);
+
+    tk_iumap_t *id_to_union_idx = tk_iumap_create(0, 0);
+    for (uint64_t i = 0; i < ids_union->n; i++) {
+      int absent;
+      khint_t k = tk_iumap_put(id_to_union_idx, ids_union->a[i], &absent);
+      kh_value(id_to_union_idx, k) = (int64_t)i;
+    }
+
+    uint64_t total_ids = 0;
+    for (uint64_t h = 0; h < n_hidden; h++)
+      total_ids += per_dim_heaps[h]->n;
+
+    tk_ivec_t *offsets = tk_ivec_create(L, n_hidden + 1, 0, 0);
+    tk_ivec_t *ids = tk_ivec_create(L, total_ids, 0, 0);
+    tk_dvec_t *weights = tk_dvec_create(L, total_ids, 0, 0);
+
+    offsets->a[0] = 0;
+    ids->n = 0;
+    weights->n = 0;
+    for (uint64_t h = 0; h < n_hidden; h++) {
+      for (uint64_t i = 0; i < per_dim_heaps[h]->n; i++) {
+        int64_t feat_id = per_dim_heaps[h]->a[i].i;
+        khint_t k = tk_iumap_get(id_to_union_idx, feat_id);
+        ids->a[ids->n++] = kh_value(id_to_union_idx, k);
+        weights->a[weights->n++] = per_dim_heaps[h]->a[i].d;
+      }
+      offsets->a[h + 1] = (int64_t)ids->n;
+    }
+    offsets->n = n_hidden + 1;
+
+    tk_iumap_destroy(id_to_union_idx);
+    tk_iuset_destroy(union_set);
+    for (uint64_t h = 0; h < n_hidden; h++)
+      tk_rvec_destroy(per_dim_heaps[h]);
+    free(per_dim_heaps);
+
+  } else if (labels) {
+
+    tk_ivec_asc(labels, 0, labels->n);
+    tk_iumap_t *active_counts = tk_iumap_create(0, 0);
+    tk_ivec_t *feat_counts = tk_ivec_create(0, n_features, 0, 0);
+    tk_ivec_t *label_counts = tk_ivec_create(0, n_hidden, 0, 0);
+    tk_ivec_zero(feat_counts);
+    tk_ivec_zero(label_counts);
+
+    uint8_t *bitmap_data = (uint8_t *)bitmap->a;
+    uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
+    for (uint64_t s = 0; s < n_samples; s++) {
+      uint64_t sample_offset = s * bytes_per_sample;
+      for (uint64_t f = 0; f < n_features; f++) {
+        uint64_t byte_idx = f / CHAR_BIT;
+        uint8_t bit_idx = f % CHAR_BIT;
+        if (bitmap_data[sample_offset + byte_idx] & (1u << bit_idx))
+          feat_counts->a[f]++;
+      }
+    }
+
+    for (uint64_t i = 0; i < labels->n; i++) {
+      int64_t bit = labels->a[i];
+      if (bit >= 0)
+        label_counts->a[(uint64_t)bit % n_hidden]++;
+    }
+
+    size_t li = 0;
+    for (uint64_t s = 0; s < n_samples; s++) {
+      uint64_t sample_offset = s * bytes_per_sample;
+      while (li < labels->n && labels->a[li] >= 0 && (uint64_t)labels->a[li] / n_hidden < s)
+        li++;
+      if (li >= labels->n || labels->a[li] < 0 || (uint64_t)labels->a[li] / n_hidden != s)
+        continue;
+      size_t li_start = li;
+      for (uint64_t f = 0; f < n_features; f++) {
+        uint64_t byte_idx = f / CHAR_BIT;
+        uint8_t bit_idx = f % CHAR_BIT;
+        if (!(bitmap_data[sample_offset + byte_idx] & (1u << bit_idx)))
+          continue;
+        li = li_start;
+        while (li < labels->n && labels->a[li] >= 0 && (uint64_t)labels->a[li] / n_hidden == s) {
+          uint64_t h = (uint64_t)labels->a[li] % n_hidden;
+          tk_iumap_inc(active_counts, (int64_t)(f * n_hidden + h));
+          li++;
+        }
+      }
+    }
+
+    double N = (double)n_samples;
+    double eps = 0.5 / N;
+    tk_rvec_t **per_dim_heaps = (tk_rvec_t **)malloc(n_hidden * sizeof(tk_rvec_t *));
+    for (uint64_t h = 0; h < n_hidden; h++)
+      per_dim_heaps[h] = tk_rvec_create(0, 0, 0, 0);
+
+    int64_t k, v;
+    tk_umap_foreach(active_counts, k, v, ({
+      uint64_t f = (uint64_t)k / n_hidden;
+      uint64_t b = (uint64_t)k % n_hidden;
+      if (f >= n_features || b >= n_hidden) continue;
+      double C = (double)feat_counts->a[f];
+      double P = (double)label_counts->a[b];
+      if (C == 0 || P == 0 || C == N || P == N) continue;
+      double a = (double)v;
+      double tpr_raw = a / P;
+      double fpr_raw = (C - a) / (N - P);
+      double tpr = tpr_raw < eps ? eps : (tpr_raw > 1.0 - eps ? 1.0 - eps : tpr_raw);
+      double fpr = fpr_raw < eps ? eps : (fpr_raw > 1.0 - eps ? 1.0 - eps : fpr_raw);
+      double bns = fabs(tk_probit(tpr) - tk_probit(fpr));
+      if (bns > 0) {
+        tk_rank_t r = { (int64_t)f, bns };
+        tk_rvec_hmin(per_dim_heaps[b], top_k, r);
+      }
+    }));
+
+    tk_iumap_destroy(active_counts);
+    tk_ivec_destroy(feat_counts);
+    tk_ivec_destroy(label_counts);
+
+    for (uint64_t h = 0; h < n_hidden; h++)
+      tk_rvec_desc(per_dim_heaps[h], 0, per_dim_heaps[h]->n);
+
+    tk_iuset_t *union_set = tk_iuset_create(0, 0);
+    for (uint64_t h = 0; h < n_hidden; h++) {
+      for (uint64_t i = 0; i < per_dim_heaps[h]->n; i++)
+        tk_iuset_put(union_set, per_dim_heaps[h]->a[i].i, NULL);
+    }
+
+    tk_ivec_t *ids_union = tk_ivec_create(L, tk_iuset_size(union_set), 0, 0);
+    ids_union->n = 0;
+    int64_t key;
+    tk_umap_foreach_keys(union_set, key, ({ ids_union->a[ids_union->n++] = key; }));
+    tk_ivec_asc(ids_union, 0, ids_union->n);
+
+    tk_iumap_t *id_to_union_idx = tk_iumap_create(0, 0);
+    for (uint64_t i = 0; i < ids_union->n; i++) {
+      int absent;
+      khint_t k = tk_iumap_put(id_to_union_idx, ids_union->a[i], &absent);
+      kh_value(id_to_union_idx, k) = (int64_t)i;
+    }
+
+    uint64_t total_ids = 0;
+    for (uint64_t h = 0; h < n_hidden; h++)
+      total_ids += per_dim_heaps[h]->n;
+
+    tk_ivec_t *offsets = tk_ivec_create(L, n_hidden + 1, 0, 0);
+    tk_ivec_t *ids = tk_ivec_create(L, total_ids, 0, 0);
+    tk_dvec_t *weights = tk_dvec_create(L, total_ids, 0, 0);
+
+    offsets->a[0] = 0;
+    ids->n = 0;
+    weights->n = 0;
+    for (uint64_t h = 0; h < n_hidden; h++) {
+      for (uint64_t i = 0; i < per_dim_heaps[h]->n; i++) {
+        int64_t feat_id = per_dim_heaps[h]->a[i].i;
+        khint_t k = tk_iumap_get(id_to_union_idx, feat_id);
+        ids->a[ids->n++] = kh_value(id_to_union_idx, k);
+        weights->a[weights->n++] = per_dim_heaps[h]->a[i].d;
+      }
+      offsets->a[h + 1] = (int64_t)ids->n;
+    }
+    offsets->n = n_hidden + 1;
+
+    tk_iumap_destroy(id_to_union_idx);
+    tk_iuset_destroy(union_set);
+    for (uint64_t h = 0; h < n_hidden; h++)
+      tk_rvec_destroy(per_dim_heaps[h]);
+    free(per_dim_heaps);
+
+  } else {
+    tk_ivec_create(L, 0, 0, 0);
+    tk_ivec_create(L, 1, 0, 0);
+    tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_create(L, 0, 0, 0);
+  }
 }
 
 #endif
