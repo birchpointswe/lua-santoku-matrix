@@ -5640,11 +5640,6 @@ static inline tk_ivec_t *tk_ivec_bits_top_bns (
     { n_threads = omp_get_num_threads(); }
     tk_rvec_t **local_heaps = (tk_rvec_t **)calloc((size_t)n_threads, sizeof(tk_rvec_t *));
 
-    atomic_uint filtered_c_zero = ATOMIC_VAR_INIT(0);
-    atomic_uint filtered_c_all = ATOMIC_VAR_INIT(0);
-    atomic_uint filtered_no_labels = ATOMIC_VAR_INIT(0);
-    atomic_uint passed = ATOMIC_VAR_INIT(0);
-
     #pragma omp parallel
     {
       int tid = omp_get_thread_num();
@@ -5652,47 +5647,32 @@ static inline tk_ivec_t *tk_ivec_bits_top_bns (
       #pragma omp for schedule(static)
       for (uint64_t f = 0; f < n_visible; f++) {
         double C = (double)atomic_load(&feat_counts[f]);
-        double score = 0.0;
-        if (C > 0 && C < N) {
-          double pool_sum = 0.0, pool_min = DBL_MAX, pool_max = -DBL_MAX;
-          uint64_t pool_count = 0;
-          for (uint64_t b = 0; b < n_hidden; b++) {
-            double P = (double)atomic_load(&label_counts[b]);
-            if (P <= 0 || P >= N) continue;
-            double A = (double)atomic_load(&active_counts[f * n_hidden + b]);
-            double bns = tk_bns_from_marginals(N, C, P, A);
-            pool_sum += bns;
-            if (bns < pool_min) pool_min = bns;
-            if (bns > pool_max) pool_max = bns;
-            pool_count++;
-          }
-          if (pool_count > 0) {
-            switch (pool) {
-              case TK_POOL_MIN: score = pool_min; break;
-              case TK_POOL_MAX: score = pool_max; break;
-              case TK_POOL_AVG: score = pool_sum / (double)pool_count; break;
-              default: score = pool_sum; break;
-            }
-            atomic_fetch_add(&passed, 1);
-          } else {
-            atomic_fetch_add(&filtered_no_labels, 1);
-          }
-        } else if (C <= 0) {
-          atomic_fetch_add(&filtered_c_zero, 1);
-        } else {
-          atomic_fetch_add(&filtered_c_all, 1);
+        if (C <= 0 || C >= N) continue;
+        double pool_sum = 0.0, pool_min = DBL_MAX, pool_max = -DBL_MAX;
+        uint64_t pool_count = 0;
+        for (uint64_t b = 0; b < n_hidden; b++) {
+          double P = (double)atomic_load(&label_counts[b]);
+          if (P <= 0 || P >= N) continue;
+          double A = (double)atomic_load(&active_counts[f * n_hidden + b]);
+          double bns = tk_bns_from_marginals(N, C, P, A);
+          pool_sum += bns;
+          if (bns < pool_min) pool_min = bns;
+          if (bns > pool_max) pool_max = bns;
+          pool_count++;
         }
-        tk_rank_t r = { (int64_t)f, score };
-        tk_rvec_hmin(local_heaps[tid], top_k, r);
+        if (pool_count > 0) {
+          double score;
+          switch (pool) {
+            case TK_POOL_MIN: score = pool_min; break;
+            case TK_POOL_MAX: score = pool_max; break;
+            case TK_POOL_AVG: score = pool_sum / (double)pool_count; break;
+            default: score = pool_sum; break;
+          }
+          tk_rank_t r = { (int64_t)f, score };
+          tk_rvec_hmin(local_heaps[tid], top_k, r);
+        }
       }
     }
-
-    fprintf(stderr, "[BNS] n_visible=%lu n_samples=%lu n_hidden=%lu top_k=%lu\n",
-            (unsigned long)n_visible, (unsigned long)n_samples, (unsigned long)n_hidden, (unsigned long)top_k);
-    fprintf(stderr, "[BNS] filtered: c_zero=%u c_all=%u no_labels=%u passed=%u\n",
-            atomic_load(&filtered_c_zero), atomic_load(&filtered_c_all),
-            atomic_load(&filtered_no_labels), atomic_load(&passed));
-    fflush(stderr);
 
     tk_rvec_t *top_heap = tk_rvec_create(NULL, 0, 0, 0);
     for (int t = 0; t < n_threads; t++) {
