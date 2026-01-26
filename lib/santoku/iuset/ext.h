@@ -956,7 +956,6 @@ static inline tk_ivec_t *tk_ivec_bits_top_mi (
     }
 
     #pragma omp parallel for schedule(static)
-    #pragma omp parallel for schedule(static)
     for (uint64_t s = 0; s < n_samples; s++) {
       uint8_t *s_codes = (uint8_t *)(codes + s * TK_CVEC_BITS_BYTES(n_hidden));
       for (uint64_t b = 0; b < n_hidden; b++) {
@@ -1087,7 +1086,6 @@ static inline tk_ivec_t *tk_ivec_bits_top_chi2 (
       }
     }
 
-    #pragma omp parallel for schedule(static)
     #pragma omp parallel for schedule(static)
     for (uint64_t s = 0; s < n_samples; s++) {
       uint8_t *s_codes = (uint8_t *)(codes + s * TK_CVEC_BITS_BYTES(n_hidden));
@@ -5651,7 +5649,6 @@ static inline tk_ivec_t *tk_ivec_bits_top_bns (
       }
     }
 
-    #pragma omp parallel for schedule(static)
     #pragma omp parallel for schedule(static)
     for (uint64_t s = 0; s < n_samples; s++) {
       uint8_t *s_codes = (uint8_t *)(codes + s * TK_CVEC_BITS_BYTES(n_hidden));
