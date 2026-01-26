@@ -27,6 +27,14 @@ typedef enum {
   TK_POOL_MAX
 } tk_pool_t;
 
+static inline tk_pool_t tk_pool_from_string (const char *s) {
+  if (!s) return TK_POOL_MAX;
+  if (strcmp(s, "sum") == 0) return TK_POOL_SUM;
+  if (strcmp(s, "avg") == 0) return TK_POOL_AVG;
+  if (strcmp(s, "min") == 0) return TK_POOL_MIN;
+  return TK_POOL_MAX;
+}
+
 static inline double tk_probit (double p)
 {
   if (p <= 0.0) return -1e10;

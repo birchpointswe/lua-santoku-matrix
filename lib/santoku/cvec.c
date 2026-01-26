@@ -136,12 +136,11 @@ static inline int tk_cvec_bits_select_lua (lua_State *L) {
 }
 
 static inline int tk_cvec_bits_top_chi2_lua (lua_State *L) {
-  lua_settop(L, 6);
+  lua_settop(L, 7);
   tk_cvec_t *bitmap = tk_cvec_peek(L, 1, "bitmap");
   tk_cvec_t *codes = NULL;
   tk_ivec_t *labels = NULL;
   if (lua_isnil(L, 2)) {
-
   } else if (tk_lua_testuserdata(L, 2, "tk_cvec_t")) {
     codes = tk_cvec_peek(L, 2, "codes");
   } else {
@@ -151,7 +150,8 @@ static inline int tk_cvec_bits_top_chi2_lua (lua_State *L) {
   uint64_t n_features = tk_lua_checkunsigned(L, 4, "n_features");
   uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "n_hidden");
   uint64_t top_k = lua_isnil(L, 6) ? n_features : tk_lua_checkunsigned(L, 6, "top_k");
-  tk_cvec_bits_top_chi2(L, bitmap, codes, labels, n_samples, n_features, n_hidden, top_k, TK_POOL_MAX);
+  tk_pool_t pool = tk_pool_from_string(lua_tostring(L, 7));
+  tk_cvec_bits_top_chi2(L, bitmap, codes, labels, n_samples, n_features, n_hidden, top_k, pool);
   return 2;
 }
 
@@ -175,12 +175,11 @@ static inline int tk_cvec_bits_top_chi2_ind_lua (lua_State *L) {
 }
 
 static inline int tk_cvec_bits_top_mi_lua (lua_State *L) {
-  lua_settop(L, 6);
+  lua_settop(L, 7);
   tk_cvec_t *bitmap = tk_cvec_peek(L, 1, "bitmap");
   tk_cvec_t *codes = NULL;
   tk_ivec_t *labels = NULL;
   if (lua_isnil(L, 2)) {
-
   } else if (tk_lua_testuserdata(L, 2, "tk_cvec_t")) {
     codes = tk_cvec_peek(L, 2, "codes");
   } else {
@@ -190,7 +189,8 @@ static inline int tk_cvec_bits_top_mi_lua (lua_State *L) {
   uint64_t n_features = tk_lua_checkunsigned(L, 4, "n_features");
   uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "n_hidden");
   uint64_t top_k = lua_isnil(L, 6) ? n_features : tk_lua_checkunsigned(L, 6, "top_k");
-  tk_cvec_bits_top_mi(L, bitmap, codes, labels, n_samples, n_features, n_hidden, top_k, TK_POOL_MAX);
+  tk_pool_t pool = tk_pool_from_string(lua_tostring(L, 7));
+  tk_cvec_bits_top_mi(L, bitmap, codes, labels, n_samples, n_features, n_hidden, top_k, pool);
   return 2;
 }
 
@@ -421,12 +421,13 @@ static inline int tk_cvec_bits_transpose_lua (lua_State *L)
 
 static inline int tk_cvec_bits_top_bns_lua (lua_State *L)
 {
-  lua_settop(L, 6);
+  lua_settop(L, 7);
   tk_cvec_t *bitmap = tk_cvec_peek(L, 1, "bitmap");
   uint64_t n_samples = tk_lua_checkunsigned(L, 3, "samples");
   uint64_t n_features = tk_lua_checkunsigned(L, 4, "features");
   uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
   uint64_t top_k = lua_isnil(L, 6) ? n_features : tk_lua_checkunsigned(L, 6, "top_k");
+  tk_pool_t pool = tk_pool_from_string(lua_tostring(L, 7));
   tk_cvec_t *codes = NULL;
   tk_ivec_t *labels = NULL;
   if (lua_isnil(L, 2)) {
@@ -435,7 +436,7 @@ static inline int tk_cvec_bits_top_bns_lua (lua_State *L)
   } else {
     labels = tk_ivec_peek(L, 2, "labels");
   }
-  tk_cvec_bits_top_bns(L, bitmap, codes, labels, n_samples, n_features, n_hidden, top_k, TK_POOL_MAX);
+  tk_cvec_bits_top_bns(L, bitmap, codes, labels, n_samples, n_features, n_hidden, top_k, pool);
   return 2;
 }
 
