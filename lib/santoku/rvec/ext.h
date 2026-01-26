@@ -10,6 +10,7 @@
 #include <santoku/iumap.h>
 #include <santoku/pvec.h>
 #include <santoku/evec.h>
+#include <santoku/dvec/base.h>
 #include <math.h>
 
 static inline tk_rvec_t *tk_rvec_from_dvec (
@@ -224,11 +225,19 @@ static inline double tk_csr_spearman_distance(
   tk_pvec_desc(weight_ranks_buffer, 0, weight_ranks_buffer->n);
 
   tk_dumap_clear(weight_rank_map);
-  for (uint64_t i = 0; i < weight_ranks_buffer->n; i++) {
-    int64_t neighbor_id = weight_ranks_buffer->a[i].i;
-    int kha;
-    uint32_t khi = tk_dumap_put(weight_rank_map, neighbor_id, &kha);
-    tk_dumap_setval(weight_rank_map, khi, (double)i);
+  for (uint64_t i = 0; i < weight_ranks_buffer->n; ) {
+    double val = weight_ranks_buffer->a[i].p;
+    uint64_t j = i;
+    while (j < weight_ranks_buffer->n && weight_ranks_buffer->a[j].p == val)
+      j++;
+    double avg_rank = (double)(i + j - 1) / 2.0;
+    for (uint64_t k = i; k < j; k++) {
+      int64_t neighbor_id = weight_ranks_buffer->a[k].i;
+      int kha;
+      uint32_t khi = tk_dumap_put(weight_rank_map, neighbor_id, &kha);
+      tk_dumap_setval(weight_rank_map, khi, avg_rank);
+    }
+    i = j;
   }
   double sum_x = 0.0, sum_y = 0.0, sum_xy = 0.0, sum_x2 = 0.0, sum_y2 = 0.0;
   uint64_t n = 0;
@@ -454,35 +463,23 @@ static inline double tk_csr_ndcg_distance(
     return 0.0;
 
 
-  double *sorted_weights = malloc(m * sizeof(double));
+  tk_dvec_t *sorted_weights = tk_dvec_create(NULL, m, 0, 0);
   if (!sorted_weights)
     return 0.0;
-
-  for (uint64_t i = 0; i < m; i++) {
-    sorted_weights[i] = expected_weights->a[(uint64_t)exp_start + i];
-  }
-
-
-  for (uint64_t i = 0; i < m - 1; i++) {
-    for (uint64_t j = i + 1; j < m; j++) {
-      if (sorted_weights[j] > sorted_weights[i]) {
-        double tmp = sorted_weights[i];
-        sorted_weights[i] = sorted_weights[j];
-        sorted_weights[j] = tmp;
-      }
-    }
-  }
+  for (uint64_t i = 0; i < m; i++)
+    sorted_weights->a[i] = expected_weights->a[(uint64_t)exp_start + i];
+  tk_dvec_desc(sorted_weights, 0, m);
 
 
   uint64_t idcg_count = (m < k) ? m : k;
   for (uint64_t i = 0; i < idcg_count; i++) {
-    double relevance = sorted_weights[i];
+    double relevance = sorted_weights->a[i];
     double position = (double)(i + 1);
     double discount = log2(position + 1.0);
     idcg += relevance / discount;
   }
 
-  free(sorted_weights);
+  tk_dvec_destroy(sorted_weights);
 
   if (idcg < 1e-10)
     return 0.0;
