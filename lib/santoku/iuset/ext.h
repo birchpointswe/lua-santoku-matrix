@@ -148,9 +148,6 @@ static inline tk_ivec_t *tk_ivec_bits_top_sparse_twophase (
   tk_pool_t pool,
   tk_score_from_marginals_fn score_fn
 ) {
-  tk_ivec_asc(set_bits, 0, set_bits->n);
-  tk_ivec_asc(labels, 0, labels->n);
-
   atomic_uint *feat_counts = (atomic_uint *)calloc(n_visible, sizeof(atomic_uint));
   atomic_uint *label_counts = (atomic_uint *)calloc(n_hidden, sizeof(atomic_uint));
   if (!feat_counts || !label_counts) {
@@ -918,8 +915,6 @@ static inline tk_ivec_t *tk_ivec_bits_top_mi (
   uint64_t top_k,
   tk_pool_t pool
 ) {
-  tk_ivec_asc(set_bits, 0, set_bits->n);
-
   if (codes) {
 
     atomic_uint *active_counts = (atomic_uint *)calloc(n_visible * n_hidden, sizeof(atomic_uint));
@@ -1049,8 +1044,6 @@ static inline tk_ivec_t *tk_ivec_bits_top_chi2 (
   uint64_t top_k,
   tk_pool_t pool
 ) {
-  tk_ivec_asc(set_bits, 0, set_bits->n);
-
   if (codes) {
 
     uint64_t *active_counts = (uint64_t *)calloc(n_visible * n_hidden, sizeof(uint64_t));
@@ -1176,7 +1169,6 @@ static inline tk_ivec_t *tk_ivec_bits_top_entropy (
   uint64_t n_hidden,
   uint64_t top_k
 ) {
-  tk_ivec_asc(set_bits, 0, set_bits->n);
   uint64_t *bit_counts = (uint64_t *)calloc(n_hidden, sizeof(uint64_t));
   if (!bit_counts)
     return NULL;
@@ -1337,7 +1329,6 @@ static inline tk_ivec_t *tk_cvec_bits_top_mi (
 
   } else if (labels) {
 
-    tk_ivec_asc(labels, 0, labels->n);
     tk_iumap_t *active_counts = tk_iumap_create(0, 0);
     atomic_uint *feat_counts = (atomic_uint *)calloc(n_features, sizeof(atomic_uint));
     atomic_uint *label_counts = (atomic_uint *)calloc(n_hidden, sizeof(atomic_uint));
@@ -1689,7 +1680,6 @@ static inline tk_ivec_t *tk_cvec_bits_top_chi2 (
 
   } else if (labels) {
 
-    tk_ivec_asc(labels, 0, labels->n);
     tk_iumap_t *active_counts = tk_iumap_create(0, 0);
     atomic_uint *feat_counts = (atomic_uint *)calloc(n_features, sizeof(atomic_uint));
     atomic_uint *label_counts = (atomic_uint *)calloc(n_hidden, sizeof(atomic_uint));
@@ -1989,7 +1979,6 @@ static inline tk_ivec_t *tk_ivec_bits_top_df (
   double max_df,
   uint64_t top_k
 ) {
-  tk_ivec_asc(set_bits, 0, set_bits->n);
   atomic_uint *df_counts = (atomic_uint *)calloc(n_visible, sizeof(atomic_uint));
   if (!df_counts)
     return NULL;
@@ -2125,8 +2114,6 @@ static inline void tk_ivec_bits_top_chi2_ind (
   uint64_t n_hidden,
   uint64_t top_k
 ) {
-  tk_ivec_asc(set_bits, 0, set_bits->n);
-
   if (codes) {
 
     tk_ivec_t *active_counts = tk_ivec_create(0, n_visible * n_hidden, 0, 0);
@@ -2286,7 +2273,6 @@ static inline void tk_ivec_bits_top_chi2_ind (
 
   } else if (labels) {
 
-    tk_ivec_asc(labels, 0, labels->n);
     tk_iumap_t *active_counts = tk_iumap_create(0, 0);
     tk_ivec_t *feat_counts = tk_ivec_create(0, n_visible, 0, 0);
     atomic_uint *label_counts = (atomic_uint *)calloc(n_hidden, sizeof(atomic_uint));
@@ -2425,8 +2411,8 @@ static inline void tk_ivec_bits_top_chi2_ind (
     for (uint64_t h = 0; h < n_hidden; h++)
       total_ids += per_dim_heaps[h]->n;
 
-    tk_ivec_t *offsets = tk_ivec_create(L, n_hidden + 1, 0, 0);
     tk_ivec_t *ids = tk_ivec_create(L, total_ids, 0, 0);
+    tk_ivec_t *offsets = tk_ivec_create(L, n_hidden + 1, 0, 0);
     tk_dvec_t *weights = tk_dvec_create(L, total_ids, 0, 0);
 
     offsets->a[0] = 0;
@@ -2469,8 +2455,6 @@ static inline void tk_ivec_bits_top_mi_ind (
   uint64_t n_hidden,
   uint64_t top_k
 ) {
-  tk_ivec_asc(set_bits, 0, set_bits->n);
-
   if (codes) {
 
     tk_ivec_t *counts = tk_ivec_create(0, n_visible * n_hidden * 4, 0, 0);
@@ -2641,7 +2625,6 @@ static inline void tk_ivec_bits_top_mi_ind (
 
   } else if (labels) {
 
-    tk_ivec_asc(labels, 0, labels->n);
     tk_iumap_t *active_counts = tk_iumap_create(0, 0);
     tk_ivec_t *feat_counts = tk_ivec_create(0, n_visible, 0, 0);
     atomic_uint *label_counts = (atomic_uint *)calloc(n_hidden, sizeof(atomic_uint));
@@ -2784,8 +2767,8 @@ static inline void tk_ivec_bits_top_mi_ind (
     for (uint64_t h = 0; h < n_hidden; h++)
       total_ids += per_dim_heaps[h]->n;
 
-    tk_ivec_t *offsets = tk_ivec_create(L, n_hidden + 1, 0, 0);
     tk_ivec_t *ids = tk_ivec_create(L, total_ids, 0, 0);
+    tk_ivec_t *offsets = tk_ivec_create(L, n_hidden + 1, 0, 0);
     tk_dvec_t *weights = tk_dvec_create(L, total_ids, 0, 0);
 
     offsets->a[0] = 0;
@@ -2996,7 +2979,6 @@ static inline void tk_cvec_bits_top_chi2_ind (
 
   } else if (labels) {
 
-    tk_ivec_asc(labels, 0, labels->n);
     tk_iumap_t *active_counts = tk_iumap_create(0, 0);
     tk_ivec_t *feat_counts = tk_ivec_create(0, n_features, 0, 0);
     atomic_uint *label_counts = (atomic_uint *)calloc(n_hidden, sizeof(atomic_uint));
@@ -3134,8 +3116,8 @@ static inline void tk_cvec_bits_top_chi2_ind (
     for (uint64_t h = 0; h < n_hidden; h++)
       total_ids += per_dim_heaps[h]->n;
 
-    tk_ivec_t *offsets = tk_ivec_create(L, n_hidden + 1, 0, 0);
     tk_ivec_t *ids = tk_ivec_create(L, total_ids, 0, 0);
+    tk_ivec_t *offsets = tk_ivec_create(L, n_hidden + 1, 0, 0);
     tk_dvec_t *weights = tk_dvec_create(L, total_ids, 0, 0);
 
     offsets->a[0] = 0;
@@ -3667,8 +3649,6 @@ static inline tk_ivec_t *tk_ivec_bits_top_reg_f (
   uint64_t n_features,
   uint64_t top_k
 ) {
-  tk_ivec_asc(set_bits, 0, set_bits->n);
-
   double overall_sum = 0.0;
   for (uint64_t i = 0; i < n_samples; i++)
     overall_sum += targets->a[i];
@@ -3764,8 +3744,6 @@ static inline tk_ivec_t *tk_ivec_bits_top_reg_pearson (
   uint64_t n_features,
   uint64_t top_k
 ) {
-  tk_ivec_asc(set_bits, 0, set_bits->n);
-
   double overall_sum = 0.0, overall_sum_sq = 0.0;
   for (uint64_t i = 0; i < n_samples; i++) {
     double y = targets->a[i];
@@ -3853,8 +3831,6 @@ static inline tk_ivec_t *tk_ivec_bits_top_reg_mi (
   uint64_t top_k,
   uint64_t n_bins
 ) {
-  tk_ivec_asc(set_bits, 0, set_bits->n);
-
   if (n_bins == 0) n_bins = 10;
 
   double y_min = targets->a[0], y_max = targets->a[0];
@@ -4425,7 +4401,6 @@ static inline void tk_cvec_bits_top_mi_ind (
 
   } else if (labels) {
 
-    tk_ivec_asc(labels, 0, labels->n);
     tk_iumap_t *counts_map = tk_iumap_create(0, 0);
     tk_ivec_t *feat_counts = tk_ivec_create(0, n_features, 0, 0);
     atomic_uint *label_counts = (atomic_uint *)calloc(n_hidden, sizeof(atomic_uint));
@@ -4548,8 +4523,8 @@ static inline void tk_cvec_bits_top_mi_ind (
     for (uint64_t h = 0; h < n_hidden; h++)
       total_ids += per_dim_heaps[h]->n;
 
-    tk_ivec_t *offsets = tk_ivec_create(L, n_hidden + 1, 0, 0);
     tk_ivec_t *ids = tk_ivec_create(L, total_ids, 0, 0);
+    tk_ivec_t *offsets = tk_ivec_create(L, n_hidden + 1, 0, 0);
     tk_dvec_t *weights = tk_dvec_create(L, total_ids, 0, 0);
 
     offsets->a[0] = 0;
@@ -4595,8 +4570,6 @@ static inline void tk_ivec_bits_top_reg_f_ind (
   uint64_t n_targets,
   uint64_t top_k
 ) {
-  tk_ivec_asc(set_bits, 0, set_bits->n);
-
   tk_dvec_t *overall_sums = tk_dvec_create(0, n_targets, 0, 0);
   tk_dvec_t *overall_means = tk_dvec_create(0, n_targets, 0, 0);
   tk_dvec_t *total_sum_sqs = tk_dvec_create(0, n_targets, 0, 0);
@@ -4723,8 +4696,8 @@ static inline void tk_ivec_bits_top_reg_f_ind (
   for (uint64_t t = 0; t < n_targets; t++)
     total_ids += per_target_heaps[t]->n;
 
-  tk_ivec_t *offsets = tk_ivec_create(L, n_targets + 1, 0, 0);
   tk_ivec_t *ids = tk_ivec_create(L, total_ids, 0, 0);
+  tk_ivec_t *offsets = tk_ivec_create(L, n_targets + 1, 0, 0);
   tk_dvec_t *weights = tk_dvec_create(L, total_ids, 0, 0);
 
   offsets->a[0] = 0;
@@ -4888,8 +4861,8 @@ static inline void tk_cvec_bits_top_reg_f_ind (
   for (uint64_t t = 0; t < n_targets; t++)
     total_ids += per_target_heaps[t]->n;
 
-  tk_ivec_t *offsets = tk_ivec_create(L, n_targets + 1, 0, 0);
   tk_ivec_t *ids = tk_ivec_create(L, total_ids, 0, 0);
+  tk_ivec_t *offsets = tk_ivec_create(L, n_targets + 1, 0, 0);
   tk_dvec_t *weights = tk_dvec_create(L, total_ids, 0, 0);
 
   offsets->a[0] = 0;
@@ -4922,8 +4895,6 @@ static inline void tk_ivec_bits_top_reg_pearson_ind (
   uint64_t n_targets,
   uint64_t top_k
 ) {
-  tk_ivec_asc(set_bits, 0, set_bits->n);
-
   tk_dvec_t *overall_sums = tk_dvec_create(0, n_targets, 0, 0);
   tk_dvec_t *overall_sum_sqs = tk_dvec_create(0, n_targets, 0, 0);
   tk_dvec_t *overall_means = tk_dvec_create(0, n_targets, 0, 0);
@@ -5055,8 +5026,8 @@ static inline void tk_ivec_bits_top_reg_pearson_ind (
   for (uint64_t t = 0; t < n_targets; t++)
     total_ids += per_target_heaps[t]->n;
 
-  tk_ivec_t *offsets = tk_ivec_create(L, n_targets + 1, 0, 0);
   tk_ivec_t *ids = tk_ivec_create(L, total_ids, 0, 0);
+  tk_ivec_t *offsets = tk_ivec_create(L, n_targets + 1, 0, 0);
   tk_dvec_t *weights = tk_dvec_create(L, total_ids, 0, 0);
 
   offsets->a[0] = 0;
@@ -5225,8 +5196,8 @@ static inline void tk_cvec_bits_top_reg_pearson_ind (
   for (uint64_t t = 0; t < n_targets; t++)
     total_ids += per_target_heaps[t]->n;
 
-  tk_ivec_t *offsets = tk_ivec_create(L, n_targets + 1, 0, 0);
   tk_ivec_t *ids = tk_ivec_create(L, total_ids, 0, 0);
+  tk_ivec_t *offsets = tk_ivec_create(L, n_targets + 1, 0, 0);
   tk_dvec_t *weights = tk_dvec_create(L, total_ids, 0, 0);
 
   offsets->a[0] = 0;
@@ -5260,7 +5231,6 @@ static inline void tk_ivec_bits_top_reg_mi_ind (
   uint64_t top_k,
   uint64_t n_bins
 ) {
-  tk_ivec_asc(set_bits, 0, set_bits->n);
   if (n_bins == 0) n_bins = 10;
 
   tk_ivec_t *bin_assignments = tk_ivec_create(0, n_samples * n_targets, 0, 0);
@@ -5398,8 +5368,8 @@ static inline void tk_ivec_bits_top_reg_mi_ind (
   for (uint64_t t = 0; t < n_targets; t++)
     total_ids += per_target_heaps[t]->n;
 
-  tk_ivec_t *offsets = tk_ivec_create(L, n_targets + 1, 0, 0);
   tk_ivec_t *ids = tk_ivec_create(L, total_ids, 0, 0);
+  tk_ivec_t *offsets = tk_ivec_create(L, n_targets + 1, 0, 0);
   tk_dvec_t *weights = tk_dvec_create(L, total_ids, 0, 0);
 
   offsets->a[0] = 0;
@@ -5575,8 +5545,8 @@ static inline void tk_cvec_bits_top_reg_mi_ind (
   for (uint64_t t = 0; t < n_targets; t++)
     total_ids += per_target_heaps[t]->n;
 
-  tk_ivec_t *offsets = tk_ivec_create(L, n_targets + 1, 0, 0);
   tk_ivec_t *ids = tk_ivec_create(L, total_ids, 0, 0);
+  tk_ivec_t *offsets = tk_ivec_create(L, n_targets + 1, 0, 0);
   tk_dvec_t *weights = tk_dvec_create(L, total_ids, 0, 0);
 
   offsets->a[0] = 0;
@@ -5611,8 +5581,6 @@ static inline tk_ivec_t *tk_ivec_bits_top_bns (
   uint64_t top_k,
   tk_pool_t pool
 ) {
-  tk_ivec_asc(set_bits, 0, set_bits->n);
-
   if (codes) {
 
     atomic_uint *active_counts = (atomic_uint *)calloc(n_visible * n_hidden, sizeof(atomic_uint));
@@ -5741,8 +5709,6 @@ static inline void tk_ivec_bits_top_bns_ind (
   uint64_t n_hidden,
   uint64_t top_k
 ) {
-  tk_ivec_asc(set_bits, 0, set_bits->n);
-
   if (codes) {
 
     tk_ivec_t *active_counts = tk_ivec_create(0, n_visible * n_hidden, 0, 0);
@@ -5887,7 +5853,6 @@ static inline void tk_ivec_bits_top_bns_ind (
 
   } else if (labels) {
 
-    tk_ivec_asc(labels, 0, labels->n);
     tk_iumap_t *active_counts = tk_iumap_create(0, 0);
     tk_ivec_t *feat_counts = tk_ivec_create(0, n_visible, 0, 0);
     atomic_uint *label_counts = (atomic_uint *)calloc(n_hidden, sizeof(atomic_uint));
@@ -6128,7 +6093,6 @@ static inline tk_ivec_t *tk_cvec_bits_top_bns (
 
   } else if (labels) {
 
-    tk_ivec_asc(labels, 0, labels->n);
     tk_iumap_t *active_counts = tk_iumap_create(0, 0);
     atomic_uint *feat_counts = (atomic_uint *)calloc(n_features, sizeof(atomic_uint));
     atomic_uint *label_counts = (atomic_uint *)calloc(n_hidden, sizeof(atomic_uint));
@@ -6519,7 +6483,6 @@ static inline void tk_cvec_bits_top_bns_ind (
 
   } else if (labels) {
 
-    tk_ivec_asc(labels, 0, labels->n);
     tk_iumap_t *active_counts = tk_iumap_create(0, 0);
     tk_ivec_t *feat_counts = tk_ivec_create(0, n_features, 0, 0);
     atomic_uint *label_counts = (atomic_uint *)calloc(n_hidden, sizeof(atomic_uint));
