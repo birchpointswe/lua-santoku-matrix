@@ -174,7 +174,14 @@ static inline tk_cvec_t *tk_ivec_bits_to_cvec (lua_State *L, tk_ivec_t *set_bits
   return out_cvec;
 }
 
-typedef enum { TK_IVEC_JACCARD, TK_IVEC_OVERLAP, TK_IVEC_DICE, TK_IVEC_TVERSKY } tk_ivec_sim_type_t;
+typedef enum {
+  TK_IVEC_JACCARD,
+  TK_IVEC_OVERLAP,
+  TK_IVEC_DICE,
+  TK_IVEC_TVERSKY,
+  TK_IVEC_COSINE,
+  TK_IVEC_MIN_KERNEL
+} tk_ivec_sim_type_t;
 
 static inline double tk_ivec_set_jaccard (double inter_w, double sum_a, double sum_b)
 {
@@ -302,6 +309,13 @@ static inline double tk_ivec_set_similarity_from_partial (
     case TK_IVEC_DICE: {
       double denom = q_w + e_w;
       return (denom == 0.0) ? 0.0 : (2.0 * inter_w) / denom;
+    }
+    case TK_IVEC_COSINE: {
+      double denom = sqrt(q_w * e_w);
+      return (denom == 0.0) ? 0.0 : inter_w / denom;
+    }
+    case TK_IVEC_MIN_KERNEL: {
+      return inter_w;
     }
     default: {
       double uni_w = q_w + e_w - inter_w;
