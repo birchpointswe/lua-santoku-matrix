@@ -73,11 +73,8 @@ static inline double tk_bns_from_marginals (double N, double C, double P, double
 {
   if (C <= 0 || C >= N || P <= 0 || P >= N)
     return 0.0;
-  double eps = TK_SMOOTH_EPS_FACTOR / N;
-  double tpr_raw = A / P;
-  double fpr_raw = (C - A) / (N - P);
-  double tpr = tpr_raw < eps ? eps : (tpr_raw > 1.0 - eps ? 1.0 - eps : tpr_raw);
-  double fpr = fpr_raw < eps ? eps : (fpr_raw > 1.0 - eps ? 1.0 - eps : fpr_raw);
+  double tpr = (A + TK_SMOOTH_EPS_FACTOR) / (P + 2.0 * TK_SMOOTH_EPS_FACTOR);
+  double fpr = (C - A + TK_SMOOTH_EPS_FACTOR) / (N - P + 2.0 * TK_SMOOTH_EPS_FACTOR);
   return fabs(tk_probit(tpr) - tk_probit(fpr));
 }
 
@@ -5757,7 +5754,6 @@ static inline void tk_ivec_bits_top_bns_ind (
     }
 
     double N = (double)n_samples;
-    double eps = 0.5 / N;
 
     int n_threads = 1;
     #pragma omp parallel
@@ -5780,10 +5776,8 @@ static inline void tk_ivec_bits_top_bns_ind (
           double P = (double)label_counts->a[b];
           if (P == 0 || P == N) continue;
           double a = (double)active_counts->a[f * n_hidden + b];
-          double tpr_raw = a / P;
-          double fpr_raw = (C - a) / (N - P);
-          double tpr = tpr_raw < eps ? eps : (tpr_raw > 1.0 - eps ? 1.0 - eps : tpr_raw);
-          double fpr = fpr_raw < eps ? eps : (fpr_raw > 1.0 - eps ? 1.0 - eps : fpr_raw);
+          double tpr = (a + TK_SMOOTH_EPS_FACTOR) / (P + 2.0 * TK_SMOOTH_EPS_FACTOR);
+          double fpr = (C - a + TK_SMOOTH_EPS_FACTOR) / (N - P + 2.0 * TK_SMOOTH_EPS_FACTOR);
           double bns = fabs(tk_probit(tpr) - tk_probit(fpr));
           if (bns > 0) {
             tk_rank_t r = { (int64_t)f, bns };
@@ -5902,7 +5896,6 @@ static inline void tk_ivec_bits_top_bns_ind (
     }
 
     double N = (double)n_samples;
-    double eps = 0.5 / N;
     tk_rvec_t **per_dim_heaps = (tk_rvec_t **)malloc(n_hidden * sizeof(tk_rvec_t *));
     for (uint64_t h = 0; h < n_hidden; h++)
       per_dim_heaps[h] = tk_rvec_create(0, 0, 0, 0);
@@ -5916,10 +5909,8 @@ static inline void tk_ivec_bits_top_bns_ind (
       double P = (double)label_counts->a[b];
       if (C == 0 || P == 0 || C == N || P == N) continue;
       double a = (double)v;
-      double tpr_raw = a / P;
-      double fpr_raw = (C - a) / (N - P);
-      double tpr = tpr_raw < eps ? eps : (tpr_raw > 1.0 - eps ? 1.0 - eps : tpr_raw);
-      double fpr = fpr_raw < eps ? eps : (fpr_raw > 1.0 - eps ? 1.0 - eps : fpr_raw);
+      double tpr = (a + TK_SMOOTH_EPS_FACTOR) / (P + 2.0 * TK_SMOOTH_EPS_FACTOR);
+      double fpr = (C - a + TK_SMOOTH_EPS_FACTOR) / (N - P + 2.0 * TK_SMOOTH_EPS_FACTOR);
       double bns = fabs(tk_probit(tpr) - tk_probit(fpr));
       if (bns > 0) {
         tk_rank_t r = { (int64_t)f, bns };
@@ -6384,7 +6375,6 @@ static inline void tk_cvec_bits_top_bns_ind (
     }
 
     double N = (double)n_samples;
-    double eps = 0.5 / N;
     int n_threads = 1;
     #pragma omp parallel
     { n_threads = omp_get_num_threads(); }
@@ -6404,10 +6394,8 @@ static inline void tk_cvec_bits_top_bns_ind (
           double P = (double)atomic_load(&label_counts[b]);
           if (P == 0 || P == N) continue;
           double a = (double)atomic_load(&active_counts[f * n_hidden + b]);
-          double tpr_raw = a / P;
-          double fpr_raw = (C - a) / (N - P);
-          double tpr = tpr_raw < eps ? eps : (tpr_raw > 1.0 - eps ? 1.0 - eps : tpr_raw);
-          double fpr = fpr_raw < eps ? eps : (fpr_raw > 1.0 - eps ? 1.0 - eps : fpr_raw);
+          double tpr = (a + TK_SMOOTH_EPS_FACTOR) / (P + 2.0 * TK_SMOOTH_EPS_FACTOR);
+          double fpr = (C - a + TK_SMOOTH_EPS_FACTOR) / (N - P + 2.0 * TK_SMOOTH_EPS_FACTOR);
           double bns = fabs(tk_probit(tpr) - tk_probit(fpr));
           if (bns > 0) {
             tk_rank_t r = { (int64_t)f, bns };
@@ -6534,7 +6522,6 @@ static inline void tk_cvec_bits_top_bns_ind (
     }
 
     double N = (double)n_samples;
-    double eps = 0.5 / N;
     tk_rvec_t **per_dim_heaps = (tk_rvec_t **)malloc(n_hidden * sizeof(tk_rvec_t *));
     for (uint64_t h = 0; h < n_hidden; h++)
       per_dim_heaps[h] = tk_rvec_create(0, 0, 0, 0);
@@ -6548,10 +6535,8 @@ static inline void tk_cvec_bits_top_bns_ind (
       double P = (double)label_counts->a[b];
       if (C == 0 || P == 0 || C == N || P == N) continue;
       double a = (double)v;
-      double tpr_raw = a / P;
-      double fpr_raw = (C - a) / (N - P);
-      double tpr = tpr_raw < eps ? eps : (tpr_raw > 1.0 - eps ? 1.0 - eps : tpr_raw);
-      double fpr = fpr_raw < eps ? eps : (fpr_raw > 1.0 - eps ? 1.0 - eps : fpr_raw);
+      double tpr = (a + TK_SMOOTH_EPS_FACTOR) / (P + 2.0 * TK_SMOOTH_EPS_FACTOR);
+      double fpr = (C - a + TK_SMOOTH_EPS_FACTOR) / (N - P + 2.0 * TK_SMOOTH_EPS_FACTOR);
       double bns = fabs(tk_probit(tpr) - tk_probit(fpr));
       if (bns > 0) {
         tk_rank_t r = { (int64_t)f, bns };
