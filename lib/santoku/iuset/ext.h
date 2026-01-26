@@ -282,7 +282,8 @@ static inline tk_ivec_t *tk_ivec_bits_top_sparse_twophase (
     local_pool_heaps[tid] = tk_rvec_create(NULL, 0, 0, 0);
     #pragma omp for schedule(static)
     for (uint64_t f = 0; f < n_visible; f++) {
-      if (feat_count[f] > 0) {
+      double C = (double)atomic_load(&feat_counts[f]);
+      if (feat_count[f] > 0 && C > 0 && C < N) {
         tk_rank_t r = { (int64_t)f, feat_max[f] };
         tk_rvec_hmin(local_max_heaps[tid], top_k, r);
         if (pool != TK_POOL_MAX) {
@@ -1998,6 +1999,7 @@ static inline tk_ivec_t *tk_ivec_bits_top_df (
     #pragma omp for schedule(static)
     for (uint64_t i = 0; i < n_visible; i++) {
       double df_count = (double)atomic_load(&df_counts[i]);
+      if (df_count <= 0 || df_count >= n_samples) continue;
       double idf = log((double)(n_samples + 1) / (df_count + 1));
       if (df_count >= min_df_abs && df_count <= max_df_abs) {
         tk_rank_t r = { (int64_t)i, idf };
@@ -2060,6 +2062,7 @@ static inline tk_ivec_t *tk_cvec_bits_top_df (
     #pragma omp for schedule(static)
     for (uint64_t i = 0; i < n_features; i++) {
       double df_count = (double)atomic_load(&df_counts[i]);
+      if (df_count <= 0 || df_count >= n_samples) continue;
       double idf = log((double)(n_samples + 1) / (df_count + 1));
       if (df_count >= min_df_abs && df_count <= max_df_abs) {
         tk_rank_t r = { (int64_t)i, idf };
@@ -2229,8 +2232,8 @@ static inline void tk_ivec_bits_top_chi2_ind (
     for (uint64_t h = 0; h < n_hidden; h++)
       total_ids += per_dim_heaps[h]->n;
 
-    tk_ivec_t *offsets = tk_ivec_create(L, n_hidden + 1, 0, 0);
     tk_ivec_t *ids = tk_ivec_create(L, total_ids, 0, 0);
+    tk_ivec_t *offsets = tk_ivec_create(L, n_hidden + 1, 0, 0);
     tk_dvec_t *weights = tk_dvec_create(L, total_ids, 0, 0);
 
     offsets->a[0] = 0;
@@ -2584,8 +2587,8 @@ static inline void tk_ivec_bits_top_mi_ind (
     for (uint64_t h = 0; h < n_hidden; h++)
       total_ids += per_dim_heaps[h]->n;
 
-    tk_ivec_t *offsets = tk_ivec_create(L, n_hidden + 1, 0, 0);
     tk_ivec_t *ids = tk_ivec_create(L, total_ids, 0, 0);
+    tk_ivec_t *offsets = tk_ivec_create(L, n_hidden + 1, 0, 0);
     tk_dvec_t *weights = tk_dvec_create(L, total_ids, 0, 0);
 
     offsets->a[0] = 0;
@@ -2939,8 +2942,8 @@ static inline void tk_cvec_bits_top_chi2_ind (
     for (uint64_t h = 0; h < n_hidden; h++)
       total_ids += per_dim_heaps[h]->n;
 
-    tk_ivec_t *offsets = tk_ivec_create(L, n_hidden + 1, 0, 0);
     tk_ivec_t *ids = tk_ivec_create(L, total_ids, 0, 0);
+    tk_ivec_t *offsets = tk_ivec_create(L, n_hidden + 1, 0, 0);
     tk_dvec_t *weights = tk_dvec_create(L, total_ids, 0, 0);
 
     offsets->a[0] = 0;
@@ -4368,8 +4371,8 @@ static inline void tk_cvec_bits_top_mi_ind (
     for (uint64_t h = 0; h < n_hidden; h++)
       total_ids += per_dim_heaps[h]->n;
 
-    tk_ivec_t *offsets = tk_ivec_create(L, n_hidden + 1, 0, 0);
     tk_ivec_t *ids = tk_ivec_create(L, total_ids, 0, 0);
+    tk_ivec_t *offsets = tk_ivec_create(L, n_hidden + 1, 0, 0);
     tk_dvec_t *weights = tk_dvec_create(L, total_ids, 0, 0);
 
     offsets->a[0] = 0;
@@ -5831,8 +5834,8 @@ static inline void tk_ivec_bits_top_bns_ind (
     for (uint64_t h = 0; h < n_hidden; h++)
       total_ids += per_dim_heaps[h]->n;
 
-    tk_ivec_t *offsets = tk_ivec_create(L, n_hidden + 1, 0, 0);
     tk_ivec_t *ids = tk_ivec_create(L, total_ids, 0, 0);
+    tk_ivec_t *offsets = tk_ivec_create(L, n_hidden + 1, 0, 0);
     tk_dvec_t *weights = tk_dvec_create(L, total_ids, 0, 0);
 
     offsets->a[0] = 0;
@@ -5949,8 +5952,8 @@ static inline void tk_ivec_bits_top_bns_ind (
     for (uint64_t h = 0; h < n_hidden; h++)
       total_ids += per_dim_heaps[h]->n;
 
-    tk_ivec_t *offsets = tk_ivec_create(L, n_hidden + 1, 0, 0);
     tk_ivec_t *ids = tk_ivec_create(L, total_ids, 0, 0);
+    tk_ivec_t *offsets = tk_ivec_create(L, n_hidden + 1, 0, 0);
     tk_dvec_t *weights = tk_dvec_create(L, total_ids, 0, 0);
 
     offsets->a[0] = 0;
@@ -5975,8 +5978,8 @@ static inline void tk_ivec_bits_top_bns_ind (
 
   } else {
     tk_ivec_create(L, 0, 0, 0);
-    tk_ivec_create(L, 1, 0, 0);
     tk_ivec_create(L, 0, 0, 0);
+    tk_ivec_create(L, 1, 0, 0);
     tk_dvec_create(L, 0, 0, 0);
   }
 }
@@ -6213,7 +6216,8 @@ static inline tk_ivec_t *tk_cvec_bits_top_bns (
 
     tk_rvec_t *max_heap = tk_rvec_create(NULL, 0, 0, 0);
     for (uint64_t f = 0; f < n_features; f++) {
-      if (feat_count[f] > 0) {
+      double C = (double)atomic_load(&feat_counts[f]);
+      if (feat_count[f] > 0 && C > 0 && C < N) {
         tk_rank_t r = { (int64_t)f, feat_max[f] };
         tk_rvec_hmin(max_heap, top_k, r);
       }
@@ -6222,7 +6226,8 @@ static inline tk_ivec_t *tk_cvec_bits_top_bns (
     tk_rvec_t *pool_heap = tk_rvec_create(NULL, 0, 0, 0);
     if (pool != TK_POOL_MAX) {
       for (uint64_t f = 0; f < n_features; f++) {
-        if (feat_count[f] > 0) {
+        double C = (double)atomic_load(&feat_counts[f]);
+        if (feat_count[f] > 0 && C > 0 && C < N) {
           double score;
           switch (pool) {
             case TK_POOL_MIN: score = feat_min[f]; break;
@@ -6448,8 +6453,8 @@ static inline void tk_cvec_bits_top_bns_ind (
     for (uint64_t h = 0; h < n_hidden; h++)
       total_ids += per_dim_heaps[h]->n;
 
-    tk_ivec_t *offsets = tk_ivec_create(L, n_hidden + 1, 0, 0);
     tk_ivec_t *ids = tk_ivec_create(L, total_ids, 0, 0);
+    tk_ivec_t *offsets = tk_ivec_create(L, n_hidden + 1, 0, 0);
     tk_dvec_t *weights = tk_dvec_create(L, total_ids, 0, 0);
 
     offsets->a[0] = 0;
@@ -6575,8 +6580,8 @@ static inline void tk_cvec_bits_top_bns_ind (
     for (uint64_t h = 0; h < n_hidden; h++)
       total_ids += per_dim_heaps[h]->n;
 
-    tk_ivec_t *offsets = tk_ivec_create(L, n_hidden + 1, 0, 0);
     tk_ivec_t *ids = tk_ivec_create(L, total_ids, 0, 0);
+    tk_ivec_t *offsets = tk_ivec_create(L, n_hidden + 1, 0, 0);
     tk_dvec_t *weights = tk_dvec_create(L, total_ids, 0, 0);
 
     offsets->a[0] = 0;
@@ -6601,8 +6606,8 @@ static inline void tk_cvec_bits_top_bns_ind (
 
   } else {
     tk_ivec_create(L, 0, 0, 0);
-    tk_ivec_create(L, 1, 0, 0);
     tk_ivec_create(L, 0, 0, 0);
+    tk_ivec_create(L, 1, 0, 0);
     tk_dvec_create(L, 0, 0, 0);
   }
 }
