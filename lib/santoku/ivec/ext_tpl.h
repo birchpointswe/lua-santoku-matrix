@@ -57,8 +57,6 @@ static inline tk_ivec_t *tk_parallel_sfx(tk_ivec_bits_from_cvec) (lua_State *L, 
 static inline tk_ivec_t *tk_parallel_sfx(tk_ivec_bits_extend) (tk_ivec_t *base, tk_ivec_t *ext, uint64_t n_base_features, uint64_t n_ext_features) {
   if (base == NULL || ext == NULL)
     return NULL;
-  tk_ivec_asc(base, 0, base->n);
-  tk_ivec_asc(ext, 0, ext->n);
   size_t total = base->n + ext->n;
   if (tk_ivec_ensure(base, total) != 0)
     return NULL;
@@ -87,8 +85,6 @@ static inline int tk_parallel_sfx(tk_ivec_bits_extend_mapped) (tk_ivec_t *base, 
   if (base == NULL || ext == NULL || aids == NULL || bids == NULL)
     return -1;
 
-  tk_ivec_asc(base, 0, base->n);
-  tk_ivec_asc(ext, 0, ext->n);
   tk_iumap_t *a_id_to_pos = tk_iumap_from_ivec(0, aids);
   if (!a_id_to_pos)
     return -1;
