@@ -49,90 +49,6 @@ static inline int tk_ivec_bits_top_chi2_lua (lua_State *L)
   return 2;
 }
 
-static inline int tk_ivec_bits_top_chi2_ind_lua (lua_State *L)
-{
-  lua_settop(L, 6);
-  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
-  uint64_t n_samples = tk_lua_checkunsigned(L, 3, "samples");
-  uint64_t n_visible = tk_lua_checkunsigned(L, 4, "visible");
-  uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
-  uint64_t top_k = lua_isnil(L, 6) ? n_visible : tk_lua_checkunsigned(L, 6, "top_k");
-  char *codes = NULL;
-  tk_ivec_t *labels = NULL;
-  if (lua_isnil(L, 2)) {
-  } else if (tk_lua_testuserdata(L, 2, "tk_cvec_t")) {
-    tk_cvec_t *cvec = tk_cvec_peek(L, 2, "codes");
-    codes = cvec->a;
-  } else {
-    labels = tk_ivec_peek(L, 2, "labels");
-  }
-  tk_ivec_bits_top_chi2_ind(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, top_k);
-  return 4;
-}
-
-static inline int tk_ivec_bits_top_mi_ind_lua (lua_State *L)
-{
-  lua_settop(L, 6);
-  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
-  uint64_t n_samples = tk_lua_checkunsigned(L, 3, "samples");
-  uint64_t n_visible = tk_lua_checkunsigned(L, 4, "visible");
-  uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
-  uint64_t top_k = lua_isnil(L, 6) ? n_visible : tk_lua_checkunsigned(L, 6, "top_k");
-  char *codes = NULL;
-  tk_ivec_t *labels = NULL;
-  if (lua_isnil(L, 2)) {
-  } else if (tk_lua_testuserdata(L, 2, "tk_cvec_t")) {
-    tk_cvec_t *cvec = tk_cvec_peek(L, 2, "codes");
-    codes = cvec->a;
-  } else {
-    labels = tk_ivec_peek(L, 2, "labels");
-  }
-  tk_ivec_bits_top_mi_ind(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, top_k);
-  return 4;
-}
-
-static inline int tk_ivec_bits_individualize_lua (lua_State *L)
-{
-  lua_settop(L, 4);
-  tk_ivec_t *toks = tk_ivec_peek(L, 1, "toks");
-  tk_ivec_t *offsets = tk_ivec_peek(L, 2, "offsets");
-  tk_ivec_t *ids = tk_ivec_peek(L, 3, "ids");
-  uint64_t union_size = tk_lua_checkunsigned(L, 4, "union_size");
-  uint64_t n_hidden = (uint64_t)offsets->n - 1;
-  tk_ivec_bits_individualize(L, toks, offsets, ids, union_size, n_hidden);
-  return 2;
-}
-
-static inline int tk_ivec_bits_to_cvec_ind_lua (lua_State *L)
-{
-  lua_settop(L, 5);
-  tk_ivec_t *ind_toks = tk_ivec_peek(L, 1, "ind_toks");
-  tk_ivec_t *ind_offsets = tk_ivec_peek(L, 2, "ind_offsets");
-  tk_ivec_t *feat_offsets = tk_ivec_peek(L, 3, "feat_offsets");
-  uint64_t n_samples = tk_lua_checkunsigned(L, 4, "n_samples");
-  bool flip_interleave = lua_toboolean(L, 5);
-  tk_cvec_bits_from_ind(L, ind_toks, ind_offsets, feat_offsets, n_samples, flip_interleave);
-  return 2;
-}
-
-static inline int tk_ivec_bits_extend_ind_lua (lua_State *L)
-{
-  lua_settop(L, 9);
-  tk_ivec_t *base_toks = tk_ivec_peek(L, 1, "base_toks");
-  tk_ivec_t *base_offsets = tk_ivec_peek(L, 2, "base_offsets");
-  tk_ivec_t *base_ids = tk_ivec_peek(L, 3, "base_ids");
-  tk_ivec_t *ext_toks = tk_ivec_peek(L, 4, "ext_toks");
-  tk_ivec_t *ext_offsets = tk_ivec_peek(L, 5, "ext_offsets");
-  tk_ivec_t *ext_ids = tk_ivec_peek(L, 6, "ext_ids");
-  tk_ivec_t *base_feat_offsets = tk_ivec_peek(L, 7, "base_feat_offsets");
-  tk_ivec_t *ext_feat_offsets = tk_ivec_peek(L, 8, "ext_feat_offsets");
-  bool project = lua_toboolean(L, 9);
-  uint64_t n_hidden = (base_feat_offsets->n > 0) ? (base_feat_offsets->n - 1) : 0;
-  if (tk_ivec_bits_extend_ind(L, base_toks, base_offsets, base_ids, ext_toks, ext_offsets, ext_ids, base_feat_offsets, ext_feat_offsets, n_hidden, project) != 0)
-    return luaL_error(L, "bits_extend_ind: allocation failed");
-  return 0;
-}
-
 static inline int tk_ivec_bits_top_entropy_lua (lua_State *L)
 {
   lua_settop(L, 4);
@@ -195,46 +111,6 @@ static inline int tk_ivec_bits_top_reg_mi_lua (lua_State *L)
   return 2;
 }
 
-static inline int tk_ivec_bits_top_reg_f_ind_lua (lua_State *L)
-{
-  lua_settop(L, 6);
-  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
-  tk_dvec_t *targets = tk_dvec_peek(L, 2, "targets");
-  uint64_t n_samples = tk_lua_checkunsigned(L, 3, "n_samples");
-  uint64_t n_features = tk_lua_checkunsigned(L, 4, "n_features");
-  uint64_t n_targets = tk_lua_checkunsigned(L, 5, "n_targets");
-  uint64_t top_k = lua_isnil(L, 6) ? n_features : tk_lua_checkunsigned(L, 6, "top_k");
-  tk_ivec_bits_top_reg_f_ind(L, set_bits, targets, n_samples, n_features, n_targets, top_k);
-  return 4;
-}
-
-static inline int tk_ivec_bits_top_reg_pearson_ind_lua (lua_State *L)
-{
-  lua_settop(L, 6);
-  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
-  tk_dvec_t *targets = tk_dvec_peek(L, 2, "targets");
-  uint64_t n_samples = tk_lua_checkunsigned(L, 3, "n_samples");
-  uint64_t n_features = tk_lua_checkunsigned(L, 4, "n_features");
-  uint64_t n_targets = tk_lua_checkunsigned(L, 5, "n_targets");
-  uint64_t top_k = lua_isnil(L, 6) ? n_features : tk_lua_checkunsigned(L, 6, "top_k");
-  tk_ivec_bits_top_reg_pearson_ind(L, set_bits, targets, n_samples, n_features, n_targets, top_k);
-  return 4;
-}
-
-static inline int tk_ivec_bits_top_reg_mi_ind_lua (lua_State *L)
-{
-  lua_settop(L, 7);
-  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
-  tk_dvec_t *targets = tk_dvec_peek(L, 2, "targets");
-  uint64_t n_samples = tk_lua_checkunsigned(L, 3, "n_samples");
-  uint64_t n_features = tk_lua_checkunsigned(L, 4, "n_features");
-  uint64_t n_targets = tk_lua_checkunsigned(L, 5, "n_targets");
-  uint64_t top_k = lua_isnil(L, 6) ? n_features : tk_lua_checkunsigned(L, 6, "top_k");
-  uint64_t n_bins = lua_isnil(L, 7) ? 10 : tk_lua_checkunsigned(L, 7, "n_bins");
-  tk_ivec_bits_top_reg_mi_ind(L, set_bits, targets, n_samples, n_features, n_targets, top_k, n_bins);
-  return 4;
-}
-
 static inline int tk_ivec_bits_select_lua (lua_State *L)
 {
   int n_args = lua_gettop(L);
@@ -271,92 +147,6 @@ static inline int tk_ivec_bits_select_lua (lua_State *L)
   tk_ivec_t *result = tk_ivec_bits_select(src_bits, selected_features, sample_ids, n_features, dest, dest_sample, dest_stride);
   if (result == NULL)
     return luaL_error(L, "bits_select failed");
-  return 0;
-}
-
-static inline int tk_ivec_bits_select_ind_lua (lua_State *L)
-{
-  lua_settop(L, 3);
-  tk_ivec_t *feat_ids = tk_ivec_peek(L, 1, "feat_ids");
-  tk_ivec_t *feat_offsets = tk_ivec_peek(L, 2, "feat_offsets");
-  tk_ivec_t *selected_dims = tk_ivec_peek(L, 3, "selected_dims");
-
-  uint64_t n_orig_dims = feat_offsets->n - 1;
-  uint64_t n_selected = selected_dims->n;
-
-  if (n_selected == 0) {
-    feat_ids->n = 0;
-    feat_offsets->a[0] = 0;
-    feat_offsets->n = 1;
-    return 0;
-  }
-
-  for (uint64_t i = 0; i < n_selected; i++) {
-    int64_t dim = selected_dims->a[i];
-    if (dim < 0 || (uint64_t)dim >= n_orig_dims)
-      return luaL_error(L, "selected_dims[%d] = %d out of range [0, %d)", (int)i, (int)dim, (int)n_orig_dims);
-    for (uint64_t j = i + 1; j < n_selected; j++)
-      if (selected_dims->a[i] == selected_dims->a[j])
-        return luaL_error(L, "duplicate dimension %d in selected_dims", (int)dim);
-  }
-
-  int64_t *orig_offsets = (int64_t *)malloc((n_orig_dims + 1) * sizeof(int64_t));
-  if (!orig_offsets)
-    return luaL_error(L, "malloc failed in bits_select_ind");
-  memcpy(orig_offsets, feat_offsets->a, (n_orig_dims + 1) * sizeof(int64_t));
-
-  uint64_t new_total = 0;
-  for (uint64_t i = 0; i < n_selected; i++) {
-    int64_t dim = selected_dims->a[i];
-    new_total += (uint64_t)(orig_offsets[dim + 1] - orig_offsets[dim]);
-  }
-
-  int64_t *temp_ids = (int64_t *)malloc(new_total * sizeof(int64_t));
-  if (!temp_ids) {
-    free(orig_offsets);
-    return luaL_error(L, "malloc failed in bits_select_ind");
-  }
-
-  uint64_t write_pos = 0;
-  for (uint64_t i = 0; i < n_selected; i++) {
-    int64_t dim = selected_dims->a[i];
-    int64_t start = orig_offsets[dim];
-    int64_t end = orig_offsets[dim + 1];
-    uint64_t count = (uint64_t)(end - start);
-    memcpy(&temp_ids[write_pos], &feat_ids->a[start], count * sizeof(int64_t));
-    write_pos += count;
-  }
-
-  if (new_total > feat_ids->n) {
-    int64_t *new_a = (int64_t *)realloc(feat_ids->a, new_total * sizeof(int64_t));
-    if (!new_a) {
-      free(temp_ids);
-      free(orig_offsets);
-      return luaL_error(L, "realloc failed in bits_select_ind");
-    }
-    feat_ids->a = new_a;
-  }
-  memcpy(feat_ids->a, temp_ids, new_total * sizeof(int64_t));
-  feat_ids->n = new_total;
-  free(temp_ids);
-
-  if (n_selected + 1 > feat_offsets->n) {
-    int64_t *new_off = (int64_t *)realloc(feat_offsets->a, (n_selected + 1) * sizeof(int64_t));
-    if (!new_off) {
-      free(orig_offsets);
-      return luaL_error(L, "realloc failed in bits_select_ind");
-    }
-    feat_offsets->a = new_off;
-  }
-  feat_offsets->a[0] = 0;
-  for (uint64_t i = 0; i < n_selected; i++) {
-    int64_t dim = selected_dims->a[i];
-    int64_t size = orig_offsets[dim + 1] - orig_offsets[dim];
-    feat_offsets->a[i + 1] = feat_offsets->a[i] + size;
-  }
-  feat_offsets->n = n_selected + 1;
-
-  free(orig_offsets);
   return 0;
 }
 
@@ -891,27 +681,6 @@ static inline int tk_ivec_bits_top_bns_lua (lua_State *L)
   return 2;
 }
 
-static inline int tk_ivec_bits_top_bns_ind_lua (lua_State *L)
-{
-  lua_settop(L, 6);
-  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
-  uint64_t n_samples = tk_lua_checkunsigned(L, 3, "samples");
-  uint64_t n_visible = tk_lua_checkunsigned(L, 4, "visible");
-  uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
-  uint64_t top_k = lua_isnil(L, 6) ? n_visible : tk_lua_checkunsigned(L, 6, "top_k");
-  char *codes = NULL;
-  tk_ivec_t *labels = NULL;
-  if (lua_isnil(L, 2)) {
-  } else if (tk_lua_testuserdata(L, 2, "tk_cvec_t")) {
-    tk_cvec_t *cvec = tk_cvec_peek(L, 2, "codes");
-    codes = cvec->a;
-  } else {
-    labels = tk_ivec_peek(L, 2, "labels");
-  }
-  tk_ivec_bits_top_bns_ind(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, top_k);
-  return 4;
-}
-
 static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
 {
   { "bits_to_csr", tk_ivec_bits_to_csr_lua },
@@ -921,22 +690,13 @@ static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
   { "copy_pvalues", tk_ivec_copy_pvalues_lua },
   { "copy_rvalues", tk_ivec_copy_rvalues_lua },
   { "bits_top_chi2", tk_ivec_bits_top_chi2_lua },
-  { "bits_top_chi2_ind", tk_ivec_bits_top_chi2_ind_lua },
-  { "bits_individualize", tk_ivec_bits_individualize_lua },
-  { "bits_to_cvec_ind", tk_ivec_bits_to_cvec_ind_lua },
-  { "bits_extend_ind", tk_ivec_bits_extend_ind_lua },
   { "bits_top_mi", tk_ivec_bits_top_mi_lua },
-  { "bits_top_mi_ind", tk_ivec_bits_top_mi_ind_lua },
   { "bits_top_entropy", tk_ivec_bits_top_entropy_lua },
   { "bits_top_df", tk_ivec_bits_top_df_lua },
   { "bits_top_reg_f", tk_ivec_bits_top_reg_f_lua },
-  { "bits_top_reg_f_ind", tk_ivec_bits_top_reg_f_ind_lua },
   { "bits_top_reg_pearson", tk_ivec_bits_top_reg_pearson_lua },
-  { "bits_top_reg_pearson_ind", tk_ivec_bits_top_reg_pearson_ind_lua },
   { "bits_top_reg_mi", tk_ivec_bits_top_reg_mi_lua },
-  { "bits_top_reg_mi_ind", tk_ivec_bits_top_reg_mi_ind_lua },
   { "bits_select", tk_ivec_bits_select_lua },
-  { "bits_select_ind", tk_ivec_bits_select_ind_lua },
   { "bits_to_cvec", tk_ivec_bits_to_cvec_lua },
   { "bits_extend", tk_ivec_bits_extend_lua },
   { "set_stats", tk_ivec_set_stats_lua },
@@ -956,7 +716,6 @@ static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
   { "scores_elbow", tk_ivec_scores_elbow_lua },
   { "to_dvec", tk_ivec_to_dvec_lua },
   { "bits_top_bns", tk_ivec_bits_top_bns_lua },
-  { "bits_top_bns_ind", tk_ivec_bits_top_bns_ind_lua },
   { NULL, NULL }
 };
 

@@ -424,9 +424,6 @@ static inline double tk_csr_ndcg_distance(
   uint64_t m = (uint64_t)(exp_end - exp_start);
   if (m == 0 || !sorted_bin_ranks || sorted_bin_ranks->n == 0)
     return 0.0;
-  if (sorted_bin_ranks->n < 1)
-    return 0.0;
-
 
   tk_dumap_clear(weight_map);
   int kha;
@@ -438,44 +435,44 @@ static inline double tk_csr_ndcg_distance(
     tk_dumap_setval(weight_map, khi, weight);
   }
 
-
-
   double dcg = 0.0;
-  for (uint64_t i = 0; i < sorted_bin_ranks->n; i++) {
-    int64_t neighbor_idx = sorted_bin_ranks->a[i].i;
-    int64_t neighbor_id = retrieved_ids->a[neighbor_idx];
-    uint32_t khi = tk_dumap_get(weight_map, neighbor_id);
-    if (khi != tk_dumap_end(weight_map)) {
-      double relevance = tk_dumap_val(weight_map, khi);
-      double position = (double)(i + 1);
-      double discount = log2(position + 1.0);
-      dcg += relevance / discount;
+  uint64_t n = sorted_bin_ranks->n;
+  uint64_t i = 0;
+  while (i < n) {
+    int64_t current_hamming = sorted_bin_ranks->a[i].p;
+    uint64_t tie_start = i;
+    while (i < n && sorted_bin_ranks->a[i].p == current_hamming)
+      i++;
+    uint64_t tie_end = i;
+    uint64_t tie_count = tie_end - tie_start;
+    double discount_sum = 0.0;
+    for (uint64_t pos = tie_start; pos < tie_end; pos++)
+      discount_sum += log2((double)(pos + 2));
+    double avg_discount = discount_sum / (double)tie_count;
+    for (uint64_t j = tie_start; j < tie_end; j++) {
+      int64_t neighbor_idx = sorted_bin_ranks->a[j].i;
+      int64_t neighbor_id = retrieved_ids->a[neighbor_idx];
+      uint32_t khi = tk_dumap_get(weight_map, neighbor_id);
+      if (khi != tk_dumap_end(weight_map)) {
+        double relevance = tk_dumap_val(weight_map, khi);
+        dcg += relevance / avg_discount;
+      }
     }
   }
 
-
-
-
-  double idcg = 0.0;
-  uint64_t k = sorted_bin_ranks->n;
-
-  if (m == 0)
-    return 0.0;
-
-
+  uint64_t k = n;
   tk_dvec_t *sorted_weights = tk_dvec_create(NULL, m, 0, 0);
   if (!sorted_weights)
     return 0.0;
-  for (uint64_t i = 0; i < m; i++)
+  for (i = 0; i < m; i++)
     sorted_weights->a[i] = expected_weights->a[(uint64_t)exp_start + i];
   tk_dvec_desc(sorted_weights, 0, m);
 
-
+  double idcg = 0.0;
   uint64_t idcg_count = (m < k) ? m : k;
-  for (uint64_t i = 0; i < idcg_count; i++) {
+  for (i = 0; i < idcg_count; i++) {
     double relevance = sorted_weights->a[i];
-    double position = (double)(i + 1);
-    double discount = log2(position + 1.0);
+    double discount = log2((double)(i + 2));
     idcg += relevance / discount;
   }
 
@@ -483,8 +480,6 @@ static inline double tk_csr_ndcg_distance(
 
   if (idcg < 1e-10)
     return 0.0;
-
-
 
   return dcg / idcg;
 }
