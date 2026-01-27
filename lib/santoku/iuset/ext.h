@@ -2124,11 +2124,9 @@ static inline void tk_ivec_bits_top_chi2_ind (
 ) {
   if (codes) {
 
-    tk_ivec_t *active_counts = tk_ivec_create(0, n_visible * n_hidden, 0, 0);
+    tk_iumap_t *active_counts = tk_iumap_create(0, 0);
     atomic_uint *label_counts = (atomic_uint *)calloc(n_hidden, sizeof(atomic_uint));
-    tk_ivec_t *feat_counts = tk_ivec_create(0, n_visible, 0, 0);
-    tk_ivec_zero(active_counts);
-    tk_ivec_zero(feat_counts);
+    tk_iumap_t *feat_counts = tk_iumap_create(0, 0);
 
     uint64_t prev_sample = UINT64_MAX;
     uint8_t *sample_codes = NULL;
@@ -2140,7 +2138,10 @@ static inline void tk_ivec_bits_top_chi2_ind (
       uint64_t feature_idx = (uint64_t)bit_idx % n_visible;
       if (sample_idx >= n_samples || feature_idx >= n_visible)
         continue;
-      feat_counts->a[feature_idx]++;
+      int absent;
+      khint_t kf = tk_iumap_put(feat_counts, (int64_t)feature_idx, &absent);
+      if (absent) kh_value(feat_counts, kf) = 0;
+      kh_value(feat_counts, kf)++;
       if (sample_idx != prev_sample) {
         prev_sample = sample_idx;
         sample_codes = (uint8_t *)(codes + sample_idx * TK_CVEC_BITS_BYTES(n_hidden));
@@ -2149,7 +2150,10 @@ static inline void tk_ivec_bits_top_chi2_ind (
         uint64_t byte_idx = b / CHAR_BIT;
         uint64_t bit_pos = b % CHAR_BIT;
         if (sample_codes[byte_idx] & (1u << bit_pos)) {
-          active_counts->a[feature_idx * n_hidden + b]++;
+          int64_t ac_key = (int64_t)(feature_idx * n_hidden + b);
+          khint_t ka = tk_iumap_put(active_counts, ac_key, &absent);
+          if (absent) kh_value(active_counts, ka) = 0;
+          kh_value(active_counts, ka)++;
         }
       }
     }
@@ -2166,6 +2170,14 @@ static inline void tk_ivec_bits_top_chi2_ind (
       }
     }
 
+    uint64_t n_active_feats = tk_iumap_size(feat_counts);
+    tk_ivec_t *active_feat_ids = tk_ivec_create(0, n_active_feats, 0, 0);
+    active_feat_ids->n = 0;
+    int64_t fkey;
+    tk_umap_foreach_keys(feat_counts, fkey, ({
+      active_feat_ids->a[active_feat_ids->n++] = fkey;
+    }));
+
     int n_threads = 1;
     #pragma omp parallel
     { n_threads = omp_get_num_threads(); }
@@ -2180,13 +2192,20 @@ static inline void tk_ivec_bits_top_chi2_ind (
     {
       int tid = omp_get_thread_num();
       #pragma omp for schedule(static)
-      for (uint64_t f = 0; f < n_visible; f++) {
+      for (uint64_t fi = 0; fi < n_active_feats; fi++) {
+        uint64_t f = (uint64_t)active_feat_ids->a[fi];
+        khint_t kf = tk_iumap_get(feat_counts, (int64_t)f);
+        int64_t C = kh_value(feat_counts, kf);
+        if (C == 0 || C == (int64_t)n_samples)
+          continue;
         for (uint64_t b = 0; b < n_hidden; b++) {
-          int64_t A = active_counts->a[f * n_hidden + b];
           int64_t G = (int64_t)atomic_load(&label_counts[b]);
-          int64_t C = feat_counts->a[f];
-          if (C == 0 || G == 0 || C == (int64_t)n_samples || G == (int64_t)n_samples)
+          if (G == 0 || G == (int64_t)n_samples)
             continue;
+          int64_t A = 0;
+          khint_t ka = tk_iumap_get(active_counts, (int64_t)(f * n_hidden + b));
+          if (ka != tk_iumap_end(active_counts))
+            A = kh_value(active_counts, ka);
           int64_t B = G - A;
           int64_t C_ = C - A;
           int64_t D = (int64_t)n_samples - C - B;
@@ -2221,8 +2240,9 @@ static inline void tk_ivec_bits_top_chi2_ind (
     }
     free(local_per_dim);
 
-    tk_ivec_destroy(active_counts);
-    tk_ivec_destroy(feat_counts);
+    tk_ivec_destroy(active_feat_ids);
+    tk_iumap_destroy(active_counts);
+    tk_iumap_destroy(feat_counts);
     free(label_counts);
 
     for (uint64_t h = 0; h < n_hidden; h++)
@@ -2465,18 +2485,22 @@ static inline void tk_ivec_bits_top_mi_ind (
 ) {
   if (codes) {
 
-    tk_ivec_t *counts = tk_ivec_create(0, n_visible * n_hidden * 4, 0, 0);
-    tk_ivec_zero(counts);
+    tk_iumap_t *active_counts = tk_iumap_create(0, 0);
+    atomic_uint *label_counts = (atomic_uint *)calloc(n_hidden, sizeof(atomic_uint));
+    tk_iumap_t *feat_counts = tk_iumap_create(0, 0);
+
     uint64_t prev_sample = UINT64_MAX;
     uint8_t *sample_codes = NULL;
     for (uint64_t i = 0; i < set_bits->n; i++) {
       int64_t bit_idx = set_bits->a[i];
-      if (bit_idx < 0)
-        continue;
+      if (bit_idx < 0) continue;
       uint64_t sample_idx = (uint64_t)bit_idx / n_visible;
       uint64_t feature_idx = (uint64_t)bit_idx % n_visible;
-      if (sample_idx >= n_samples || feature_idx >= n_visible)
-        continue;
+      if (sample_idx >= n_samples || feature_idx >= n_visible) continue;
+      int absent;
+      khint_t kf = tk_iumap_put(feat_counts, (int64_t)feature_idx, &absent);
+      if (absent) kh_value(feat_counts, kf) = 0;
+      kh_value(feat_counts, kf)++;
       if (sample_idx != prev_sample) {
         prev_sample = sample_idx;
         sample_codes = (uint8_t *)(codes + sample_idx * TK_CVEC_BITS_BYTES(n_hidden));
@@ -2484,38 +2508,33 @@ static inline void tk_ivec_bits_top_mi_ind (
       for (uint64_t j = 0; j < n_hidden; j++) {
         uint64_t byte_idx = j / CHAR_BIT;
         uint64_t bit_pos = j % CHAR_BIT;
-        bool hidden = (sample_codes[byte_idx] & (1u << bit_pos)) != 0;
-        counts->a[feature_idx * n_hidden * 4 + j * 4 + 2 + (hidden ? 1 : 0)]++;
+        if (sample_codes[byte_idx] & (1u << bit_pos)) {
+          int64_t ac_key = (int64_t)(feature_idx * n_hidden + j);
+          khint_t ka = tk_iumap_put(active_counts, ac_key, &absent);
+          if (absent) kh_value(active_counts, ka) = 0;
+          kh_value(active_counts, ka)++;
+        }
       }
     }
 
-    tk_iuset_t *sample_features = tk_iuset_create(0, 0);
+    #pragma omp parallel for schedule(static)
     for (uint64_t s = 0; s < n_samples; s++) {
-      tk_iuset_clear(sample_features);
-      for (uint64_t i = 0; i < set_bits->n; i++) {
-        int64_t bit_idx = set_bits->a[i];
-        if (bit_idx < 0)
-          continue;
-        uint64_t sample_idx = (uint64_t)bit_idx / n_visible;
-        uint64_t feature_idx = (uint64_t)bit_idx % n_visible;
-        if (sample_idx == s) {
-          int absent;
-          tk_iuset_put(sample_features, (int64_t)feature_idx, &absent);
-        }
-      }
       uint8_t *s_codes = (uint8_t *)(codes + s * TK_CVEC_BITS_BYTES(n_hidden));
-      for (uint64_t f = 0; f < n_visible; f++) {
-        if (!tk_iuset_contains(sample_features, (int64_t)f)) {
-          for (uint64_t j = 0; j < n_hidden; j++) {
-            uint64_t byte_idx = j / CHAR_BIT;
-            uint64_t bit_pos = j % CHAR_BIT;
-            bool hidden = (s_codes[byte_idx] & (1u << bit_pos)) != 0;
-            counts->a[f * n_hidden * 4 + j * 4 + (hidden ? 1 : 0)]++;
-          }
-        }
+      for (uint64_t j = 0; j < n_hidden; j++) {
+        uint64_t byte_idx = j / CHAR_BIT;
+        uint64_t bit_pos = j % CHAR_BIT;
+        if (s_codes[byte_idx] & (1u << bit_pos))
+          atomic_fetch_add(&label_counts[j], 1);
       }
     }
-    tk_iuset_destroy(sample_features);
+
+    uint64_t n_active_feats = tk_iumap_size(feat_counts);
+    tk_ivec_t *active_feat_ids = tk_ivec_create(0, n_active_feats, 0, 0);
+    active_feat_ids->n = 0;
+    int64_t fkey;
+    tk_umap_foreach_keys(feat_counts, fkey, ({
+      active_feat_ids->a[active_feat_ids->n++] = fkey;
+    }));
 
     int n_threads = 1;
     #pragma omp parallel
@@ -2531,28 +2550,36 @@ static inline void tk_ivec_bits_top_mi_ind (
     {
       int tid = omp_get_thread_num();
       #pragma omp for schedule(static)
-      for (uint64_t f = 0; f < n_visible; f++) {
+      for (uint64_t fi = 0; fi < n_active_feats; fi++) {
+        uint64_t f = (uint64_t)active_feat_ids->a[fi];
+        khint_t kf = tk_iumap_get(feat_counts, (int64_t)f);
+        int64_t C = kh_value(feat_counts, kf);
+        if (C <= 0 || C >= (int64_t)n_samples) continue;
         for (uint64_t j = 0; j < n_hidden; j++) {
+          int64_t P = (int64_t)atomic_load(&label_counts[j]);
+          if (P <= 0 || P >= (int64_t)n_samples) continue;
+          int64_t A = 0;
+          khint_t ka = tk_iumap_get(active_counts, (int64_t)(f * n_hidden + j));
+          if (ka != tk_iumap_end(active_counts))
+            A = kh_value(active_counts, ka);
           int64_t c[4];
-          int64_t *counts_ptr = counts->a + f * n_hidden * 4 + j * 4;
-          for (int kk = 0; kk < 4; kk++)
-            c[kk] = counts_ptr[kk] + 1;
+          c[3] = A + 1;
+          c[2] = C - A + 1;
+          c[1] = P - A + 1;
+          c[0] = (int64_t)n_samples - C - P + A + 1;
           double total = c[0] + c[1] + c[2] + c[3];
           double mi = 0.0;
-          if (total > 0.0) {
-            for (unsigned int o = 0; o < 4; o++) {
-              if (c[o] == 0)
-                continue;
-              double p_fb = c[o] / total;
-              unsigned int feat = o >> 1;
-              unsigned int hid = o & 1;
-              double pf = (c[2] + c[3]) / total;
-              if (feat == 0) pf = 1.0 - pf;
-              double ph = (c[1] + c[3]) / total;
-              if (hid == 0) ph = 1.0 - ph;
-              double d = pf * ph;
-              if (d > 0) mi += p_fb * log2(p_fb / d);
-            }
+          for (unsigned int o = 0; o < 4; o++) {
+            if (c[o] == 0) continue;
+            double p_fb = c[o] / total;
+            unsigned int feat = o >> 1;
+            unsigned int hid = o & 1;
+            double pf = (c[2] + c[3]) / total;
+            if (feat == 0) pf = 1.0 - pf;
+            double ph = (c[1] + c[3]) / total;
+            if (hid == 0) ph = 1.0 - ph;
+            double d = pf * ph;
+            if (d > 0) mi += p_fb * log2(p_fb / d);
           }
           if (mi > 0) {
             tk_rank_t r = { (int64_t)f, mi };
@@ -2575,7 +2602,10 @@ static inline void tk_ivec_bits_top_mi_ind (
     }
     free(local_per_dim);
 
-    tk_ivec_destroy(counts);
+    tk_ivec_destroy(active_feat_ids);
+    tk_iumap_destroy(active_counts);
+    tk_iumap_destroy(feat_counts);
+    free(label_counts);
 
     for (uint64_t h = 0; h < n_hidden; h++)
       tk_rvec_desc(per_dim_heaps[h], 0, per_dim_heaps[h]->n);
@@ -4594,12 +4624,9 @@ static inline void tk_ivec_bits_top_reg_f_ind (
   for (uint64_t t = 0; t < n_targets; t++)
     overall_means->a[t] = overall_sums->a[t] / (double)n_samples;
 
-  tk_ivec_t *feat_counts = tk_ivec_create(0, n_features, 0, 0);
-  tk_dvec_t *feat_sums = tk_dvec_create(0, n_features * n_targets, 0, 0);
-  tk_dvec_t *feat_sum_sq = tk_dvec_create(0, n_features * n_targets, 0, 0);
-  tk_ivec_zero(feat_counts);
-  tk_dvec_zero(feat_sums);
-  tk_dvec_zero(feat_sum_sq);
+  tk_iumap_t *feat_counts = tk_iumap_create(0, 0);
+  tk_dumap_t *feat_sums = tk_dumap_create(0, 0);
+  tk_dumap_t *feat_sum_sq = tk_dumap_create(0, 0);
 
   for (uint64_t i = 0; i < set_bits->n; i++) {
     int64_t bit = set_bits->a[i];
@@ -4607,13 +4634,29 @@ static inline void tk_ivec_bits_top_reg_f_ind (
     uint64_t sample = (uint64_t)bit / n_features;
     uint64_t feature = (uint64_t)bit % n_features;
     if (sample >= n_samples || feature >= n_features) continue;
-    feat_counts->a[feature]++;
+    int absent;
+    khint_t kc = tk_iumap_put(feat_counts, (int64_t)feature, &absent);
+    if (absent) kh_value(feat_counts, kc) = 0;
+    kh_value(feat_counts, kc)++;
     for (uint64_t t = 0; t < n_targets; t++) {
       double y = targets->a[sample * n_targets + t];
-      feat_sums->a[feature * n_targets + t] += y;
-      feat_sum_sq->a[feature * n_targets + t] += y * y;
+      int64_t key = (int64_t)(feature * n_targets + t);
+      khint_t ks = tk_dumap_put(feat_sums, key, &absent);
+      if (absent) kh_value(feat_sums, ks) = 0.0;
+      kh_value(feat_sums, ks) += y;
+      khint_t kq = tk_dumap_put(feat_sum_sq, key, &absent);
+      if (absent) kh_value(feat_sum_sq, kq) = 0.0;
+      kh_value(feat_sum_sq, kq) += y * y;
     }
   }
+
+  uint64_t n_active_feats = tk_iumap_size(feat_counts);
+  tk_ivec_t *active_feat_ids = tk_ivec_create(0, n_active_feats, 0, 0);
+  active_feat_ids->n = 0;
+  int64_t fkey;
+  tk_umap_foreach_keys(feat_counts, fkey, ({
+    active_feat_ids->a[active_feat_ids->n++] = fkey;
+  }));
 
   int n_threads = 1;
   #pragma omp parallel
@@ -4629,19 +4672,24 @@ static inline void tk_ivec_bits_top_reg_f_ind (
   {
     int tid = omp_get_thread_num();
     #pragma omp for schedule(static)
-    for (uint64_t f = 0; f < n_features; f++) {
-      int64_t n1 = feat_counts->a[f];
+    for (uint64_t fi = 0; fi < n_active_feats; fi++) {
+      uint64_t f = (uint64_t)active_feat_ids->a[fi];
+      khint_t kc = tk_iumap_get(feat_counts, (int64_t)f);
+      int64_t n1 = kh_value(feat_counts, kc);
       int64_t n0 = (int64_t)n_samples - n1;
       if (n1 <= 1 || n0 <= 1) continue;
       for (uint64_t t = 0; t < n_targets; t++) {
-        double sum1 = feat_sums->a[f * n_targets + t];
+        int64_t key = (int64_t)(f * n_targets + t);
+        khint_t ks = tk_dumap_get(feat_sums, key);
+        double sum1 = (ks != tk_dumap_end(feat_sums)) ? kh_value(feat_sums, ks) : 0.0;
         double sum0 = overall_sums->a[t] - sum1;
         double mean1 = sum1 / (double)n1;
         double mean0 = sum0 / (double)n0;
         double overall_mean = overall_means->a[t];
         double ssb = (double)n1 * (mean1 - overall_mean) * (mean1 - overall_mean) +
                      (double)n0 * (mean0 - overall_mean) * (mean0 - overall_mean);
-        double sum_sq1 = feat_sum_sq->a[f * n_targets + t];
+        khint_t kq = tk_dumap_get(feat_sum_sq, key);
+        double sum_sq1 = (kq != tk_dumap_end(feat_sum_sq)) ? kh_value(feat_sum_sq, kq) : 0.0;
         double sum_sq0 = total_sum_sqs->a[t] - sum_sq1;
         double ssw1 = sum_sq1 - (sum1 * sum1) / (double)n1;
         double ssw0 = sum_sq0 - (sum0 * sum0) / (double)n0;
@@ -4667,9 +4715,10 @@ static inline void tk_ivec_bits_top_reg_f_ind (
   }
   free(local_per_target);
 
-  tk_ivec_destroy(feat_counts);
-  tk_dvec_destroy(feat_sums);
-  tk_dvec_destroy(feat_sum_sq);
+  tk_ivec_destroy(active_feat_ids);
+  tk_iumap_destroy(feat_counts);
+  tk_dumap_destroy(feat_sums);
+  tk_dumap_destroy(feat_sum_sq);
   tk_dvec_destroy(overall_sums);
   tk_dvec_destroy(overall_means);
   tk_dvec_destroy(total_sum_sqs);
@@ -4936,10 +4985,8 @@ static inline void tk_ivec_bits_top_reg_pearson_ind (
     return;
   }
 
-  tk_ivec_t *feat_counts = tk_ivec_create(0, n_features, 0, 0);
-  tk_dvec_t *feat_sums = tk_dvec_create(0, n_features * n_targets, 0, 0);
-  tk_ivec_zero(feat_counts);
-  tk_dvec_zero(feat_sums);
+  tk_iumap_t *feat_counts = tk_iumap_create(0, 0);
+  tk_dumap_t *feat_sums = tk_dumap_create(0, 0);
 
   for (uint64_t i = 0; i < set_bits->n; i++) {
     int64_t bit = set_bits->a[i];
@@ -4947,10 +4994,25 @@ static inline void tk_ivec_bits_top_reg_pearson_ind (
     uint64_t sample = (uint64_t)bit / n_features;
     uint64_t feature = (uint64_t)bit % n_features;
     if (sample >= n_samples || feature >= n_features) continue;
-    feat_counts->a[feature]++;
-    for (uint64_t t = 0; t < n_targets; t++)
-      feat_sums->a[feature * n_targets + t] += targets->a[sample * n_targets + t];
+    int absent;
+    khint_t kc = tk_iumap_put(feat_counts, (int64_t)feature, &absent);
+    if (absent) kh_value(feat_counts, kc) = 0;
+    kh_value(feat_counts, kc)++;
+    for (uint64_t t = 0; t < n_targets; t++) {
+      int64_t key = (int64_t)(feature * n_targets + t);
+      khint_t ks = tk_dumap_put(feat_sums, key, &absent);
+      if (absent) kh_value(feat_sums, ks) = 0.0;
+      kh_value(feat_sums, ks) += targets->a[sample * n_targets + t];
+    }
   }
+
+  uint64_t n_active_feats = tk_iumap_size(feat_counts);
+  tk_ivec_t *active_feat_ids = tk_ivec_create(0, n_active_feats, 0, 0);
+  active_feat_ids->n = 0;
+  int64_t fkey;
+  tk_umap_foreach_keys(feat_counts, fkey, ({
+    active_feat_ids->a[active_feat_ids->n++] = fkey;
+  }));
 
   int n_threads = 1;
   #pragma omp parallel
@@ -4966,8 +5028,10 @@ static inline void tk_ivec_bits_top_reg_pearson_ind (
   {
     int tid = omp_get_thread_num();
     #pragma omp for schedule(static)
-    for (uint64_t f = 0; f < n_features; f++) {
-      int64_t n1 = feat_counts->a[f];
+    for (uint64_t fi = 0; fi < n_active_feats; fi++) {
+      uint64_t f = (uint64_t)active_feat_ids->a[fi];
+      khint_t kc = tk_iumap_get(feat_counts, (int64_t)f);
+      int64_t n1 = kh_value(feat_counts, kc);
       int64_t n0 = (int64_t)n_samples - n1;
       if (n1 == 0 || n0 == 0) continue;
       double p = (double)n1 / (double)n_samples;
@@ -4975,7 +5039,10 @@ static inline void tk_ivec_bits_top_reg_pearson_ind (
       if (feat_std < 1e-12) continue;
       for (uint64_t t = 0; t < n_targets; t++) {
         if (overall_stds->a[t] < 1e-12) continue;
-        double mean1 = feat_sums->a[f * n_targets + t] / (double)n1;
+        int64_t key = (int64_t)(f * n_targets + t);
+        khint_t ks = tk_dumap_get(feat_sums, key);
+        double sum1 = (ks != tk_dumap_end(feat_sums)) ? kh_value(feat_sums, ks) : 0.0;
+        double mean1 = sum1 / (double)n1;
         double r_pb = (mean1 - overall_means->a[t]) * sqrt(p * (1.0 - p)) / overall_stds->a[t];
         double score = fabs(r_pb);
         tk_rank_t r = { (int64_t)f, score };
@@ -4997,8 +5064,9 @@ static inline void tk_ivec_bits_top_reg_pearson_ind (
   }
   free(local_per_target);
 
-  tk_ivec_destroy(feat_counts);
-  tk_dvec_destroy(feat_sums);
+  tk_ivec_destroy(active_feat_ids);
+  tk_iumap_destroy(feat_counts);
+  tk_dumap_destroy(feat_sums);
   tk_dvec_destroy(overall_sums);
   tk_dvec_destroy(overall_sum_sqs);
   tk_dvec_destroy(overall_means);
@@ -5267,10 +5335,8 @@ static inline void tk_ivec_bits_top_reg_mi_ind (
     }
   }
 
-  tk_ivec_t *feat_counts = tk_ivec_create(0, n_features, 0, 0);
-  tk_ivec_t *joint_counts = tk_ivec_create(0, n_features * n_targets * n_bins, 0, 0);
-  tk_ivec_zero(feat_counts);
-  tk_ivec_zero(joint_counts);
+  tk_iumap_t *feat_counts = tk_iumap_create(0, 0);
+  tk_iumap_t *joint_counts = tk_iumap_create(0, 0);
 
   for (uint64_t i = 0; i < set_bits->n; i++) {
     int64_t bit = set_bits->a[i];
@@ -5278,12 +5344,26 @@ static inline void tk_ivec_bits_top_reg_mi_ind (
     uint64_t sample = (uint64_t)bit / n_features;
     uint64_t feature = (uint64_t)bit % n_features;
     if (sample >= n_samples || feature >= n_features) continue;
-    feat_counts->a[feature]++;
+    int absent;
+    khint_t kc = tk_iumap_put(feat_counts, (int64_t)feature, &absent);
+    if (absent) kh_value(feat_counts, kc) = 0;
+    kh_value(feat_counts, kc)++;
     for (uint64_t t = 0; t < n_targets; t++) {
       uint64_t bin = (uint64_t)bin_assignments->a[sample * n_targets + t];
-      joint_counts->a[feature * n_targets * n_bins + t * n_bins + bin]++;
+      int64_t jkey = (int64_t)(feature * n_targets * n_bins + t * n_bins + bin);
+      khint_t kj = tk_iumap_put(joint_counts, jkey, &absent);
+      if (absent) kh_value(joint_counts, kj) = 0;
+      kh_value(joint_counts, kj)++;
     }
   }
+
+  uint64_t n_active_feats = tk_iumap_size(feat_counts);
+  tk_ivec_t *active_feat_ids = tk_ivec_create(0, n_active_feats, 0, 0);
+  active_feat_ids->n = 0;
+  int64_t fkey;
+  tk_umap_foreach_keys(feat_counts, fkey, ({
+    active_feat_ids->a[active_feat_ids->n++] = fkey;
+  }));
 
   int n_threads = 1;
   #pragma omp parallel
@@ -5299,8 +5379,10 @@ static inline void tk_ivec_bits_top_reg_mi_ind (
   {
     int tid = omp_get_thread_num();
     #pragma omp for schedule(static)
-    for (uint64_t f = 0; f < n_features; f++) {
-      int64_t n1 = feat_counts->a[f];
+    for (uint64_t fi = 0; fi < n_active_feats; fi++) {
+      uint64_t f = (uint64_t)active_feat_ids->a[fi];
+      khint_t kc = tk_iumap_get(feat_counts, (int64_t)f);
+      int64_t n1 = kh_value(feat_counts, kc);
       int64_t n0 = (int64_t)n_samples - n1;
       if (n1 == 0 || n0 == 0) continue;
       double p1 = (double)n1 / (double)n_samples;
@@ -5311,7 +5393,9 @@ static inline void tk_ivec_bits_top_reg_mi_ind (
           int64_t n_b = bin_counts->a[t * n_bins + b];
           if (n_b == 0) continue;
           double p_b = (double)n_b / (double)n_samples;
-          int64_t n_1b = joint_counts->a[f * n_targets * n_bins + t * n_bins + b];
+          int64_t jkey = (int64_t)(f * n_targets * n_bins + t * n_bins + b);
+          khint_t kj = tk_iumap_get(joint_counts, jkey);
+          int64_t n_1b = (kj != tk_iumap_end(joint_counts)) ? kh_value(joint_counts, kj) : 0;
           int64_t n_0b = n_b - n_1b;
           if (n_1b > 0) {
             double p_1b = (double)n_1b / (double)n_samples;
@@ -5341,10 +5425,11 @@ static inline void tk_ivec_bits_top_reg_mi_ind (
   }
   free(local_per_target);
 
+  tk_ivec_destroy(active_feat_ids);
   tk_ivec_destroy(bin_assignments);
   tk_ivec_destroy(bin_counts);
-  tk_ivec_destroy(feat_counts);
-  tk_ivec_destroy(joint_counts);
+  tk_iumap_destroy(feat_counts);
+  tk_iumap_destroy(joint_counts);
 
   for (uint64_t t = 0; t < n_targets; t++)
     tk_rvec_desc(per_target_heaps[t], 0, per_target_heaps[t]->n);
@@ -5719,11 +5804,9 @@ static inline void tk_ivec_bits_top_bns_ind (
 ) {
   if (codes) {
 
-    tk_ivec_t *active_counts = tk_ivec_create(0, n_visible * n_hidden, 0, 0);
+    tk_iumap_t *active_counts = tk_iumap_create(0, 0);
     atomic_uint *label_counts = (atomic_uint *)calloc(n_hidden, sizeof(atomic_uint));
-    tk_ivec_t *feat_counts = tk_ivec_create(0, n_visible, 0, 0);
-    tk_ivec_zero(active_counts);
-    tk_ivec_zero(feat_counts);
+    tk_iumap_t *feat_counts = tk_iumap_create(0, 0);
 
     uint64_t prev_sample = UINT64_MAX;
     uint8_t *sample_codes = NULL;
@@ -5733,7 +5816,10 @@ static inline void tk_ivec_bits_top_bns_ind (
       uint64_t sample_idx = (uint64_t)bit_idx / n_visible;
       uint64_t feature_idx = (uint64_t)bit_idx % n_visible;
       if (sample_idx >= n_samples || feature_idx >= n_visible) continue;
-      feat_counts->a[feature_idx]++;
+      int absent;
+      khint_t kf = tk_iumap_put(feat_counts, (int64_t)feature_idx, &absent);
+      if (absent) kh_value(feat_counts, kf) = 0;
+      kh_value(feat_counts, kf)++;
       if (sample_idx != prev_sample) {
         prev_sample = sample_idx;
         sample_codes = (uint8_t *)(codes + sample_idx * TK_CVEC_BITS_BYTES(n_hidden));
@@ -5741,8 +5827,12 @@ static inline void tk_ivec_bits_top_bns_ind (
       for (uint64_t b = 0; b < n_hidden; b++) {
         uint64_t byte_idx = b / CHAR_BIT;
         uint64_t bit_pos = b % CHAR_BIT;
-        if (sample_codes[byte_idx] & (1u << bit_pos))
-          active_counts->a[feature_idx * n_hidden + b]++;
+        if (sample_codes[byte_idx] & (1u << bit_pos)) {
+          int64_t ac_key = (int64_t)(feature_idx * n_hidden + b);
+          khint_t ka = tk_iumap_put(active_counts, ac_key, &absent);
+          if (absent) kh_value(active_counts, ka) = 0;
+          kh_value(active_counts, ka)++;
+        }
       }
     }
 
@@ -5759,6 +5849,14 @@ static inline void tk_ivec_bits_top_bns_ind (
 
     double N = (double)n_samples;
 
+    uint64_t n_active_feats = tk_iumap_size(feat_counts);
+    tk_ivec_t *active_feat_ids = tk_ivec_create(0, n_active_feats, 0, 0);
+    active_feat_ids->n = 0;
+    int64_t fkey;
+    tk_umap_foreach_keys(feat_counts, fkey, ({
+      active_feat_ids->a[active_feat_ids->n++] = fkey;
+    }));
+
     int n_threads = 1;
     #pragma omp parallel
     { n_threads = omp_get_num_threads(); }
@@ -5773,13 +5871,18 @@ static inline void tk_ivec_bits_top_bns_ind (
     {
       int tid = omp_get_thread_num();
       #pragma omp for schedule(static)
-      for (uint64_t f = 0; f < n_visible; f++) {
-        double C = (double)feat_counts->a[f];
+      for (uint64_t fi = 0; fi < n_active_feats; fi++) {
+        uint64_t f = (uint64_t)active_feat_ids->a[fi];
+        khint_t kf = tk_iumap_get(feat_counts, (int64_t)f);
+        double C = (double)kh_value(feat_counts, kf);
         if (C <= 0 || C >= N) continue;
         for (uint64_t b = 0; b < n_hidden; b++) {
           double P = (double)atomic_load(&label_counts[b]);
           if (P <= 0 || P >= N) continue;
-          double a = (double)active_counts->a[f * n_hidden + b];
+          double a = 0;
+          khint_t ka = tk_iumap_get(active_counts, (int64_t)(f * n_hidden + b));
+          if (ka != tk_iumap_end(active_counts))
+            a = (double)kh_value(active_counts, ka);
           double tpr = (a + TK_SMOOTH_EPS_FACTOR) / (P + 2.0 * TK_SMOOTH_EPS_FACTOR);
           double fpr = (C - a + TK_SMOOTH_EPS_FACTOR) / (N - P + 2.0 * TK_SMOOTH_EPS_FACTOR);
           double bns = fabs(tk_probit(tpr) - tk_probit(fpr));
@@ -5804,8 +5907,9 @@ static inline void tk_ivec_bits_top_bns_ind (
     }
     free(local_per_dim);
 
-    tk_ivec_destroy(active_counts);
-    tk_ivec_destroy(feat_counts);
+    tk_ivec_destroy(active_feat_ids);
+    tk_iumap_destroy(active_counts);
+    tk_iumap_destroy(feat_counts);
     free(label_counts);
 
     for (uint64_t h = 0; h < n_hidden; h++)
