@@ -22,6 +22,28 @@ static inline void tk_parallel_sfx(tk_vec_pfx(copy_indexed)) (
     m0->n = indices->n;
 }
 
+static inline void tk_parallel_sfx(tk_vec_pfx(scatter_indexed)) (
+  tk_vec_pfx(t) *m0,
+  tk_vec_pfx(t) *m1,
+  tk_ivec_t *indices
+) {
+  int64_t max_idx = 0;
+  for (uint64_t i = 0; i < indices->n; i++) {
+    if (indices->a[i] > max_idx)
+      max_idx = indices->a[i];
+  }
+  tk_vec_pfx(ensure)(m0, (uint64_t)(max_idx + 1));
+  TK_PARALLEL_FOR(schedule(static))
+  for (uint64_t i = 0; i < indices->n; i++) {
+    int64_t idx = indices->a[i];
+    if (idx >= 0 && i < m1->n) {
+      m0->a[idx] = m1->a[i];
+    }
+  }
+  if (m0->n < (uint64_t)(max_idx + 1))
+    m0->n = (uint64_t)(max_idx + 1);
+}
+
 #ifndef tk_vec_limited
 
 static inline tk_ivec_t *tk_parallel_sfx(tk_vec_pfx(rasc)) (

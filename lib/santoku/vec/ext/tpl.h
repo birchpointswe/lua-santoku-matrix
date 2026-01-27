@@ -6,6 +6,7 @@
 
 
 static inline void tk_vec_pfx(copy_indexed) (tk_vec_pfx(t) *m0, tk_vec_pfx(t) *m1, tk_ivec_t *indices);
+static inline void tk_vec_pfx(scatter_indexed) (tk_vec_pfx(t) *m0, tk_vec_pfx(t) *m1, tk_ivec_t *indices);
 #ifndef tk_vec_limited
 static inline tk_ivec_t *tk_vec_pfx(rasc) (lua_State *L, tk_vec_pfx(t) *m0, uint64_t cols);
 static inline tk_ivec_t *tk_vec_pfx(rdesc) (lua_State *L, tk_vec_pfx(t) *m0, uint64_t cols);
@@ -28,7 +29,11 @@ static inline int tk_vec_pfx(copy_indexed_lua) (lua_State *L)
     if (indices != NULL) {
       tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "dest");
       tk_vec_pfx(t) *m1 = tk_vec_pfx(peek)(L, 2, "source");
-      tk_vec_pfx(copy_indexed)(m0, m1, indices);
+      bool scatter = t >= 4 && lua_toboolean(L, 4);
+      if (scatter)
+        tk_vec_pfx(scatter_indexed)(m0, m1, indices);
+      else
+        tk_vec_pfx(copy_indexed)(m0, m1, indices);
       return 0;
     }
   }
