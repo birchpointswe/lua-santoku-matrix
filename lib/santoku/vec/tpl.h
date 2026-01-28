@@ -640,7 +640,7 @@ static inline int tk_vec_pfx(copy_lua) (lua_State *L)
     dest = tk_lua_checkinteger(L, 5, "dest");
   }
   tk_vec_pfx(copy)(m0, m1, start, end, dest);
-  return 0;
+  return 1;
 }
 
 static inline int tk_vec_pfx(capacity_lua) (lua_State *L)

@@ -237,7 +237,7 @@ static inline int tk_dvec_mtx_select_lua (lua_State *L)
   tk_dvec_t *result = tk_dvec_mtx_select(src_matrix, selected_features, sample_ids, n_features, dest, dest_sample, dest_stride);
   if (result == NULL)
     return luaL_error(L, "mtx_select failed");
-  return 0;
+  return 1;
 }
 
 static inline int tk_dvec_mtx_extend_lua (lua_State *L)
@@ -267,7 +267,7 @@ static inline int tk_dvec_mtx_extend_lua (lua_State *L)
   } else {
     return luaL_error(L, "mtx_extend expects 4, 6, or 7 arguments, got %d", nargs);
   }
-  return 0;
+  return 1;
 }
 
 static inline int tk_dvec_mtx_top_variance_lua (lua_State *L)

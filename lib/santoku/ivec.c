@@ -174,6 +174,19 @@ static inline int tk_ivec_bits_top_reg_mi_lua (lua_State *L)
   return 2;
 }
 
+static inline int tk_ivec_bits_top_reg_f_grouped_lua (lua_State *L)
+{
+  lua_settop(L, 6);
+  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
+  tk_dvec_t *targets = tk_dvec_peek(L, 2, "targets");
+  uint64_t n_samples = tk_lua_checkunsigned(L, 3, "n_samples");
+  uint64_t n_features = tk_lua_checkunsigned(L, 4, "n_features");
+  uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "n_hidden");
+  uint64_t top_k = lua_isnil(L, 6) ? n_features : tk_lua_checkunsigned(L, 6, "top_k");
+  tk_ivec_bits_top_reg_f_grouped(L, set_bits, targets, n_samples, n_features, n_hidden, top_k);
+  return 3;
+}
+
 static inline int tk_ivec_bits_select_lua (lua_State *L)
 {
   int n_args = lua_gettop(L);
@@ -210,7 +223,7 @@ static inline int tk_ivec_bits_select_lua (lua_State *L)
   tk_ivec_t *result = tk_ivec_bits_select(src_bits, selected_features, sample_ids, n_features, dest, dest_sample, dest_stride);
   if (result == NULL)
     return luaL_error(L, "bits_select failed");
-  return 0;
+  return 1;
 }
 
 static inline int tk_ivec_bits_to_cvec_lua (lua_State *L)
@@ -310,7 +323,7 @@ static inline int tk_ivec_bits_extend_lua (lua_State *L)
   } else {
     return luaL_error(L, "bits_extend expects 4, 6, or 7 arguments, got %d", nargs);
   }
-  return 0;
+  return 1;
 }
 
 static inline int tk_ivec_copy_pkeys_lua (lua_State *L)
@@ -769,6 +782,7 @@ static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
   { "bits_top_entropy", tk_ivec_bits_top_entropy_lua },
   { "bits_top_df", tk_ivec_bits_top_df_lua },
   { "bits_top_reg_f", tk_ivec_bits_top_reg_f_lua },
+  { "bits_top_reg_f_grouped", tk_ivec_bits_top_reg_f_grouped_lua },
   { "bits_top_reg_pearson", tk_ivec_bits_top_reg_pearson_lua },
   { "bits_top_reg_mi", tk_ivec_bits_top_reg_mi_lua },
   { "bits_select", tk_ivec_bits_select_lua },
