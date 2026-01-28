@@ -640,6 +640,7 @@ static inline int tk_vec_pfx(copy_lua) (lua_State *L)
     dest = tk_lua_checkinteger(L, 5, "dest");
   }
   tk_vec_pfx(copy)(m0, m1, start, end, dest);
+  lua_settop(L, 1);
   return 1;
 }
 
@@ -733,6 +734,7 @@ static inline int tk_vec_pfx(shuffle_lua) (lua_State *L)
   uint64_t start = tk_lua_optunsigned(L, 2, "start", 0);
   uint64_t end = tk_lua_optunsigned(L, 3, "end", m0->n);
   tk_vec_pfx(shuffle)(m0, start, end);
+  lua_settop(L, 1);
   return 1;
 }
 
@@ -743,6 +745,7 @@ static inline int tk_vec_pfx(asc_lua) (lua_State *L)
   uint64_t start = tk_lua_optunsigned(L, 2, "start", 0);
   uint64_t end = tk_lua_optunsigned(L, 3, "end", m0->n);
   tk_vec_pfx(asc)(m0, start, end);
+  lua_settop(L, 1);
   return 1;
 }
 
@@ -753,6 +756,7 @@ static inline int tk_vec_pfx(desc_lua) (lua_State *L)
   uint64_t start = tk_lua_optunsigned(L, 2, "start", 0);
   uint64_t end = tk_lua_optunsigned(L, 3, "end", m0->n);
   tk_vec_pfx(desc)(m0, start, end);
+  lua_settop(L, 1);
   return 1;
 }
 
@@ -816,6 +820,7 @@ static inline int tk_vec_pfx(kasc_lua) (lua_State *L)
   uint64_t start = tk_lua_optunsigned(L, 3, "start", 0);
   uint64_t end = tk_lua_optunsigned(L, 4, "end", m0->n);
   tk_vec_pfx(kasc)(m0, k, start, end);
+  lua_settop(L, 1);
   return 1;
 }
 
@@ -827,6 +832,7 @@ static inline int tk_vec_pfx(kdesc_lua) (lua_State *L)
   uint64_t start = tk_lua_optunsigned(L, 3, "start", 0);
   uint64_t end = tk_lua_optunsigned(L, 4, "end", m0->n);
   tk_vec_pfx(kdesc)(m0, k, start, end);
+  lua_settop(L, 1);
   return 1;
 }
 
@@ -981,6 +987,7 @@ static inline int tk_vec_pfx(scale_lua) (lua_State *L)
     return 0;
   }
   tk_vec_pfx(scale)(m0, scale, start, end);
+  lua_settop(L, 1);
   return 1;
 }
 
@@ -1003,6 +1010,7 @@ static inline int tk_vec_pfx(add_lua) (lua_State *L)
     return 0;
   }
   tk_vec_pfx(add)(m0, add, start, end);
+  lua_settop(L, 1);
   return 1;
 }
 
@@ -1025,6 +1033,7 @@ static inline int tk_vec_pfx(add_scaled_lua) (lua_State *L)
     return 0;
   }
   tk_vec_pfx(add_scaled)(m0, add, start, end);
+  lua_settop(L, 1);
   return 1;
 }
 
@@ -1045,6 +1054,7 @@ static inline int tk_vec_pfx(scalev_lua) (lua_State *L)
     return 0;
   }
   tk_vec_pfx(scalev)(m0, m1, start, end);
+  lua_settop(L, 1);
   return 1;
 }
 
@@ -1065,6 +1075,7 @@ static inline int tk_vec_pfx(addv_lua) (lua_State *L)
     return 0;
   }
   tk_vec_pfx(addv)(m0, m1, start, end);
+  lua_settop(L, 1);
   return 1;
 }
 
@@ -1085,6 +1096,7 @@ static inline int tk_vec_pfx(abs_lua) (lua_State *L)
     return 0;
   }
   tk_vec_pfx(abs)(m0, start, end);
+  lua_settop(L, 1);
   return 1;
 }
 #endif
@@ -1105,6 +1117,7 @@ static inline int tk_vec_pfx(exp_lua) (lua_State *L)
     return 0;
   }
   tk_vec_pfx(exp)(m0, start, end);
+  lua_settop(L, 1);
   return 1;
 }
 
@@ -1124,6 +1137,7 @@ static inline int tk_vec_pfx(log_lua) (lua_State *L)
     return 0;
   }
   tk_vec_pfx(log)(m0, start, end);
+  lua_settop(L, 1);
   return 1;
 }
 
@@ -1146,6 +1160,7 @@ static inline int tk_vec_pfx(pow_lua) (lua_State *L)
     return 0;
   }
   tk_vec_pfx(pow)(m0, e, start, end);
+  lua_settop(L, 1);
   return 1;
 }
 
@@ -1248,6 +1263,7 @@ static inline int tk_vec_pfx(fill_lua) (lua_State *L)
     return 0;
   }
   tk_vec_pfx(fill)(v, x, start, end);
+  lua_settop(L, 1);
   return 1;
 }
 
@@ -1277,6 +1293,7 @@ static inline int tk_vec_pfx(clamp_lua) (lua_State *L)
     return 0;
   }
   tk_vec_pfx(clamp)(v, lo, hi, start, end);
+  lua_settop(L, 1);
   return 1;
 }
 

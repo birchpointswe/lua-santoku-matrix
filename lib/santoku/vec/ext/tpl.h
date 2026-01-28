@@ -34,6 +34,7 @@ static inline int tk_vec_pfx(copy_indexed_lua) (lua_State *L)
         tk_vec_pfx(scatter_indexed)(m0, m1, indices);
       else
         tk_vec_pfx(copy_indexed)(m0, m1, indices);
+      lua_settop(L, 1);
       return 1;
     }
   }
