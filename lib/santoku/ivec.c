@@ -217,18 +217,20 @@ static inline int tk_ivec_bits_to_cvec_lua (lua_State *L)
 {
   tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
   uint64_t n_samples = tk_lua_checkunsigned(L, 2, "samples");
-  if (tk_lua_testuserdata(L, 5, "tk_ivec_t")) {
+  if (tk_lua_testuserdata(L, 4, "tk_ivec_t")) {
     uint64_t n_visible = tk_lua_checkunsigned(L, 3, "n_visible");
-    uint64_t k = tk_lua_checkunsigned(L, 4, "k");
+    tk_ivec_t *offsets = tk_ivec_peek(L, 4, "offsets");
     tk_ivec_t *features = tk_ivec_peek(L, 5, "features");
     bool flip_interleave = lua_toboolean(L, 6);
-    tk_ivec_bits_to_cvec_grouped(L, set_bits, n_samples, n_visible, k, features, flip_interleave);
+    uint64_t max_k = tk_ivec_bits_to_cvec_grouped(L, set_bits, n_samples, n_visible, offsets, features, flip_interleave);
+    lua_pushinteger(L, (lua_Integer)max_k);
+    return 2;
   } else {
     uint64_t n_features = tk_lua_checkunsigned(L, 3, "features");
     bool flip_interleave = lua_toboolean(L, 4);
     tk_ivec_bits_to_cvec(L, set_bits, n_samples, n_features, flip_interleave);
+    return 1;
   }
-  return 1;
 }
 
 static inline int tk_ivec_bits_from_cvec_lua (lua_State *L)
