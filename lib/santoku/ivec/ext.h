@@ -174,6 +174,98 @@ static inline tk_cvec_t *tk_ivec_bits_to_cvec (lua_State *L, tk_ivec_t *set_bits
   return out_cvec;
 }
 
+static inline tk_cvec_t *tk_ivec_bits_to_cvec_grouped (
+  lua_State *L,
+  tk_ivec_t *set_bits,
+  uint64_t n_samples,
+  uint64_t n_visible,
+  uint64_t k,
+  tk_ivec_t *features,
+  bool flip_interleave
+) {
+  uint64_t n_out = features->n;
+  uint64_t n_classes = k > 0 ? (n_out + k - 1) / k : 1;
+  uint64_t bytes_per_class = flip_interleave ? TK_CVEC_BITS_BYTES(k * 2) : 0;
+  uint64_t bytes_per_sample = flip_interleave ? (n_classes * bytes_per_class) : TK_CVEC_BITS_BYTES(n_out);
+  uint64_t bits_per_class = bytes_per_class * CHAR_BIT;
+  size_t len = n_samples * bytes_per_sample;
+  tk_cvec_t *out_cvec = tk_cvec_create(L, len, NULL, NULL);
+  uint8_t *out = (uint8_t *)out_cvec->a;
+
+  tk_iumap_t *feat_map = tk_iumap_create(0, 0);
+  if (!feat_map) return out_cvec;
+  for (uint64_t i = 0; i < n_out; i++) {
+    int64_t fid = features->a[i];
+    if (fid < 0 || (uint64_t)fid >= n_visible) continue;
+    uint64_t c = i / k;
+    uint64_t local = i % k;
+    int64_t key = (int64_t)((uint64_t)fid * n_classes + c);
+    int absent;
+    khint_t kit = tk_iumap_put(feat_map, key, &absent);
+    kh_value(feat_map, kit) = (int64_t)local;
+  }
+
+  if (flip_interleave) {
+    for (uint64_t s = 0; s < n_samples; s++) {
+      uint64_t sample_offset = s * bytes_per_sample;
+      memset(out + sample_offset, 0, bytes_per_sample);
+      for (uint64_t c = 0; c < n_classes; c++) {
+        uint64_t class_k = (c == n_classes - 1 && n_out % k != 0) ? (n_out % k) : k;
+        for (uint64_t local = 0; local < class_k; local++) {
+          uint64_t neg_bit = c * bits_per_class + k + local;
+          uint64_t byte_off = sample_offset + (neg_bit / CHAR_BIT);
+          uint8_t bit_off = neg_bit & (CHAR_BIT - 1);
+          out[byte_off] |= (1u << bit_off);
+        }
+      }
+    }
+    for (uint64_t idx = 0; idx < set_bits->n; idx++) {
+      int64_t v = set_bits->a[idx];
+      if (v < 0) continue;
+      uint64_t s = (uint64_t)v / n_visible;
+      uint64_t f = (uint64_t)v % n_visible;
+      if (s >= n_samples) continue;
+      uint64_t sample_offset = s * bytes_per_sample;
+      for (uint64_t c = 0; c < n_classes; c++) {
+        int64_t key = (int64_t)(f * n_classes + c);
+        khint_t kit = tk_iumap_get(feat_map, key);
+        if (kit == kh_end(feat_map)) continue;
+        int64_t local = kh_value(feat_map, kit);
+        uint64_t pos_bit = c * bits_per_class + (uint64_t)local;
+        uint64_t pos_byte = sample_offset + (pos_bit / CHAR_BIT);
+        uint8_t pos_bit_off = pos_bit & (CHAR_BIT - 1);
+        out[pos_byte] |= (1u << pos_bit_off);
+        uint64_t neg_bit = c * bits_per_class + k + (uint64_t)local;
+        uint64_t neg_byte = sample_offset + (neg_bit / CHAR_BIT);
+        uint8_t neg_bit_off = neg_bit & (CHAR_BIT - 1);
+        out[neg_byte] &= ~(1u << neg_bit_off);
+      }
+    }
+  } else {
+    memset(out, 0, len);
+    for (uint64_t idx = 0; idx < set_bits->n; idx++) {
+      int64_t v = set_bits->a[idx];
+      if (v < 0) continue;
+      uint64_t s = (uint64_t)v / n_visible;
+      uint64_t f = (uint64_t)v % n_visible;
+      if (s >= n_samples) continue;
+      for (uint64_t c = 0; c < n_classes; c++) {
+        int64_t key = (int64_t)(f * n_classes + c);
+        khint_t kit = tk_iumap_get(feat_map, key);
+        if (kit == kh_end(feat_map)) continue;
+        int64_t local = kh_value(feat_map, kit);
+        uint64_t out_idx = c * k + (uint64_t)local;
+        uint64_t byte_off = s * bytes_per_sample + (out_idx / CHAR_BIT);
+        uint8_t bit_off = out_idx & (CHAR_BIT - 1);
+        out[byte_off] |= (1u << bit_off);
+      }
+    }
+  }
+
+  tk_iumap_destroy(feat_map);
+  return out_cvec;
+}
+
 typedef enum {
   TK_IVEC_JACCARD,
   TK_IVEC_OVERLAP,

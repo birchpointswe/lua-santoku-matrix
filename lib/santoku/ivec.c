@@ -49,6 +49,27 @@ static inline int tk_ivec_bits_top_chi2_lua (lua_State *L)
   return 2;
 }
 
+static inline int tk_ivec_bits_top_chi2_grouped_lua (lua_State *L)
+{
+  lua_settop(L, 6);
+  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
+  uint64_t n_samples = tk_lua_checkunsigned(L, 3, "samples");
+  uint64_t n_visible = tk_lua_checkunsigned(L, 4, "visible");
+  uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
+  uint64_t top_k = lua_isnil(L, 6) ? n_visible : tk_lua_checkunsigned(L, 6, "top_k");
+  char *codes = NULL;
+  tk_ivec_t *labels = NULL;
+  if (lua_isnil(L, 2)) {
+  } else if (tk_lua_testuserdata(L, 2, "tk_cvec_t")) {
+    tk_cvec_t *cvec = tk_cvec_peek(L, 2, "codes");
+    codes = cvec->a;
+  } else {
+    labels = tk_ivec_peek(L, 2, "labels");
+  }
+  tk_ivec_bits_top_chi2_grouped(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, top_k);
+  return 3;
+}
+
 static inline int tk_ivec_bits_top_entropy_lua (lua_State *L)
 {
   lua_settop(L, 4);
@@ -152,12 +173,19 @@ static inline int tk_ivec_bits_select_lua (lua_State *L)
 
 static inline int tk_ivec_bits_to_cvec_lua (lua_State *L)
 {
-  lua_settop(L, 4);
   tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
   uint64_t n_samples = tk_lua_checkunsigned(L, 2, "samples");
-  uint64_t n_features = tk_lua_checkunsigned(L, 3, "features");
-  bool flip_interleave = lua_toboolean(L, 4);
-  tk_ivec_bits_to_cvec(L, set_bits, n_samples, n_features, flip_interleave);
+  if (tk_lua_testuserdata(L, 5, "tk_ivec_t")) {
+    uint64_t n_visible = tk_lua_checkunsigned(L, 3, "n_visible");
+    uint64_t k = tk_lua_checkunsigned(L, 4, "k");
+    tk_ivec_t *features = tk_ivec_peek(L, 5, "features");
+    bool flip_interleave = lua_toboolean(L, 6);
+    tk_ivec_bits_to_cvec_grouped(L, set_bits, n_samples, n_visible, k, features, flip_interleave);
+  } else {
+    uint64_t n_features = tk_lua_checkunsigned(L, 3, "features");
+    bool flip_interleave = lua_toboolean(L, 4);
+    tk_ivec_bits_to_cvec(L, set_bits, n_samples, n_features, flip_interleave);
+  }
   return 1;
 }
 
@@ -690,6 +718,7 @@ static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
   { "copy_pvalues", tk_ivec_copy_pvalues_lua },
   { "copy_rvalues", tk_ivec_copy_rvalues_lua },
   { "bits_top_chi2", tk_ivec_bits_top_chi2_lua },
+  { "bits_top_chi2_grouped", tk_ivec_bits_top_chi2_grouped_lua },
   { "bits_top_mi", tk_ivec_bits_top_mi_lua },
   { "bits_top_entropy", tk_ivec_bits_top_entropy_lua },
   { "bits_top_df", tk_ivec_bits_top_df_lua },
