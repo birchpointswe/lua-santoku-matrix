@@ -223,6 +223,7 @@ static inline int tk_ivec_bits_select_lua (lua_State *L)
   tk_ivec_t *result = tk_ivec_bits_select(src_bits, selected_features, sample_ids, n_features, dest, dest_sample, dest_stride);
   if (result == NULL)
     return luaL_error(L, "bits_select failed");
+  lua_settop(L, 1);
   return 1;
 }
 
@@ -323,6 +324,7 @@ static inline int tk_ivec_bits_extend_lua (lua_State *L)
   } else {
     return luaL_error(L, "bits_extend expects 4, 6, or 7 arguments, got %d", nargs);
   }
+  lua_settop(L, 1);
   return 1;
 }
 
