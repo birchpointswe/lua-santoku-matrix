@@ -225,8 +225,7 @@ static inline uint64_t tk_ivec_bits_to_cvec_grouped (
       uint64_t sample_offset = s * bytes_per_sample;
       memset(out + sample_offset, 0, bytes_per_sample);
       for (uint64_t c = 0; c < n_classes; c++) {
-        uint64_t class_k = (uint64_t)(offsets->a[c + 1] - offsets->a[c]);
-        for (uint64_t local = 0; local < class_k; local++) {
+        for (uint64_t local = 0; local < max_k; local++) {
           uint64_t neg_bit = c * bits_per_class + max_k + local;
           uint64_t byte_off = sample_offset + (neg_bit / CHAR_BIT);
           uint8_t bit_off = neg_bit & (CHAR_BIT - 1);
