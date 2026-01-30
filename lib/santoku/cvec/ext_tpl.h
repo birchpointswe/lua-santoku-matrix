@@ -11,41 +11,33 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_popcount) (
   uint64_t full_bytes = TK_CVEC_BITS_BYTES(n_bits);
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
   uint64_t main_bytes = full_bytes - (rem_bits > 0 ? 1 : 0);
-  uint64_t count = 0;
 
-#ifdef __SIZEOF_INT128__
-  uint64_t n128 = main_bytes / 16;
-
-  TK_PARALLEL_FOR(reduction(+:count))
-  for (uint64_t i = 0; i < n128; i++) {
-    __uint128_t chunk;
-    memcpy(&chunk, &data[i * 16], sizeof(__uint128_t));
-    uint64_t low = (uint64_t)chunk;
-    uint64_t high = (uint64_t)(chunk >> 64);
-    count += (uint64_t)__builtin_popcountll(low) + (uint64_t)__builtin_popcountll(high);
-  }
-
-  uint64_t offset = n128 * 16;
-  uint64_t n64 = (main_bytes - offset) / 8;
-
-  for (uint64_t i = 0; i < n64; i++) {
-    uint64_t chunk;
-    memcpy(&chunk, &data[offset + i * 8], sizeof(uint64_t));
-    count += (uint64_t)__builtin_popcountll(chunk);
-  }
-  offset += n64 * 8;
-#else
+  uint64_t c0 = 0, c1 = 0, c2 = 0, c3 = 0;
   uint64_t n64 = main_bytes / 8;
+  uint64_t n64_4 = (n64 / 4) * 4;
 
-  TK_PARALLEL_FOR(reduction(+:count))
-  for (uint64_t i = 0; i < n64; i++) {
+  TK_PARALLEL_FOR(reduction(+:c0,c1,c2,c3))
+  for (uint64_t i = 0; i < n64_4; i += 4) {
+    uint64_t d0, d1, d2, d3;
+    memcpy(&d0, &data[(i + 0) * 8], 8);
+    memcpy(&d1, &data[(i + 1) * 8], 8);
+    memcpy(&d2, &data[(i + 2) * 8], 8);
+    memcpy(&d3, &data[(i + 3) * 8], 8);
+    c0 += (uint64_t)__builtin_popcountll(d0);
+    c1 += (uint64_t)__builtin_popcountll(d1);
+    c2 += (uint64_t)__builtin_popcountll(d2);
+    c3 += (uint64_t)__builtin_popcountll(d3);
+  }
+
+  uint64_t count = c0 + c1 + c2 + c3;
+
+  for (uint64_t i = n64_4; i < n64; i++) {
     uint64_t chunk;
-    memcpy(&chunk, &data[i * 8], sizeof(uint64_t));
+    memcpy(&chunk, &data[i * 8], 8);
     count += (uint64_t)__builtin_popcountll(chunk);
   }
-  uint64_t offset = n64 * 8;
-#endif
 
+  uint64_t offset = n64 * 8;
   for (uint64_t i = offset; i < main_bytes; i++)
     count += (uint64_t)__builtin_popcount(data[i]);
 
@@ -65,47 +57,38 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming) (
   uint64_t full_bytes = TK_CVEC_BITS_BYTES(n_bits);
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
   uint64_t main_bytes = full_bytes - (rem_bits > 0 ? 1 : 0);
-  uint64_t dist = 0;
 
-#ifdef __SIZEOF_INT128__
-  uint64_t n128 = main_bytes / 16;
-
-  TK_PARALLEL_FOR(reduction(+:dist))
-  for (uint64_t i = 0; i < n128; i++) {
-    __uint128_t a_chunk, b_chunk;
-    memcpy(&a_chunk, &a[i * 16], sizeof(__uint128_t));
-    memcpy(&b_chunk, &b[i * 16], sizeof(__uint128_t));
-    __uint128_t xor_chunk = a_chunk ^ b_chunk;
-    uint64_t low = (uint64_t)xor_chunk;
-    uint64_t high = (uint64_t)(xor_chunk >> 64);
-    dist += (uint64_t)__builtin_popcountll(low) + (uint64_t)__builtin_popcountll(high);
-  }
-
-  uint64_t offset = n128 * 16;
-  uint64_t n64 = (main_bytes - offset) / 8;
-
-  for (uint64_t i = 0; i < n64; i++) {
-    uint64_t a_chunk, b_chunk;
-    memcpy(&a_chunk, &a[offset + i * 8], sizeof(uint64_t));
-    memcpy(&b_chunk, &b[offset + i * 8], sizeof(uint64_t));
-    uint64_t xor_chunk = a_chunk ^ b_chunk;
-    dist += (uint64_t)__builtin_popcountll(xor_chunk);
-  }
-  offset += n64 * 8;
-#else
+  uint64_t d0 = 0, d1 = 0, d2 = 0, d3 = 0;
   uint64_t n64 = main_bytes / 8;
+  uint64_t n64_4 = (n64 / 4) * 4;
 
-  TK_PARALLEL_FOR(reduction(+:dist))
-  for (uint64_t i = 0; i < n64; i++) {
-    uint64_t a_chunk, b_chunk;
-    memcpy(&a_chunk, &a[i * 8], sizeof(uint64_t));
-    memcpy(&b_chunk, &b[i * 8], sizeof(uint64_t));
-    uint64_t xor_chunk = a_chunk ^ b_chunk;
-    dist += (uint64_t)__builtin_popcountll(xor_chunk);
+  TK_PARALLEL_FOR(reduction(+:d0,d1,d2,d3))
+  for (uint64_t i = 0; i < n64_4; i += 4) {
+    uint64_t a0, a1, a2, a3, b0, b1, b2, b3;
+    memcpy(&a0, &a[(i + 0) * 8], 8);
+    memcpy(&a1, &a[(i + 1) * 8], 8);
+    memcpy(&a2, &a[(i + 2) * 8], 8);
+    memcpy(&a3, &a[(i + 3) * 8], 8);
+    memcpy(&b0, &b[(i + 0) * 8], 8);
+    memcpy(&b1, &b[(i + 1) * 8], 8);
+    memcpy(&b2, &b[(i + 2) * 8], 8);
+    memcpy(&b3, &b[(i + 3) * 8], 8);
+    d0 += (uint64_t)__builtin_popcountll(a0 ^ b0);
+    d1 += (uint64_t)__builtin_popcountll(a1 ^ b1);
+    d2 += (uint64_t)__builtin_popcountll(a2 ^ b2);
+    d3 += (uint64_t)__builtin_popcountll(a3 ^ b3);
   }
-  uint64_t offset = n64 * 8;
-#endif
 
+  uint64_t dist = d0 + d1 + d2 + d3;
+
+  for (uint64_t i = n64_4; i < n64; i++) {
+    uint64_t a_chunk, b_chunk;
+    memcpy(&a_chunk, &a[i * 8], 8);
+    memcpy(&b_chunk, &b[i * 8], 8);
+    dist += (uint64_t)__builtin_popcountll(a_chunk ^ b_chunk);
+  }
+
+  uint64_t offset = n64 * 8;
   for (uint64_t i = offset; i < main_bytes; i++)
     dist += (uint64_t)__builtin_popcount(a[i] ^ b[i]);
 
@@ -126,50 +109,43 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming_mask) (
   uint64_t full_bytes = TK_CVEC_BITS_BYTES(n_bits);
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
   uint64_t main_bytes = full_bytes - (rem_bits > 0 ? 1 : 0);
-  uint64_t dist = 0;
 
-#ifdef __SIZEOF_INT128__
-  uint64_t n128 = main_bytes / 16;
-
-  TK_PARALLEL_FOR(reduction(+:dist))
-  for (uint64_t i = 0; i < n128; i++) {
-    __uint128_t a_chunk, b_chunk, m_chunk;
-    memcpy(&a_chunk, &a[i * 16], sizeof(__uint128_t));
-    memcpy(&b_chunk, &b[i * 16], sizeof(__uint128_t));
-    memcpy(&m_chunk, &mask[i * 16], sizeof(__uint128_t));
-    __uint128_t masked = (a_chunk ^ b_chunk) & m_chunk;
-    uint64_t low = (uint64_t)masked;
-    uint64_t high = (uint64_t)(masked >> 64);
-    dist += (uint64_t)__builtin_popcountll(low) + (uint64_t)__builtin_popcountll(high);
-  }
-
-  uint64_t offset = n128 * 16;
-  uint64_t n64 = (main_bytes - offset) / 8;
-
-  for (uint64_t i = 0; i < n64; i++) {
-    uint64_t a_chunk, b_chunk, m_chunk;
-    memcpy(&a_chunk, &a[offset + i * 8], sizeof(uint64_t));
-    memcpy(&b_chunk, &b[offset + i * 8], sizeof(uint64_t));
-    memcpy(&m_chunk, &mask[offset + i * 8], sizeof(uint64_t));
-    uint64_t masked = (a_chunk ^ b_chunk) & m_chunk;
-    dist += (uint64_t)__builtin_popcountll(masked);
-  }
-  offset += n64 * 8;
-#else
+  uint64_t d0 = 0, d1 = 0, d2 = 0, d3 = 0;
   uint64_t n64 = main_bytes / 8;
+  uint64_t n64_4 = (n64 / 4) * 4;
 
-  TK_PARALLEL_FOR(reduction(+:dist))
-  for (uint64_t i = 0; i < n64; i++) {
-    uint64_t a_chunk, b_chunk, m_chunk;
-    memcpy(&a_chunk, &a[i * 8], sizeof(uint64_t));
-    memcpy(&b_chunk, &b[i * 8], sizeof(uint64_t));
-    memcpy(&m_chunk, &mask[i * 8], sizeof(uint64_t));
-    uint64_t masked = (a_chunk ^ b_chunk) & m_chunk;
-    dist += (uint64_t)__builtin_popcountll(masked);
+  TK_PARALLEL_FOR(reduction(+:d0,d1,d2,d3))
+  for (uint64_t i = 0; i < n64_4; i += 4) {
+    uint64_t a0, a1, a2, a3, b0, b1, b2, b3, m0, m1, m2, m3;
+    memcpy(&a0, &a[(i + 0) * 8], 8);
+    memcpy(&a1, &a[(i + 1) * 8], 8);
+    memcpy(&a2, &a[(i + 2) * 8], 8);
+    memcpy(&a3, &a[(i + 3) * 8], 8);
+    memcpy(&b0, &b[(i + 0) * 8], 8);
+    memcpy(&b1, &b[(i + 1) * 8], 8);
+    memcpy(&b2, &b[(i + 2) * 8], 8);
+    memcpy(&b3, &b[(i + 3) * 8], 8);
+    memcpy(&m0, &mask[(i + 0) * 8], 8);
+    memcpy(&m1, &mask[(i + 1) * 8], 8);
+    memcpy(&m2, &mask[(i + 2) * 8], 8);
+    memcpy(&m3, &mask[(i + 3) * 8], 8);
+    d0 += (uint64_t)__builtin_popcountll((a0 ^ b0) & m0);
+    d1 += (uint64_t)__builtin_popcountll((a1 ^ b1) & m1);
+    d2 += (uint64_t)__builtin_popcountll((a2 ^ b2) & m2);
+    d3 += (uint64_t)__builtin_popcountll((a3 ^ b3) & m3);
   }
-  uint64_t offset = n64 * 8;
-#endif
 
+  uint64_t dist = d0 + d1 + d2 + d3;
+
+  for (uint64_t i = n64_4; i < n64; i++) {
+    uint64_t a_chunk, b_chunk, m_chunk;
+    memcpy(&a_chunk, &a[i * 8], 8);
+    memcpy(&b_chunk, &b[i * 8], 8);
+    memcpy(&m_chunk, &mask[i * 8], 8);
+    dist += (uint64_t)__builtin_popcountll((a_chunk ^ b_chunk) & m_chunk);
+  }
+
+  uint64_t offset = n64 * 8;
   for (uint64_t i = offset; i < main_bytes; i++)
     dist += (uint64_t)__builtin_popcount((a[i] ^ b[i]) & mask[i]);
 
@@ -192,70 +168,56 @@ static inline void tk_parallel_sfx(tk_cvec_bits_popcount_andnot) (
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
   uint64_t main_bytes = full_bytes - (rem_bits > 0 ? 1 : 0);
 
-  uint64_t pop_a = 0;
-  uint64_t pop_andnot = 0;
+  uint64_t pop_a0 = 0, pop_a1 = 0, pop_a2 = 0, pop_a3 = 0;
+  uint64_t pop_n0 = 0, pop_n1 = 0, pop_n2 = 0, pop_n3 = 0;
 
-#ifdef __SIZEOF_INT128__
-  uint64_t n128 = main_bytes / 16;
-
-  TK_PARALLEL_FOR(reduction(+:pop_a,pop_andnot))
-  for (uint64_t i = 0; i < n128; i++) {
-    __uint128_t a_chunk, b_chunk;
-    memcpy(&a_chunk, &a[i * 16], sizeof(__uint128_t));
-    memcpy(&b_chunk, &b[i * 16], sizeof(__uint128_t));
-    __uint128_t va = a_chunk;
-    __uint128_t vandnot = va & ~b_chunk;
-    uint64_t a_low = (uint64_t)va;
-    uint64_t a_high = (uint64_t)(va >> 64);
-    uint64_t n_low = (uint64_t)vandnot;
-    uint64_t n_high = (uint64_t)(vandnot >> 64);
-    pop_a += (uint64_t)__builtin_popcountll(a_low) + (uint64_t)__builtin_popcountll(a_high);
-    pop_andnot += (uint64_t)__builtin_popcountll(n_low) + (uint64_t)__builtin_popcountll(n_high);
-  }
-
-  uint64_t offset = n128 * 16;
-  uint64_t n64 = (main_bytes - offset) / 8;
-
-  for (uint64_t i = 0; i < n64; i++) {
-    uint64_t a_chunk, b_chunk;
-    memcpy(&a_chunk, &a[offset + i * 8], sizeof(uint64_t));
-    memcpy(&b_chunk, &b[offset + i * 8], sizeof(uint64_t));
-    uint64_t va = a_chunk;
-    uint64_t vandnot = va & ~b_chunk;
-    pop_a += (uint64_t)__builtin_popcountll(va);
-    pop_andnot += (uint64_t)__builtin_popcountll(vandnot);
-  }
-  offset += n64 * 8;
-#else
   uint64_t n64 = main_bytes / 8;
+  uint64_t n64_4 = (n64 / 4) * 4;
 
-  TK_PARALLEL_FOR(reduction(+:pop_a,pop_andnot))
-  for (uint64_t i = 0; i < n64; i++) {
-    uint64_t a_chunk, b_chunk;
-    memcpy(&a_chunk, &a[i * 8], sizeof(uint64_t));
-    memcpy(&b_chunk, &b[i * 8], sizeof(uint64_t));
-    uint64_t va = a_chunk;
-    uint64_t vandnot = va & ~b_chunk;
-    pop_a += (uint64_t)__builtin_popcountll(va);
-    pop_andnot += (uint64_t)__builtin_popcountll(vandnot);
+  TK_PARALLEL_FOR(reduction(+:pop_a0,pop_a1,pop_a2,pop_a3,pop_n0,pop_n1,pop_n2,pop_n3))
+  for (uint64_t i = 0; i < n64_4; i += 4) {
+    uint64_t a0, a1, a2, a3, b0, b1, b2, b3;
+    memcpy(&a0, &a[(i + 0) * 8], 8);
+    memcpy(&a1, &a[(i + 1) * 8], 8);
+    memcpy(&a2, &a[(i + 2) * 8], 8);
+    memcpy(&a3, &a[(i + 3) * 8], 8);
+    memcpy(&b0, &b[(i + 0) * 8], 8);
+    memcpy(&b1, &b[(i + 1) * 8], 8);
+    memcpy(&b2, &b[(i + 2) * 8], 8);
+    memcpy(&b3, &b[(i + 3) * 8], 8);
+    pop_a0 += (uint64_t)__builtin_popcountll(a0);
+    pop_a1 += (uint64_t)__builtin_popcountll(a1);
+    pop_a2 += (uint64_t)__builtin_popcountll(a2);
+    pop_a3 += (uint64_t)__builtin_popcountll(a3);
+    pop_n0 += (uint64_t)__builtin_popcountll(a0 & ~b0);
+    pop_n1 += (uint64_t)__builtin_popcountll(a1 & ~b1);
+    pop_n2 += (uint64_t)__builtin_popcountll(a2 & ~b2);
+    pop_n3 += (uint64_t)__builtin_popcountll(a3 & ~b3);
   }
-  uint64_t offset = n64 * 8;
-#endif
 
+  uint64_t pop_a = pop_a0 + pop_a1 + pop_a2 + pop_a3;
+  uint64_t pop_andnot = pop_n0 + pop_n1 + pop_n2 + pop_n3;
+
+  for (uint64_t i = n64_4; i < n64; i++) {
+    uint64_t a_chunk, b_chunk;
+    memcpy(&a_chunk, &a[i * 8], 8);
+    memcpy(&b_chunk, &b[i * 8], 8);
+    pop_a += (uint64_t)__builtin_popcountll(a_chunk);
+    pop_andnot += (uint64_t)__builtin_popcountll(a_chunk & ~b_chunk);
+  }
+
+  uint64_t offset = n64 * 8;
   for (uint64_t i = offset; i < main_bytes; i++) {
     uint8_t va = a[i];
-    uint8_t vandnot = va & ~b[i];
     pop_a += (uint64_t)__builtin_popcount(va);
-    pop_andnot += (uint64_t)__builtin_popcount(vandnot);
+    pop_andnot += (uint64_t)__builtin_popcount(va & ~b[i]);
   }
 
   if (rem_bits > 0) {
     uint8_t mask = (1U << rem_bits) - 1;
     uint8_t va = a[full_bytes - 1] & mask;
-    uint8_t vandnot = va & ~b[full_bytes - 1];
-
     pop_a += (uint64_t)__builtin_popcount(va);
-    pop_andnot += (uint64_t)__builtin_popcount(vandnot);
+    pop_andnot += (uint64_t)__builtin_popcount(va & ~b[full_bytes - 1]);
   }
 
   *pop_a_out = pop_a;
