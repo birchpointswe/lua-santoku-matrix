@@ -143,6 +143,85 @@ static inline double tk_chi2_from_marginals (double N, double C, double P, doubl
   return chi2;
 }
 
+static inline void tk_build_pooled_union (
+  lua_State *L,
+  tk_ivec_t *class_offsets,
+  tk_ivec_t *class_ids,
+  tk_dvec_t *class_weights,
+  uint64_t n_hidden,
+  uint64_t union_top_k,
+  tk_pool_t pool
+) {
+  tk_iumap_t *feature_counts = tk_iumap_create(0, 0);
+  tk_dumap_t *feature_weights = tk_dumap_create(0, 0);
+  for (uint64_t c = 0; c < n_hidden; c++) {
+    int64_t start = class_offsets->a[c];
+    int64_t end = class_offsets->a[c + 1];
+    for (int64_t i = start; i < end; i++) {
+      int64_t fid = class_ids->a[i];
+      double w = class_weights->a[i];
+      khint_t kit = tk_iumap_get(feature_counts, fid);
+      if (kit != kh_end(feature_counts)) {
+        kh_value(feature_counts, kit) += 1;
+        khint_t wkit = tk_dumap_get(feature_weights, fid);
+        double old_w = kh_value(feature_weights, wkit);
+        switch (pool) {
+          case TK_POOL_SUM: kh_value(feature_weights, wkit) = old_w + w; break;
+          case TK_POOL_AVG: kh_value(feature_weights, wkit) = old_w + w; break;
+          case TK_POOL_MIN: kh_value(feature_weights, wkit) = old_w < w ? old_w : w; break;
+          case TK_POOL_MAX: kh_value(feature_weights, wkit) = old_w > w ? old_w : w; break;
+        }
+      } else {
+        int absent;
+        khint_t newk = tk_iumap_put(feature_counts, fid, &absent);
+        kh_value(feature_counts, newk) = 1;
+        khint_t wnewk = tk_dumap_put(feature_weights, fid, &absent);
+        kh_value(feature_weights, wnewk) = w;
+      }
+    }
+  }
+  uint64_t n_union = (uint64_t)kh_size(feature_weights);
+  if (pool == TK_POOL_AVG) {
+    int64_t fid;
+    tk_umap_foreach_keys(feature_weights, fid, ({
+      khint_t wkit = tk_dumap_get(feature_weights, fid);
+      khint_t ckit = tk_iumap_get(feature_counts, fid);
+      kh_value(feature_weights, wkit) /= (double)kh_value(feature_counts, ckit);
+    }));
+  }
+  tk_iumap_destroy(feature_counts);
+  tk_ivec_t *union_ids = tk_ivec_create(L, 0, 0, 0);
+  tk_dvec_t *union_weights = tk_dvec_create(L, 0, 0, 0);
+  if (union_top_k > 0 && union_top_k < n_union) {
+    tk_rvec_t *heap = tk_rvec_create(NULL, 0, 0, 0);
+    int64_t fid; double w;
+    tk_umap_foreach(feature_weights, fid, w, ({
+      tk_rank_t r = { fid, w };
+      tk_rvec_hmin(heap, union_top_k, r);
+    }));
+    tk_rvec_desc(heap, 0, heap->n);
+    for (uint64_t i = 0; i < heap->n; i++) {
+      tk_ivec_push(union_ids, heap->a[i].i);
+      tk_dvec_push(union_weights, heap->a[i].d);
+    }
+    tk_rvec_destroy(heap);
+  } else {
+    int64_t fid; double w;
+    tk_rvec_t *sorted = tk_rvec_create(NULL, 0, 0, 0);
+    tk_umap_foreach(feature_weights, fid, w, ({
+      tk_rank_t r = { fid, w };
+      tk_rvec_push(sorted, r);
+    }));
+    tk_rvec_desc(sorted, 0, sorted->n);
+    for (uint64_t i = 0; i < sorted->n; i++) {
+      tk_ivec_push(union_ids, sorted->a[i].i);
+      tk_dvec_push(union_weights, sorted->a[i].d);
+    }
+    tk_rvec_destroy(sorted);
+  }
+  tk_dumap_destroy(feature_weights);
+}
+
 typedef double (*tk_score_from_marginals_fn)(double N, double C, double P, double A);
 
 static inline tk_ivec_t *tk_ivec_bits_top_sparse_twophase (
@@ -1190,7 +1269,7 @@ static inline tk_ivec_t *tk_ivec_from_iuset (lua_State *L, tk_iuset_t *s)
   return v;
 }
 
-static inline tk_ivec_t *tk_ivec_bits_top_mi (
+static inline void tk_ivec_bits_top_chi2 (
   lua_State *L,
   tk_ivec_t *set_bits,
   char *codes,
@@ -1198,51 +1277,9 @@ static inline tk_ivec_t *tk_ivec_bits_top_mi (
   uint64_t n_samples,
   uint64_t n_visible,
   uint64_t n_hidden,
-  uint64_t top_k,
+  uint64_t per_class_k,
+  uint64_t union_top_k,
   tk_pool_t pool
-) {
-  if (codes) {
-    return tk_ivec_bits_top_sparse_codes(L, set_bits, codes, n_samples, n_visible, n_hidden, top_k, pool, tk_mi_from_marginals);
-  } else if (labels) {
-    return tk_ivec_bits_top_sparse_twophase(L, set_bits, labels, n_samples, n_visible, n_hidden, top_k, pool, tk_mi_from_marginals);
-  } else {
-    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
-    tk_dvec_create(L, 0, 0, 0);
-    return out;
-  }
-}
-
-static inline tk_ivec_t *tk_ivec_bits_top_chi2 (
-  lua_State *L,
-  tk_ivec_t *set_bits,
-  char *codes,
-  tk_ivec_t *labels,
-  uint64_t n_samples,
-  uint64_t n_visible,
-  uint64_t n_hidden,
-  uint64_t top_k,
-  tk_pool_t pool
-) {
-  if (codes) {
-    return tk_ivec_bits_top_sparse_codes(L, set_bits, codes, n_samples, n_visible, n_hidden, top_k, pool, tk_chi2_from_marginals);
-  } else if (labels) {
-    return tk_ivec_bits_top_sparse_twophase(L, set_bits, labels, n_samples, n_visible, n_hidden, top_k, pool, tk_chi2_from_marginals);
-  } else {
-    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
-    tk_dvec_create(L, 0, 0, 0);
-    return out;
-  }
-}
-
-static inline void tk_ivec_bits_top_chi2_grouped (
-  lua_State *L,
-  tk_ivec_t *set_bits,
-  char *codes,
-  tk_ivec_t *labels,
-  uint64_t n_samples,
-  uint64_t n_visible,
-  uint64_t n_hidden,
-  uint64_t top_k
 ) {
   tk_ivec_t *offsets = tk_ivec_create(L, 0, 0, 0);
   tk_ivec_t *features = tk_ivec_create(L, 0, 0, 0);
@@ -1254,6 +1291,9 @@ static inline void tk_ivec_bits_top_chi2_grouped (
     if (!feat_counts || !label_counts) {
       free(feat_counts); free(label_counts);
       for (uint64_t b = 0; b <= n_hidden; b++) tk_ivec_push(offsets, 0);
+      tk_build_pooled_union(L, offsets, features, weights, n_hidden, union_top_k, pool);
+      lua_insert(L, -5);
+      lua_insert(L, -5);
       return;
     }
 
@@ -1281,6 +1321,9 @@ static inline void tk_ivec_bits_top_chi2_grouped (
     if (!local_maps) {
       free(feat_counts); free(label_counts);
       for (uint64_t b = 0; b <= n_hidden; b++) tk_ivec_push(offsets, 0);
+      tk_build_pooled_union(L, offsets, features, weights, n_hidden, union_top_k, pool);
+      lua_insert(L, -5);
+      lua_insert(L, -5);
       return;
     }
 
@@ -1340,7 +1383,7 @@ static inline void tk_ivec_bits_top_chi2_grouped (
           if (A <= C * P / N) continue;
           double chi2 = tk_chi2_from_marginals(N, C, P, A);
           tk_rank_t r = { (int64_t)f, chi2 };
-          tk_rvec_hmin(heap, top_k, r);
+          tk_rvec_hmin(heap, per_class_k, r);
         }
       }
       if (heap->n > 0)
@@ -1362,6 +1405,9 @@ static inline void tk_ivec_bits_top_chi2_grouped (
     if (!feat_counts || !label_counts) {
       free(feat_counts); free(label_counts);
       for (uint64_t b = 0; b <= n_hidden; b++) tk_ivec_push(offsets, 0);
+      tk_build_pooled_union(L, offsets, features, weights, n_hidden, union_top_k, pool);
+      lua_insert(L, -5);
+      lua_insert(L, -5);
       return;
     }
 
@@ -1385,6 +1431,9 @@ static inline void tk_ivec_bits_top_chi2_grouped (
     if (!local_maps) {
       free(feat_counts); free(label_counts);
       for (uint64_t b = 0; b <= n_hidden; b++) tk_ivec_push(offsets, 0);
+      tk_build_pooled_union(L, offsets, features, weights, n_hidden, union_top_k, pool);
+      lua_insert(L, -5);
+      lua_insert(L, -5);
       return;
     }
 
@@ -1447,7 +1496,7 @@ static inline void tk_ivec_bits_top_chi2_grouped (
           if (A <= C * P / N) continue;
           double chi2 = tk_chi2_from_marginals(N, C, P, A);
           tk_rank_t r = { (int64_t)f, chi2 };
-          tk_rvec_hmin(heap, top_k, r);
+          tk_rvec_hmin(heap, per_class_k, r);
         }
       }
       if (heap->n > 0)
@@ -1466,9 +1515,12 @@ static inline void tk_ivec_bits_top_chi2_grouped (
   } else {
     for (uint64_t b = 0; b <= n_hidden; b++) tk_ivec_push(offsets, 0);
   }
+  tk_build_pooled_union(L, offsets, features, weights, n_hidden, union_top_k, pool);
+  lua_insert(L, -5);
+  lua_insert(L, -5);
 }
 
-static inline void tk_ivec_bits_top_mi_grouped (
+static inline void tk_ivec_bits_top_mi (
   lua_State *L,
   tk_ivec_t *set_bits,
   char *codes,
@@ -1476,7 +1528,9 @@ static inline void tk_ivec_bits_top_mi_grouped (
   uint64_t n_samples,
   uint64_t n_visible,
   uint64_t n_hidden,
-  uint64_t top_k
+  uint64_t per_class_k,
+  uint64_t union_top_k,
+  tk_pool_t pool
 ) {
   tk_ivec_t *offsets = tk_ivec_create(L, 0, 0, 0);
   tk_ivec_t *features = tk_ivec_create(L, 0, 0, 0);
@@ -1488,6 +1542,9 @@ static inline void tk_ivec_bits_top_mi_grouped (
     if (!feat_counts || !label_counts) {
       free(feat_counts); free(label_counts);
       for (uint64_t b = 0; b <= n_hidden; b++) tk_ivec_push(offsets, 0);
+      tk_build_pooled_union(L, offsets, features, weights, n_hidden, union_top_k, pool);
+      lua_insert(L, -5);
+      lua_insert(L, -5);
       return;
     }
 
@@ -1515,6 +1572,9 @@ static inline void tk_ivec_bits_top_mi_grouped (
     if (!local_maps) {
       free(feat_counts); free(label_counts);
       for (uint64_t b = 0; b <= n_hidden; b++) tk_ivec_push(offsets, 0);
+      tk_build_pooled_union(L, offsets, features, weights, n_hidden, union_top_k, pool);
+      lua_insert(L, -5);
+      lua_insert(L, -5);
       return;
     }
 
@@ -1574,7 +1634,7 @@ static inline void tk_ivec_bits_top_mi_grouped (
           if (A <= C * P / N) continue;
           double mi = tk_mi_from_marginals(N, C, P, A);
           tk_rank_t r = { (int64_t)f, mi };
-          tk_rvec_hmin(heap, top_k, r);
+          tk_rvec_hmin(heap, per_class_k, r);
         }
       }
       if (heap->n > 0)
@@ -1596,6 +1656,9 @@ static inline void tk_ivec_bits_top_mi_grouped (
     if (!feat_counts || !label_counts) {
       free(feat_counts); free(label_counts);
       for (uint64_t b = 0; b <= n_hidden; b++) tk_ivec_push(offsets, 0);
+      tk_build_pooled_union(L, offsets, features, weights, n_hidden, union_top_k, pool);
+      lua_insert(L, -5);
+      lua_insert(L, -5);
       return;
     }
 
@@ -1619,6 +1682,9 @@ static inline void tk_ivec_bits_top_mi_grouped (
     if (!local_maps) {
       free(feat_counts); free(label_counts);
       for (uint64_t b = 0; b <= n_hidden; b++) tk_ivec_push(offsets, 0);
+      tk_build_pooled_union(L, offsets, features, weights, n_hidden, union_top_k, pool);
+      lua_insert(L, -5);
+      lua_insert(L, -5);
       return;
     }
 
@@ -1681,7 +1747,7 @@ static inline void tk_ivec_bits_top_mi_grouped (
           if (A <= C * P / N) continue;
           double mi = tk_mi_from_marginals(N, C, P, A);
           tk_rank_t r = { (int64_t)f, mi };
-          tk_rvec_hmin(heap, top_k, r);
+          tk_rvec_hmin(heap, per_class_k, r);
         }
       }
       if (heap->n > 0)
@@ -1700,9 +1766,12 @@ static inline void tk_ivec_bits_top_mi_grouped (
   } else {
     for (uint64_t b = 0; b <= n_hidden; b++) tk_ivec_push(offsets, 0);
   }
+  tk_build_pooled_union(L, offsets, features, weights, n_hidden, union_top_k, pool);
+  lua_insert(L, -5);
+  lua_insert(L, -5);
 }
 
-static inline void tk_ivec_bits_top_bns_grouped (
+static inline void tk_ivec_bits_top_bns (
   lua_State *L,
   tk_ivec_t *set_bits,
   char *codes,
@@ -1710,7 +1779,9 @@ static inline void tk_ivec_bits_top_bns_grouped (
   uint64_t n_samples,
   uint64_t n_visible,
   uint64_t n_hidden,
-  uint64_t top_k
+  uint64_t per_class_k,
+  uint64_t union_top_k,
+  tk_pool_t pool
 ) {
   tk_ivec_t *offsets = tk_ivec_create(L, 0, 0, 0);
   tk_ivec_t *features = tk_ivec_create(L, 0, 0, 0);
@@ -1722,6 +1793,9 @@ static inline void tk_ivec_bits_top_bns_grouped (
     if (!feat_counts || !label_counts) {
       free(feat_counts); free(label_counts);
       for (uint64_t b = 0; b <= n_hidden; b++) tk_ivec_push(offsets, 0);
+      tk_build_pooled_union(L, offsets, features, weights, n_hidden, union_top_k, pool);
+      lua_insert(L, -5);
+      lua_insert(L, -5);
       return;
     }
 
@@ -1749,6 +1823,9 @@ static inline void tk_ivec_bits_top_bns_grouped (
     if (!local_maps) {
       free(feat_counts); free(label_counts);
       for (uint64_t b = 0; b <= n_hidden; b++) tk_ivec_push(offsets, 0);
+      tk_build_pooled_union(L, offsets, features, weights, n_hidden, union_top_k, pool);
+      lua_insert(L, -5);
+      lua_insert(L, -5);
       return;
     }
 
@@ -1808,7 +1885,7 @@ static inline void tk_ivec_bits_top_bns_grouped (
           if (A <= C * P / N) continue;
           double bns = tk_bns_from_marginals(N, C, P, A);
           tk_rank_t r = { (int64_t)f, bns };
-          tk_rvec_hmin(heap, top_k, r);
+          tk_rvec_hmin(heap, per_class_k, r);
         }
       }
       if (heap->n > 0)
@@ -1830,6 +1907,9 @@ static inline void tk_ivec_bits_top_bns_grouped (
     if (!feat_counts || !label_counts) {
       free(feat_counts); free(label_counts);
       for (uint64_t b = 0; b <= n_hidden; b++) tk_ivec_push(offsets, 0);
+      tk_build_pooled_union(L, offsets, features, weights, n_hidden, union_top_k, pool);
+      lua_insert(L, -5);
+      lua_insert(L, -5);
       return;
     }
 
@@ -1853,6 +1933,9 @@ static inline void tk_ivec_bits_top_bns_grouped (
     if (!local_maps) {
       free(feat_counts); free(label_counts);
       for (uint64_t b = 0; b <= n_hidden; b++) tk_ivec_push(offsets, 0);
+      tk_build_pooled_union(L, offsets, features, weights, n_hidden, union_top_k, pool);
+      lua_insert(L, -5);
+      lua_insert(L, -5);
       return;
     }
 
@@ -1915,7 +1998,7 @@ static inline void tk_ivec_bits_top_bns_grouped (
           if (A <= C * P / N) continue;
           double bns = tk_bns_from_marginals(N, C, P, A);
           tk_rank_t r = { (int64_t)f, bns };
-          tk_rvec_hmin(heap, top_k, r);
+          tk_rvec_hmin(heap, per_class_k, r);
         }
       }
       if (heap->n > 0)
@@ -1934,6 +2017,9 @@ static inline void tk_ivec_bits_top_bns_grouped (
   } else {
     for (uint64_t b = 0; b <= n_hidden; b++) tk_ivec_push(offsets, 0);
   }
+  tk_build_pooled_union(L, offsets, features, weights, n_hidden, union_top_k, pool);
+  lua_insert(L, -5);
+  lua_insert(L, -5);
 }
 
 static inline tk_ivec_t *tk_ivec_bits_top_entropy (
@@ -1991,7 +2077,9 @@ static inline tk_ivec_t *tk_ivec_bits_top_entropy (
   return out;
 }
 
-static inline tk_ivec_t *tk_cvec_bits_top_mi (
+
+
+static inline void tk_cvec_bits_top_chi2 (
   lua_State *L,
   tk_cvec_t *bitmap,
   tk_cvec_t *codes,
@@ -1999,705 +2087,9 @@ static inline tk_ivec_t *tk_cvec_bits_top_mi (
   uint64_t n_samples,
   uint64_t n_features,
   uint64_t n_hidden,
-  uint64_t top_k,
+  uint64_t per_class_k,
+  uint64_t union_top_k,
   tk_pool_t pool
-) {
-
-  if (codes) {
-
-    atomic_uint *active_counts = (atomic_uint *)calloc(n_features * n_hidden, sizeof(atomic_uint));
-    atomic_uint *label_counts = (atomic_uint *)calloc(n_hidden, sizeof(atomic_uint));
-    atomic_uint *feat_counts = (atomic_uint *)calloc(n_features, sizeof(atomic_uint));
-    if (!active_counts || !label_counts || !feat_counts) {
-      free(active_counts);
-      free(label_counts);
-      free(feat_counts);
-      return NULL;
-    }
-
-    uint8_t *bitmap_data = (uint8_t *)bitmap->a;
-    uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
-    #pragma omp parallel for schedule(static)
-    for (uint64_t s = 0; s < n_samples; s++) {
-      uint64_t sample_offset = s * bytes_per_sample;
-      uint8_t *sample_codes = (uint8_t *)(codes->a + s * TK_CVEC_BITS_BYTES(n_hidden));
-      for (uint64_t b = 0; b < n_hidden; b++) {
-        uint64_t j_byte = b / CHAR_BIT;
-        uint8_t j_bit = b % CHAR_BIT;
-        if (sample_codes[j_byte] & (1u << j_bit))
-          atomic_fetch_add(&label_counts[b], 1);
-      }
-      for (uint64_t f = 0; f < n_features; f++) {
-        uint64_t byte_idx = f / CHAR_BIT;
-        uint8_t bit_idx = f % CHAR_BIT;
-        if (bitmap_data[sample_offset + byte_idx] & (1u << bit_idx)) {
-          atomic_fetch_add(&feat_counts[f], 1);
-          for (uint64_t b = 0; b < n_hidden; b++) {
-            uint64_t j_byte = b / CHAR_BIT;
-            uint8_t j_bit = b % CHAR_BIT;
-            if (sample_codes[j_byte] & (1u << j_bit))
-              atomic_fetch_add(&active_counts[f * n_hidden + b], 1);
-          }
-        }
-      }
-    }
-
-    double N = (double)n_samples;
-    int n_threads = 1;
-    #pragma omp parallel
-    { n_threads = omp_get_num_threads(); }
-    tk_rvec_t **local_heaps = (tk_rvec_t **)calloc((size_t)n_threads, sizeof(tk_rvec_t *));
-
-    #pragma omp parallel
-    {
-      int tid = omp_get_thread_num();
-      local_heaps[tid] = tk_rvec_create(NULL, 0, 0, 0);
-      #pragma omp for schedule(static)
-      for (uint64_t f = 0; f < n_features; f++) {
-        double C = (double)atomic_load(&feat_counts[f]);
-        if (C <= 0 || C >= N) continue;
-        double pool_sum = 0.0, pool_min = DBL_MAX, pool_max = -DBL_MAX;
-        uint64_t pool_count = 0;
-        for (uint64_t b = 0; b < n_hidden; b++) {
-          double P = (double)atomic_load(&label_counts[b]);
-          if (P <= 0 || P >= N) continue;
-          double A = (double)atomic_load(&active_counts[f * n_hidden + b]);
-          double mi = tk_mi_from_marginals(N, C, P, A);
-          pool_sum += mi;
-          if (mi < pool_min) pool_min = mi;
-          if (mi > pool_max) pool_max = mi;
-          pool_count++;
-        }
-        if (pool_count > 0) {
-          double score;
-          switch (pool) {
-            case TK_POOL_MIN: score = pool_min; break;
-            case TK_POOL_MAX: score = pool_max; break;
-            case TK_POOL_AVG: score = pool_sum / (double)pool_count; break;
-            default: score = pool_sum; break;
-          }
-          tk_rank_t r = { (int64_t)f, score };
-          tk_rvec_hmin(local_heaps[tid], top_k, r);
-        }
-      }
-    }
-
-    tk_rvec_t *top_heap = tk_rvec_create(NULL, 0, 0, 0);
-    for (int t = 0; t < n_threads; t++) {
-      for (uint64_t i = 0; i < local_heaps[t]->n; i++)
-        tk_rvec_hmin(top_heap, top_k, local_heaps[t]->a[i]);
-      tk_rvec_destroy(local_heaps[t]);
-    }
-    free(local_heaps);
-    free(active_counts);
-    free(feat_counts);
-    free(label_counts);
-
-    tk_rvec_desc(top_heap, 0, top_heap->n);
-    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
-    tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
-    tk_rvec_keys(L, top_heap, out);
-    tk_rvec_values(L, top_heap, weights);
-    tk_rvec_destroy(top_heap);
-    return out;
-
-  } else if (labels) {
-
-    tk_iumap_t *active_counts = tk_iumap_create(0, 0);
-    atomic_uint *feat_counts = (atomic_uint *)calloc(n_features, sizeof(atomic_uint));
-    atomic_uint *label_counts = (atomic_uint *)calloc(n_hidden, sizeof(atomic_uint));
-    if (!feat_counts || !label_counts) {
-      free(feat_counts);
-      free(label_counts);
-      tk_iumap_destroy(active_counts);
-      return NULL;
-    }
-    uint8_t *bitmap_data = (uint8_t *)bitmap->a;
-    uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
-    #pragma omp parallel for schedule(static)
-    for (uint64_t s = 0; s < n_samples; s++) {
-      uint64_t sample_offset = s * bytes_per_sample;
-      for (uint64_t f = 0; f < n_features; f++) {
-        uint64_t byte_idx = f / CHAR_BIT;
-        uint8_t bit_idx = f % CHAR_BIT;
-        if (bitmap_data[sample_offset + byte_idx] & (1u << bit_idx))
-          atomic_fetch_add(&feat_counts[f], 1);
-      }
-    }
-
-    #pragma omp parallel for schedule(static)
-    for (uint64_t i = 0; i < labels->n; i++) {
-      int64_t bit = labels->a[i];
-      if (bit >= 0)
-        atomic_fetch_add(&label_counts[(uint64_t)bit % n_hidden], 1);
-    }
-
-    int n_threads = 1;
-    #pragma omp parallel
-    { n_threads = omp_get_num_threads(); }
-
-    tk_iumap_t **local_maps = (tk_iumap_t **)calloc((size_t)n_threads, sizeof(tk_iumap_t *));
-    if (!local_maps) {
-      free(feat_counts);
-      free(label_counts);
-      tk_iumap_destroy(active_counts);
-      return NULL;
-    }
-
-    #pragma omp parallel
-    {
-      int tid = omp_get_thread_num();
-      local_maps[tid] = tk_iumap_create(0, 0);
-
-      #pragma omp for schedule(dynamic, 64)
-      for (uint64_t s = 0; s < n_samples; s++) {
-        uint64_t sample_offset = s * bytes_per_sample;
-        int64_t label_start = tk_ivec_set_find(labels->a, 0, (int64_t)labels->n, (int64_t)(s * n_hidden));
-        if (label_start < 0)
-          label_start = -(label_start + 1);
-        for (uint64_t f = 0; f < n_features; f++) {
-          uint64_t byte_idx = f / CHAR_BIT;
-          uint8_t bit_idx = f % CHAR_BIT;
-          if (!(bitmap_data[sample_offset + byte_idx] & (1u << bit_idx)))
-            continue;
-          for (int64_t li = label_start;
-               li < (int64_t)labels->n && labels->a[li] >= 0 &&
-               (uint64_t)labels->a[li] / n_hidden == s;
-               li++) {
-            uint64_t h = (uint64_t)labels->a[li] % n_hidden;
-            int64_t key = (int64_t)(f * n_hidden + h);
-            tk_iumap_inc(local_maps[tid], key);
-          }
-        }
-      }
-    }
-
-    for (int t = 0; t < n_threads; t++) {
-      if (local_maps[t]) {
-        int64_t mk, mv;
-        tk_umap_foreach(local_maps[t], mk, mv, ({
-          khint_t kit = tk_iumap_get(active_counts, mk);
-          if (kit != kh_end(active_counts)) {
-            kh_value(active_counts, kit) += mv;
-          } else {
-            int absent;
-            khint_t newk = tk_iumap_put(active_counts, mk, &absent);
-            kh_value(active_counts, newk) = mv;
-          }
-        }));
-        tk_iumap_destroy(local_maps[t]);
-      }
-    }
-    free(local_maps);
-
-    double N = (double)n_samples;
-    double *feat_max = (double *)malloc(n_features * sizeof(double));
-    double *feat_min = (double *)malloc(n_features * sizeof(double));
-    double *feat_sum = (double *)calloc(n_features, sizeof(double));
-    uint64_t *feat_count = (uint64_t *)calloc(n_features, sizeof(uint64_t));
-    if (!feat_max || !feat_min || !feat_sum || !feat_count) {
-      free(feat_max);
-      free(feat_min);
-      free(feat_sum);
-      free(feat_count);
-      free(feat_counts);
-      free(label_counts);
-      tk_iumap_destroy(active_counts);
-      tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
-      tk_dvec_create(L, 0, 0, 0);
-      return out;
-    }
-    for (uint64_t f = 0; f < n_features; f++) {
-      feat_max[f] = -DBL_MAX;
-      feat_min[f] = DBL_MAX;
-    }
-
-    int64_t k, v;
-    tk_umap_foreach(active_counts, k, v, ({
-      uint64_t f = (uint64_t)k / n_hidden;
-      uint64_t h = (uint64_t)k % n_hidden;
-      if (f >= n_features || h >= n_hidden) continue;
-      double C = (double)atomic_load(&feat_counts[f]);
-      double P = (double)atomic_load(&label_counts[h]);
-      double A = (double)v;
-      double mi = tk_mi_from_marginals(N, C, P, A);
-      feat_sum[f] += mi;
-      if (mi > feat_max[f]) feat_max[f] = mi;
-      if (mi < feat_min[f]) feat_min[f] = mi;
-      feat_count[f]++;
-    }));
-
-    tk_rvec_t *max_heap = tk_rvec_create(NULL, 0, 0, 0);
-    for (uint64_t f = 0; f < n_features; f++) {
-      if (feat_count[f] > 0) {
-        tk_rank_t r = { (int64_t)f, feat_max[f] };
-        tk_rvec_hmin(max_heap, top_k, r);
-      }
-    }
-
-    tk_rvec_t *pool_heap = tk_rvec_create(NULL, 0, 0, 0);
-    if (pool != TK_POOL_MAX) {
-      for (uint64_t f = 0; f < n_features; f++) {
-        if (feat_count[f] > 0) {
-          double score;
-          switch (pool) {
-            case TK_POOL_MIN: score = feat_min[f]; break;
-            case TK_POOL_AVG: score = feat_sum[f] / (double)feat_count[f]; break;
-            default:          score = feat_sum[f]; break;
-          }
-          tk_rank_t r = { (int64_t)f, score };
-          tk_rvec_hmin(pool_heap, top_k, r);
-        }
-      }
-    }
-
-    tk_iuset_t *candidate_set = tk_iuset_create(0, 0);
-    for (uint64_t i = 0; i < max_heap->n; i++) {
-      int absent;
-      tk_iuset_put(candidate_set, max_heap->a[i].i, &absent);
-    }
-    for (uint64_t i = 0; i < pool_heap->n; i++) {
-      int absent;
-      tk_iuset_put(candidate_set, pool_heap->a[i].i, &absent);
-    }
-    tk_rvec_destroy(max_heap);
-    tk_rvec_destroy(pool_heap);
-
-    uint64_t n_cand = tk_iuset_size(candidate_set);
-    int64_t *cand_features = (int64_t *)malloc(n_cand * sizeof(int64_t));
-    uint64_t ci = 0;
-    int64_t ckey;
-    tk_umap_foreach_keys(candidate_set, ckey, ({
-      cand_features[ci++] = ckey;
-    }));
-    tk_iuset_destroy(candidate_set);
-
-    free(feat_max);
-    free(feat_min);
-    free(feat_sum);
-    free(feat_count);
-
-    double *final_scores = (double *)calloc(n_cand, sizeof(double));
-
-    #pragma omp parallel for schedule(dynamic)
-    for (uint64_t ci = 0; ci < n_cand; ci++) {
-      uint64_t f = (uint64_t)cand_features[ci];
-      double C = (double)atomic_load(&feat_counts[f]);
-      if (C <= 0 || C >= N) continue;
-      double pool_sum = 0.0, pool_max = -DBL_MAX, pool_min = DBL_MAX;
-      uint64_t pool_count = 0;
-      for (uint64_t h = 0; h < n_hidden; h++) {
-        double P = (double)atomic_load(&label_counts[h]);
-        if (P <= 0 || P >= N) continue;
-        int64_t key = (int64_t)(f * n_hidden + h);
-        khint_t kit = tk_iumap_get(active_counts, key);
-        double A = (kit != kh_end(active_counts)) ? (double)kh_value(active_counts, kit) : 0.0;
-        double mi = tk_mi_from_marginals(N, C, P, A);
-        pool_sum += mi;
-        if (mi > pool_max) pool_max = mi;
-        if (mi < pool_min) pool_min = mi;
-        pool_count++;
-      }
-      if (pool_count > 0) {
-        switch (pool) {
-          case TK_POOL_MIN: final_scores[ci] = pool_min; break;
-          case TK_POOL_MAX: final_scores[ci] = pool_max; break;
-          case TK_POOL_AVG: final_scores[ci] = pool_sum / (double)pool_count; break;
-          default: final_scores[ci] = pool_sum; break;
-        }
-      }
-    }
-
-    tk_rvec_t *top_heap = tk_rvec_create(NULL, 0, 0, 0);
-    for (uint64_t ci = 0; ci < n_cand; ci++) {
-      tk_rank_t r = { cand_features[ci], final_scores[ci] };
-      tk_rvec_hmin(top_heap, top_k, r);
-    }
-
-    free(cand_features);
-    free(final_scores);
-    free(feat_counts);
-    free(label_counts);
-    tk_iumap_destroy(active_counts);
-
-    tk_rvec_desc(top_heap, 0, top_heap->n);
-    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
-    tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
-    tk_rvec_keys(L, top_heap, out);
-    tk_rvec_values(L, top_heap, weights);
-    tk_rvec_destroy(top_heap);
-    return out;
-
-  } else {
-
-    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
-    tk_dvec_create(L, 0, 0, 0);
-    return out;
-
-  }
-}
-
-static inline tk_ivec_t *tk_cvec_bits_top_chi2 (
-  lua_State *L,
-  tk_cvec_t *bitmap,
-  tk_cvec_t *codes,
-  tk_ivec_t *labels,
-  uint64_t n_samples,
-  uint64_t n_features,
-  uint64_t n_hidden,
-  uint64_t top_k,
-  tk_pool_t pool
-) {
-
-  if (codes) {
-
-    atomic_uint *active_counts = (atomic_uint *)calloc(n_features * n_hidden, sizeof(atomic_uint));
-    atomic_uint *label_counts = (atomic_uint *)calloc(n_hidden, sizeof(atomic_uint));
-    atomic_uint *feat_counts = (atomic_uint *)calloc(n_features, sizeof(atomic_uint));
-    if (!active_counts || !label_counts || !feat_counts) {
-      free(active_counts);
-      free(label_counts);
-      free(feat_counts);
-      return NULL;
-    }
-
-    uint8_t *bitmap_data = (uint8_t *)bitmap->a;
-    uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
-    #pragma omp parallel for schedule(static)
-    for (uint64_t s = 0; s < n_samples; s++) {
-      uint64_t sample_offset = s * bytes_per_sample;
-      uint8_t *sample_codes = (uint8_t *)(codes->a + s * TK_CVEC_BITS_BYTES(n_hidden));
-      for (uint64_t f = 0; f < n_features; f++) {
-        uint64_t byte_idx = f / CHAR_BIT;
-        uint8_t bit_idx = f % CHAR_BIT;
-        if (bitmap_data[sample_offset + byte_idx] & (1u << bit_idx)) {
-          atomic_fetch_add(&feat_counts[f], 1);
-          for (uint64_t b = 0; b < n_hidden; b++) {
-            uint64_t b_byte = b / CHAR_BIT;
-            uint8_t b_bit = b % CHAR_BIT;
-            if (sample_codes[b_byte] & (1u << b_bit))
-              atomic_fetch_add(&active_counts[f * n_hidden + b], 1);
-          }
-        }
-      }
-    }
-
-    #pragma omp parallel for schedule(static)
-    for (uint64_t s = 0; s < n_samples; s++) {
-      uint8_t *s_codes = (uint8_t *)(codes->a + s * TK_CVEC_BITS_BYTES(n_hidden));
-      for (uint64_t b = 0; b < n_hidden; b++) {
-        uint64_t byte_idx = b / CHAR_BIT;
-        uint8_t bit_pos = b % CHAR_BIT;
-        if (s_codes[byte_idx] & (1u << bit_pos))
-          atomic_fetch_add(&label_counts[b], 1);
-      }
-    }
-
-    double N = (double)n_samples;
-    int n_threads = 1;
-    #pragma omp parallel
-    { n_threads = omp_get_num_threads(); }
-    tk_rvec_t **local_heaps = (tk_rvec_t **)calloc((size_t)n_threads, sizeof(tk_rvec_t *));
-
-    #pragma omp parallel
-    {
-      int tid = omp_get_thread_num();
-      local_heaps[tid] = tk_rvec_create(NULL, 0, 0, 0);
-      #pragma omp for schedule(static)
-      for (uint64_t f = 0; f < n_features; f++) {
-        double C = (double)atomic_load(&feat_counts[f]);
-        if (C <= 0 || C >= N) continue;
-        double pool_sum = 0.0, pool_min = DBL_MAX, pool_max = -DBL_MAX;
-        uint64_t pool_count = 0;
-        for (uint64_t b = 0; b < n_hidden; b++) {
-          double P = (double)atomic_load(&label_counts[b]);
-          if (P <= 0 || P >= N) continue;
-          double A = (double)atomic_load(&active_counts[f * n_hidden + b]);
-          double chi2 = tk_chi2_from_marginals(N, C, P, A);
-          pool_sum += chi2;
-          if (chi2 < pool_min) pool_min = chi2;
-          if (chi2 > pool_max) pool_max = chi2;
-          pool_count++;
-        }
-        if (pool_count > 0) {
-          double score;
-          switch (pool) {
-            case TK_POOL_MIN: score = pool_min; break;
-            case TK_POOL_MAX: score = pool_max; break;
-            case TK_POOL_AVG: score = pool_sum / (double)pool_count; break;
-            default: score = pool_sum; break;
-          }
-          tk_rank_t r = { (int64_t)f, score };
-          tk_rvec_hmin(local_heaps[tid], top_k, r);
-        }
-      }
-    }
-
-    tk_rvec_t *top_heap = tk_rvec_create(NULL, 0, 0, 0);
-    for (int t = 0; t < n_threads; t++) {
-      for (uint64_t i = 0; i < local_heaps[t]->n; i++)
-        tk_rvec_hmin(top_heap, top_k, local_heaps[t]->a[i]);
-      tk_rvec_destroy(local_heaps[t]);
-    }
-    free(local_heaps);
-    free(active_counts);
-    free(feat_counts);
-    free(label_counts);
-
-    tk_rvec_desc(top_heap, 0, top_heap->n);
-    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
-    tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
-    tk_rvec_keys(L, top_heap, out);
-    tk_rvec_values(L, top_heap, weights);
-    tk_rvec_destroy(top_heap);
-    return out;
-
-  } else if (labels) {
-
-    tk_iumap_t *active_counts = tk_iumap_create(0, 0);
-    atomic_uint *feat_counts = (atomic_uint *)calloc(n_features, sizeof(atomic_uint));
-    atomic_uint *label_counts = (atomic_uint *)calloc(n_hidden, sizeof(atomic_uint));
-    if (!feat_counts || !label_counts) {
-      free(feat_counts);
-      free(label_counts);
-      tk_iumap_destroy(active_counts);
-      return NULL;
-    }
-
-    uint8_t *bitmap_data = (uint8_t *)bitmap->a;
-    uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
-    #pragma omp parallel for schedule(static)
-    for (uint64_t s = 0; s < n_samples; s++) {
-      uint64_t sample_offset = s * bytes_per_sample;
-      for (uint64_t f = 0; f < n_features; f++) {
-        uint64_t byte_idx = f / CHAR_BIT;
-        uint8_t bit_idx = f % CHAR_BIT;
-        if (bitmap_data[sample_offset + byte_idx] & (1u << bit_idx))
-          atomic_fetch_add(&feat_counts[f], 1);
-      }
-    }
-
-    #pragma omp parallel for schedule(static)
-    for (uint64_t i = 0; i < labels->n; i++) {
-      int64_t bit = labels->a[i];
-      if (bit >= 0)
-        atomic_fetch_add(&label_counts[(uint64_t)bit % n_hidden], 1);
-    }
-
-    int n_threads = 1;
-    #pragma omp parallel
-    { n_threads = omp_get_num_threads(); }
-
-    tk_iumap_t **local_maps = (tk_iumap_t **)calloc((size_t)n_threads, sizeof(tk_iumap_t *));
-    if (!local_maps) {
-      free(feat_counts);
-      free(label_counts);
-      tk_iumap_destroy(active_counts);
-      return NULL;
-    }
-
-    #pragma omp parallel
-    {
-      int tid = omp_get_thread_num();
-      local_maps[tid] = tk_iumap_create(0, 0);
-
-      #pragma omp for schedule(dynamic, 64)
-      for (uint64_t s = 0; s < n_samples; s++) {
-        uint64_t sample_offset = s * bytes_per_sample;
-        int64_t label_start = tk_ivec_set_find(labels->a, 0, (int64_t)labels->n, (int64_t)(s * n_hidden));
-        if (label_start < 0)
-          label_start = -(label_start + 1);
-        for (uint64_t f = 0; f < n_features; f++) {
-          uint64_t byte_idx = f / CHAR_BIT;
-          uint8_t bit_idx = f % CHAR_BIT;
-          if (!(bitmap_data[sample_offset + byte_idx] & (1u << bit_idx)))
-            continue;
-          for (int64_t li = label_start;
-               li < (int64_t)labels->n && labels->a[li] >= 0 &&
-               (uint64_t)labels->a[li] / n_hidden == s;
-               li++) {
-            uint64_t h = (uint64_t)labels->a[li] % n_hidden;
-            int64_t key = (int64_t)(f * n_hidden + h);
-            tk_iumap_inc(local_maps[tid], key);
-          }
-        }
-      }
-    }
-
-    for (int t = 0; t < n_threads; t++) {
-      if (local_maps[t]) {
-        int64_t mk, mv;
-        tk_umap_foreach(local_maps[t], mk, mv, ({
-          khint_t kit = tk_iumap_get(active_counts, mk);
-          if (kit != kh_end(active_counts)) {
-            kh_value(active_counts, kit) += mv;
-          } else {
-            int absent;
-            khint_t newk = tk_iumap_put(active_counts, mk, &absent);
-            kh_value(active_counts, newk) = mv;
-          }
-        }));
-        tk_iumap_destroy(local_maps[t]);
-      }
-    }
-    free(local_maps);
-
-    double N = (double)n_samples;
-    double *feat_max = (double *)malloc(n_features * sizeof(double));
-    double *feat_min = (double *)malloc(n_features * sizeof(double));
-    double *feat_sum = (double *)calloc(n_features, sizeof(double));
-    uint64_t *feat_count = (uint64_t *)calloc(n_features, sizeof(uint64_t));
-    if (!feat_max || !feat_min || !feat_sum || !feat_count) {
-      free(feat_max);
-      free(feat_min);
-      free(feat_sum);
-      free(feat_count);
-      free(feat_counts);
-      free(label_counts);
-      tk_iumap_destroy(active_counts);
-      tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
-      tk_dvec_create(L, 0, 0, 0);
-      return out;
-    }
-    for (uint64_t f = 0; f < n_features; f++) {
-      feat_max[f] = -DBL_MAX;
-      feat_min[f] = DBL_MAX;
-    }
-
-    int64_t k, v;
-    tk_umap_foreach(active_counts, k, v, ({
-      uint64_t f = (uint64_t)k / n_hidden;
-      uint64_t h = (uint64_t)k % n_hidden;
-      if (f >= n_features || h >= n_hidden) continue;
-      double C = (double)atomic_load(&feat_counts[f]);
-      double P = (double)atomic_load(&label_counts[h]);
-      double A = (double)v;
-      double chi2 = tk_chi2_from_marginals(N, C, P, A);
-      feat_sum[f] += chi2;
-      if (chi2 > feat_max[f]) feat_max[f] = chi2;
-      if (chi2 < feat_min[f]) feat_min[f] = chi2;
-      feat_count[f]++;
-    }));
-
-    tk_rvec_t *max_heap = tk_rvec_create(NULL, 0, 0, 0);
-    for (uint64_t f = 0; f < n_features; f++) {
-      if (feat_count[f] > 0) {
-        tk_rank_t r = { (int64_t)f, feat_max[f] };
-        tk_rvec_hmin(max_heap, top_k, r);
-      }
-    }
-
-    tk_rvec_t *pool_heap = tk_rvec_create(NULL, 0, 0, 0);
-    if (pool != TK_POOL_MAX) {
-      for (uint64_t f = 0; f < n_features; f++) {
-        if (feat_count[f] > 0) {
-          double score;
-          switch (pool) {
-            case TK_POOL_MIN: score = feat_min[f]; break;
-            case TK_POOL_AVG: score = feat_sum[f] / (double)feat_count[f]; break;
-            default:          score = feat_sum[f]; break;
-          }
-          tk_rank_t r = { (int64_t)f, score };
-          tk_rvec_hmin(pool_heap, top_k, r);
-        }
-      }
-    }
-
-    tk_iuset_t *candidate_set = tk_iuset_create(0, 0);
-    for (uint64_t i = 0; i < max_heap->n; i++) {
-      int absent;
-      tk_iuset_put(candidate_set, max_heap->a[i].i, &absent);
-    }
-    for (uint64_t i = 0; i < pool_heap->n; i++) {
-      int absent;
-      tk_iuset_put(candidate_set, pool_heap->a[i].i, &absent);
-    }
-    tk_rvec_destroy(max_heap);
-    tk_rvec_destroy(pool_heap);
-
-    uint64_t n_cand = tk_iuset_size(candidate_set);
-    int64_t *cand_features = (int64_t *)malloc(n_cand * sizeof(int64_t));
-    uint64_t ci = 0;
-    int64_t ckey;
-    tk_umap_foreach_keys(candidate_set, ckey, ({
-      cand_features[ci++] = ckey;
-    }));
-    tk_iuset_destroy(candidate_set);
-
-    free(feat_max);
-    free(feat_min);
-    free(feat_sum);
-    free(feat_count);
-
-    double *final_scores = (double *)calloc(n_cand, sizeof(double));
-
-    #pragma omp parallel for schedule(dynamic)
-    for (uint64_t ci = 0; ci < n_cand; ci++) {
-      uint64_t f = (uint64_t)cand_features[ci];
-      double C = (double)atomic_load(&feat_counts[f]);
-      if (C <= 0 || C >= N) continue;
-      double pool_sum = 0.0, pool_max = -DBL_MAX, pool_min = DBL_MAX;
-      uint64_t pool_count = 0;
-      for (uint64_t h = 0; h < n_hidden; h++) {
-        double P = (double)atomic_load(&label_counts[h]);
-        if (P <= 0 || P >= N) continue;
-        int64_t key = (int64_t)(f * n_hidden + h);
-        khint_t kit = tk_iumap_get(active_counts, key);
-        double A = (kit != kh_end(active_counts)) ? (double)kh_value(active_counts, kit) : 0.0;
-        double chi2 = tk_chi2_from_marginals(N, C, P, A);
-        pool_sum += chi2;
-        if (chi2 > pool_max) pool_max = chi2;
-        if (chi2 < pool_min) pool_min = chi2;
-        pool_count++;
-      }
-      if (pool_count > 0) {
-        switch (pool) {
-          case TK_POOL_MIN: final_scores[ci] = pool_min; break;
-          case TK_POOL_MAX: final_scores[ci] = pool_max; break;
-          case TK_POOL_AVG: final_scores[ci] = pool_sum / (double)pool_count; break;
-          default: final_scores[ci] = pool_sum; break;
-        }
-      }
-    }
-
-    tk_rvec_t *top_heap = tk_rvec_create(NULL, 0, 0, 0);
-    for (uint64_t ci = 0; ci < n_cand; ci++) {
-      tk_rank_t r = { cand_features[ci], final_scores[ci] };
-      tk_rvec_hmin(top_heap, top_k, r);
-    }
-
-    free(cand_features);
-    free(final_scores);
-    tk_iumap_destroy(active_counts);
-    free(feat_counts);
-    free(label_counts);
-
-    tk_rvec_desc(top_heap, 0, top_heap->n);
-    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
-    tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
-    tk_rvec_keys(L, top_heap, out);
-    tk_rvec_values(L, top_heap, weights);
-    tk_rvec_destroy(top_heap);
-    return out;
-
-  } else {
-
-    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
-    tk_dvec_create(L, 0, 0, 0);
-    return out;
-
-  }
-}
-
-static inline void tk_cvec_bits_top_chi2_grouped (
-  lua_State *L,
-  tk_cvec_t *bitmap,
-  tk_cvec_t *codes,
-  tk_ivec_t *labels,
-  uint64_t n_samples,
-  uint64_t n_features,
-  uint64_t n_hidden,
-  uint64_t top_k
 ) {
   tk_ivec_t *offsets = tk_ivec_create(L, 0, 0, 0);
   tk_ivec_t *features = tk_ivec_create(L, 0, 0, 0);
@@ -2758,7 +2150,7 @@ static inline void tk_cvec_bits_top_chi2_grouped (
           if (A <= C * P / N) continue;
           double chi2 = tk_chi2_from_marginals(N, C, P, A);
           tk_rank_t r = { (int64_t)f, chi2 };
-          tk_rvec_hmin(heap, top_k, r);
+          tk_rvec_hmin(heap, per_class_k, r);
         }
       }
       if (heap->n > 0)
@@ -2870,7 +2262,7 @@ static inline void tk_cvec_bits_top_chi2_grouped (
           if (A <= C * P / N) continue;
           double chi2 = tk_chi2_from_marginals(N, C, P, A);
           tk_rank_t r = { (int64_t)f, chi2 };
-          tk_rvec_hmin(heap, top_k, r);
+          tk_rvec_hmin(heap, per_class_k, r);
         }
       }
       if (heap->n > 0)
@@ -2889,9 +2281,12 @@ static inline void tk_cvec_bits_top_chi2_grouped (
   } else {
     for (uint64_t b = 0; b <= n_hidden; b++) tk_ivec_push(offsets, 0);
   }
+  tk_build_pooled_union(L, offsets, features, weights, n_hidden, union_top_k, pool);
+  lua_insert(L, -5);
+  lua_insert(L, -5);
 }
 
-static inline void tk_cvec_bits_top_mi_grouped (
+static inline void tk_cvec_bits_top_mi (
   lua_State *L,
   tk_cvec_t *bitmap,
   tk_cvec_t *codes,
@@ -2899,7 +2294,9 @@ static inline void tk_cvec_bits_top_mi_grouped (
   uint64_t n_samples,
   uint64_t n_features,
   uint64_t n_hidden,
-  uint64_t top_k
+  uint64_t per_class_k,
+  uint64_t union_top_k,
+  tk_pool_t pool
 ) {
   tk_ivec_t *offsets = tk_ivec_create(L, 0, 0, 0);
   tk_ivec_t *features = tk_ivec_create(L, 0, 0, 0);
@@ -2960,7 +2357,7 @@ static inline void tk_cvec_bits_top_mi_grouped (
           if (A <= C * P / N) continue;
           double mi = tk_mi_from_marginals(N, C, P, A);
           tk_rank_t r = { (int64_t)f, mi };
-          tk_rvec_hmin(heap, top_k, r);
+          tk_rvec_hmin(heap, per_class_k, r);
         }
       }
       if (heap->n > 0)
@@ -3072,7 +2469,7 @@ static inline void tk_cvec_bits_top_mi_grouped (
           if (A <= C * P / N) continue;
           double mi = tk_mi_from_marginals(N, C, P, A);
           tk_rank_t r = { (int64_t)f, mi };
-          tk_rvec_hmin(heap, top_k, r);
+          tk_rvec_hmin(heap, per_class_k, r);
         }
       }
       if (heap->n > 0)
@@ -3091,9 +2488,12 @@ static inline void tk_cvec_bits_top_mi_grouped (
   } else {
     for (uint64_t b = 0; b <= n_hidden; b++) tk_ivec_push(offsets, 0);
   }
+  tk_build_pooled_union(L, offsets, features, weights, n_hidden, union_top_k, pool);
+  lua_insert(L, -5);
+  lua_insert(L, -5);
 }
 
-static inline void tk_cvec_bits_top_bns_grouped (
+static inline void tk_cvec_bits_top_bns (
   lua_State *L,
   tk_cvec_t *bitmap,
   tk_cvec_t *codes,
@@ -3101,7 +2501,9 @@ static inline void tk_cvec_bits_top_bns_grouped (
   uint64_t n_samples,
   uint64_t n_features,
   uint64_t n_hidden,
-  uint64_t top_k
+  uint64_t per_class_k,
+  uint64_t union_top_k,
+  tk_pool_t pool
 ) {
   tk_ivec_t *offsets = tk_ivec_create(L, 0, 0, 0);
   tk_ivec_t *features = tk_ivec_create(L, 0, 0, 0);
@@ -3162,7 +2564,7 @@ static inline void tk_cvec_bits_top_bns_grouped (
           if (A <= C * P / N) continue;
           double bns = tk_bns_from_marginals(N, C, P, A);
           tk_rank_t r = { (int64_t)f, bns };
-          tk_rvec_hmin(heap, top_k, r);
+          tk_rvec_hmin(heap, per_class_k, r);
         }
       }
       if (heap->n > 0)
@@ -3274,7 +2676,7 @@ static inline void tk_cvec_bits_top_bns_grouped (
           if (A <= C * P / N) continue;
           double bns = tk_bns_from_marginals(N, C, P, A);
           tk_rank_t r = { (int64_t)f, bns };
-          tk_rvec_hmin(heap, top_k, r);
+          tk_rvec_hmin(heap, per_class_k, r);
         }
       }
       if (heap->n > 0)
@@ -3293,6 +2695,9 @@ static inline void tk_cvec_bits_top_bns_grouped (
   } else {
     for (uint64_t b = 0; b <= n_hidden; b++) tk_ivec_push(offsets, 0);
   }
+  tk_build_pooled_union(L, offsets, features, weights, n_hidden, union_top_k, pool);
+  lua_insert(L, -5);
+  lua_insert(L, -5);
 }
 
 static inline tk_ivec_t *tk_cvec_bits_top_entropy (
@@ -3484,117 +2889,16 @@ static inline tk_ivec_t *tk_cvec_bits_top_df (
   return out;
 }
 
-
-
-
-
-
-
-
-static inline tk_ivec_t *tk_ivec_bits_top_reg_f (
-  lua_State *L,
-  tk_ivec_t *set_bits,
-  tk_dvec_t *targets,
-  uint64_t n_samples,
-  uint64_t n_features,
-  uint64_t top_k
-) {
-  double overall_sum = 0.0;
-  double total_sum_sq = 0.0;
-  #pragma omp parallel for reduction(+:overall_sum, total_sum_sq) schedule(static)
-  for (uint64_t i = 0; i < n_samples; i++) {
-    double y = targets->a[i];
-    overall_sum += y;
-    total_sum_sq += y * y;
-  }
-  double overall_mean = overall_sum / (double)n_samples;
-
-  atomic_uint *feat_counts = (atomic_uint *)calloc(n_features, sizeof(atomic_uint));
-  tk_dvec_t *feat_sums = tk_dvec_create(0, n_features, 0, 0);
-  tk_dvec_t *feat_sum_sq = tk_dvec_create(0, n_features, 0, 0);
-  tk_dvec_zero(feat_sums);
-  tk_dvec_zero(feat_sum_sq);
-
-  #pragma omp parallel for schedule(dynamic, 64)
-  for (uint64_t i = 0; i < set_bits->n; i++) {
-    int64_t bit = set_bits->a[i];
-    if (bit < 0) continue;
-    uint64_t sample = (uint64_t)bit / n_features;
-    uint64_t feature = (uint64_t)bit % n_features;
-    if (sample >= n_samples || feature >= n_features) continue;
-    double y = targets->a[sample];
-    atomic_fetch_add(&feat_counts[feature], 1);
-    #pragma omp atomic
-    feat_sums->a[feature] += y;
-    #pragma omp atomic
-    feat_sum_sq->a[feature] += y * y;
-  }
-
-  int n_threads = 1;
-  #pragma omp parallel
-  { n_threads = omp_get_num_threads(); }
-  tk_rvec_t **local_heaps = (tk_rvec_t **)calloc((size_t)n_threads, sizeof(tk_rvec_t *));
-  #pragma omp parallel
-  {
-    int tid = omp_get_thread_num();
-    local_heaps[tid] = tk_rvec_create(NULL, 0, 0, 0);
-    #pragma omp for schedule(static)
-    for (uint64_t f = 0; f < n_features; f++) {
-      int64_t n1 = (int64_t)atomic_load(&feat_counts[f]);
-      int64_t n0 = (int64_t)n_samples - n1;
-      if (n1 <= 1 || n0 <= 1) continue;
-
-      double sum1 = feat_sums->a[f];
-      double sum0 = overall_sum - sum1;
-      double mean1 = sum1 / (double)n1;
-      double mean0 = sum0 / (double)n0;
-
-      double ssb = (double)n1 * (mean1 - overall_mean) * (mean1 - overall_mean) +
-                   (double)n0 * (mean0 - overall_mean) * (mean0 - overall_mean);
-
-      double sum_sq1 = feat_sum_sq->a[f];
-      double sum_sq0 = total_sum_sq - sum_sq1;
-      double ssw1 = sum_sq1 - (sum1 * sum1) / (double)n1;
-      double ssw0 = sum_sq0 - (sum0 * sum0) / (double)n0;
-      double ssw = ssw1 + ssw0;
-
-      if (ssw < 1e-12) continue;
-      double F = ssb / (ssw / (double)(n_samples - 2));
-
-      tk_rank_t r = { (int64_t)f, F };
-      tk_rvec_hmin(local_heaps[tid], top_k, r);
-    }
-  }
-
-  tk_rvec_t *top_heap = tk_rvec_create(NULL, 0, 0, 0);
-  for (int t = 0; t < n_threads; t++) {
-    for (uint64_t i = 0; i < local_heaps[t]->n; i++)
-      tk_rvec_hmin(top_heap, top_k, local_heaps[t]->a[i]);
-    tk_rvec_destroy(local_heaps[t]);
-  }
-  free(local_heaps);
-
-  free(feat_counts);
-  tk_dvec_destroy(feat_sums);
-  tk_dvec_destroy(feat_sum_sq);
-
-  tk_rvec_desc(top_heap, 0, top_heap->n);
-  tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
-  tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
-  tk_rvec_keys(L, top_heap, out);
-  tk_rvec_values(L, top_heap, weights);
-  tk_rvec_destroy(top_heap);
-  return out;
-}
-
-static inline void tk_ivec_bits_top_reg_f_grouped (
+static inline void tk_ivec_bits_top_reg_f (
   lua_State *L,
   tk_ivec_t *set_bits,
   tk_dvec_t *targets,
   uint64_t n_samples,
   uint64_t n_features,
   uint64_t n_hidden,
-  uint64_t top_k
+  uint64_t per_class_k,
+  uint64_t union_top_k,
+  tk_pool_t pool
 ) {
   tk_ivec_t *offsets = tk_ivec_create(L, 0, 0, 0);
   tk_ivec_t *features = tk_ivec_create(L, 0, 0, 0);
@@ -3609,6 +2913,9 @@ static inline void tk_ivec_bits_top_reg_f_grouped (
   if (!feat_counts || !feat_sums || !feat_sum_sq) {
     free(feat_counts); free(feat_sums); free(feat_sum_sq);
     for (uint64_t h = 0; h <= n_hidden; h++) tk_ivec_push(offsets, 0);
+    tk_build_pooled_union(L, offsets, features, weights, n_hidden, union_top_k, pool);
+    lua_insert(L, -5);
+    lua_insert(L, -5);
     return;
   }
 
@@ -3697,14 +3004,14 @@ static inline void tk_ivec_bits_top_reg_f_grouped (
         double F = ssb / (ssw / (double)(n_samples - 2));
 
         tk_rank_t r = { (int64_t)f, F };
-        tk_rvec_hmin(local_heaps[tid], top_k, r);
+        tk_rvec_hmin(local_heaps[tid], per_class_k, r);
       }
     }
 
     tk_rvec_t *merged = tk_rvec_create(NULL, 0, 0, 0);
     for (int t = 0; t < n_threads; t++) {
       for (uint64_t j = 0; j < local_heaps[t]->n; j++)
-        tk_rvec_hmin(merged, top_k, local_heaps[t]->a[j]);
+        tk_rvec_hmin(merged, per_class_k, local_heaps[t]->a[j]);
       tk_rvec_destroy(local_heaps[t]);
     }
     free(local_heaps);
@@ -3727,6 +3034,9 @@ static inline void tk_ivec_bits_top_reg_f_grouped (
   free(feat_sum_sq);
   tk_dvec_destroy(overall_sums);
   tk_dvec_destroy(total_sum_sq);
+  tk_build_pooled_union(L, offsets, features, weights, n_hidden, union_top_k, pool);
+  lua_insert(L, -5);
+  lua_insert(L, -5);
 }
 
 static inline tk_ivec_t *tk_ivec_bits_top_reg_pearson (
@@ -3929,106 +3239,6 @@ static inline tk_ivec_t *tk_ivec_bits_top_reg_mi (
   return out;
 }
 
-static inline tk_ivec_t *tk_cvec_bits_top_reg_f (
-  lua_State *L,
-  tk_cvec_t *bitmap,
-  tk_dvec_t *targets,
-  uint64_t n_samples,
-  uint64_t n_features,
-  uint64_t top_k
-) {
-  double overall_sum = 0.0;
-  for (uint64_t i = 0; i < n_samples; i++)
-    overall_sum += targets->a[i];
-  double overall_mean = overall_sum / (double)n_samples;
-
-  tk_ivec_t *feat_counts = tk_ivec_create(0, n_features, 0, 0);
-  tk_dvec_t *feat_sums = tk_dvec_create(0, n_features, 0, 0);
-  tk_dvec_t *feat_sum_sq = tk_dvec_create(0, n_features, 0, 0);
-  tk_ivec_zero(feat_counts);
-  tk_dvec_zero(feat_sums);
-  tk_dvec_zero(feat_sum_sq);
-
-  uint8_t *bitmap_data = (uint8_t *)bitmap->a;
-  uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
-
-  for (uint64_t s = 0; s < n_samples; s++) {
-    uint64_t sample_offset = s * bytes_per_sample;
-    double y = targets->a[s];
-    for (uint64_t f = 0; f < n_features; f++) {
-      uint64_t byte_idx = f / CHAR_BIT;
-      uint8_t bit_idx = f % CHAR_BIT;
-      if (bitmap_data[sample_offset + byte_idx] & (1u << bit_idx)) {
-        feat_counts->a[f]++;
-        feat_sums->a[f] += y;
-        feat_sum_sq->a[f] += y * y;
-      }
-    }
-  }
-
-  double total_sum_sq = 0.0;
-  for (uint64_t i = 0; i < n_samples; i++) {
-    double y = targets->a[i];
-    total_sum_sq += y * y;
-  }
-
-  int n_threads = 1;
-  #pragma omp parallel
-  { n_threads = omp_get_num_threads(); }
-  tk_rvec_t **local_heaps = (tk_rvec_t **)calloc((size_t)n_threads, sizeof(tk_rvec_t *));
-  #pragma omp parallel
-  {
-    int tid = omp_get_thread_num();
-    local_heaps[tid] = tk_rvec_create(NULL, 0, 0, 0);
-    #pragma omp for schedule(static)
-    for (uint64_t f = 0; f < n_features; f++) {
-      int64_t n1 = feat_counts->a[f];
-      int64_t n0 = (int64_t)n_samples - n1;
-      if (n1 <= 1 || n0 <= 1) continue;
-
-      double sum1 = feat_sums->a[f];
-      double sum0 = overall_sum - sum1;
-      double mean1 = sum1 / (double)n1;
-      double mean0 = sum0 / (double)n0;
-
-      double ssb = (double)n1 * (mean1 - overall_mean) * (mean1 - overall_mean) +
-                   (double)n0 * (mean0 - overall_mean) * (mean0 - overall_mean);
-
-      double sum_sq1 = feat_sum_sq->a[f];
-      double sum_sq0 = total_sum_sq - sum_sq1;
-      double ssw1 = sum_sq1 - (sum1 * sum1) / (double)n1;
-      double ssw0 = sum_sq0 - (sum0 * sum0) / (double)n0;
-      double ssw = ssw1 + ssw0;
-
-      if (ssw < 1e-12) continue;
-      double F = ssb / (ssw / (double)(n_samples - 2));
-
-      tk_rank_t r = { (int64_t)f, F };
-      tk_rvec_hmin(local_heaps[tid], top_k, r);
-    }
-  }
-
-  tk_rvec_t *top_heap = tk_rvec_create(NULL, 0, 0, 0);
-  for (int t = 0; t < n_threads; t++) {
-    for (uint64_t i = 0; i < local_heaps[t]->n; i++)
-      tk_rvec_hmin(top_heap, top_k, local_heaps[t]->a[i]);
-    tk_rvec_destroy(local_heaps[t]);
-  }
-  free(local_heaps);
-
-  tk_ivec_destroy(feat_counts);
-  tk_dvec_destroy(feat_sums);
-  tk_dvec_destroy(feat_sum_sq);
-
-  tk_rvec_desc(top_heap, 0, top_heap->n);
-  tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
-  tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
-  tk_rvec_keys(L, top_heap, out);
-  tk_rvec_values(L, top_heap, weights);
-  tk_rvec_destroy(top_heap);
-
-  return out;
-}
 
 static inline tk_ivec_t *tk_cvec_bits_top_reg_pearson (
   lua_State *L,
@@ -4241,382 +3451,5 @@ static inline tk_ivec_t *tk_cvec_bits_top_reg_mi (
   return out;
 }
 
-static inline tk_ivec_t *tk_ivec_bits_top_bns (
-  lua_State *L,
-  tk_ivec_t *set_bits,
-  char *codes,
-  tk_ivec_t *labels,
-  uint64_t n_samples,
-  uint64_t n_visible,
-  uint64_t n_hidden,
-  uint64_t top_k,
-  tk_pool_t pool
-) {
-  if (codes) {
-
-    return tk_ivec_bits_top_sparse_codes(L, set_bits, codes, n_samples, n_visible, n_hidden, top_k, pool, tk_bns_from_marginals);
-
-  } else if (labels) {
-
-    return tk_ivec_bits_top_sparse_twophase(L, set_bits, labels, n_samples, n_visible, n_hidden, top_k, pool, tk_bns_from_marginals);
-
-  } else {
-    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
-    tk_dvec_create(L, 0, 0, 0);
-    return out;
-  }
-}
-
-static inline tk_ivec_t *tk_cvec_bits_top_bns (
-  lua_State *L,
-  tk_cvec_t *bitmap,
-  tk_cvec_t *codes,
-  tk_ivec_t *labels,
-  uint64_t n_samples,
-  uint64_t n_features,
-  uint64_t n_hidden,
-  uint64_t top_k,
-  tk_pool_t pool
-) {
-
-  if (codes) {
-
-    atomic_uint *active_counts = (atomic_uint *)calloc(n_features * n_hidden, sizeof(atomic_uint));
-    atomic_uint *label_counts = (atomic_uint *)calloc(n_hidden, sizeof(atomic_uint));
-    atomic_uint *feat_counts = (atomic_uint *)calloc(n_features, sizeof(atomic_uint));
-    if (!active_counts || !label_counts || !feat_counts) {
-      free(active_counts);
-      free(label_counts);
-      free(feat_counts);
-      return NULL;
-    }
-
-    uint8_t *bitmap_data = (uint8_t *)bitmap->a;
-    uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
-    #pragma omp parallel for schedule(static)
-    for (uint64_t s = 0; s < n_samples; s++) {
-      uint64_t sample_offset = s * bytes_per_sample;
-      uint8_t *sample_codes = (uint8_t *)(codes->a + s * TK_CVEC_BITS_BYTES(n_hidden));
-      for (uint64_t f = 0; f < n_features; f++) {
-        uint64_t byte_idx = f / CHAR_BIT;
-        uint8_t bit_idx = f % CHAR_BIT;
-        if (bitmap_data[sample_offset + byte_idx] & (1u << bit_idx)) {
-          atomic_fetch_add(&feat_counts[f], 1);
-          for (uint64_t b = 0; b < n_hidden; b++) {
-            uint64_t b_byte = b / CHAR_BIT;
-            uint8_t b_bit = b % CHAR_BIT;
-            if (sample_codes[b_byte] & (1u << b_bit))
-              atomic_fetch_add(&active_counts[f * n_hidden + b], 1);
-          }
-        }
-      }
-    }
-
-    #pragma omp parallel for schedule(static)
-    for (uint64_t s = 0; s < n_samples; s++) {
-      uint8_t *s_codes = (uint8_t *)(codes->a + s * TK_CVEC_BITS_BYTES(n_hidden));
-      for (uint64_t b = 0; b < n_hidden; b++) {
-        uint64_t byte_idx = b / CHAR_BIT;
-        uint8_t bit_pos = b % CHAR_BIT;
-        if (s_codes[byte_idx] & (1u << bit_pos))
-          atomic_fetch_add(&label_counts[b], 1);
-      }
-    }
-
-    double N = (double)n_samples;
-    int n_threads = 1;
-    #pragma omp parallel
-    { n_threads = omp_get_num_threads(); }
-    tk_rvec_t **local_heaps = (tk_rvec_t **)calloc((size_t)n_threads, sizeof(tk_rvec_t *));
-
-    #pragma omp parallel
-    {
-      int tid = omp_get_thread_num();
-      local_heaps[tid] = tk_rvec_create(NULL, 0, 0, 0);
-      #pragma omp for schedule(static)
-      for (uint64_t f = 0; f < n_features; f++) {
-        double C = (double)atomic_load(&feat_counts[f]);
-        if (C <= 0 || C >= N) continue;
-        double pool_sum = 0.0, pool_min = DBL_MAX, pool_max = -DBL_MAX;
-        uint64_t pool_count = 0;
-        for (uint64_t b = 0; b < n_hidden; b++) {
-          double P = (double)atomic_load(&label_counts[b]);
-          if (P <= 0 || P >= N) continue;
-          double A = (double)atomic_load(&active_counts[f * n_hidden + b]);
-          double bns = tk_bns_from_marginals(N, C, P, A);
-          pool_sum += bns;
-          if (bns < pool_min) pool_min = bns;
-          if (bns > pool_max) pool_max = bns;
-          pool_count++;
-        }
-        if (pool_count > 0) {
-          double score;
-          switch (pool) {
-            case TK_POOL_MIN: score = pool_min; break;
-            case TK_POOL_MAX: score = pool_max; break;
-            case TK_POOL_AVG: score = pool_sum / (double)pool_count; break;
-            default: score = pool_sum; break;
-          }
-          tk_rank_t r = { (int64_t)f, score };
-          tk_rvec_hmin(local_heaps[tid], top_k, r);
-        }
-      }
-    }
-
-    tk_rvec_t *top_heap = tk_rvec_create(NULL, 0, 0, 0);
-    for (int t = 0; t < n_threads; t++) {
-      for (uint64_t i = 0; i < local_heaps[t]->n; i++)
-        tk_rvec_hmin(top_heap, top_k, local_heaps[t]->a[i]);
-      tk_rvec_destroy(local_heaps[t]);
-    }
-    free(local_heaps);
-    free(active_counts);
-    free(feat_counts);
-    free(label_counts);
-
-    tk_rvec_desc(top_heap, 0, top_heap->n);
-    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
-    tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
-    tk_rvec_keys(L, top_heap, out);
-    tk_rvec_values(L, top_heap, weights);
-    tk_rvec_destroy(top_heap);
-    return out;
-
-  } else if (labels) {
-
-    tk_iumap_t *active_counts = tk_iumap_create(0, 0);
-    atomic_uint *feat_counts = (atomic_uint *)calloc(n_features, sizeof(atomic_uint));
-    atomic_uint *label_counts = (atomic_uint *)calloc(n_hidden, sizeof(atomic_uint));
-    if (!feat_counts || !label_counts) {
-      free(feat_counts);
-      free(label_counts);
-      tk_iumap_destroy(active_counts);
-      return NULL;
-    }
-
-    uint8_t *bitmap_data = (uint8_t *)bitmap->a;
-    uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
-    #pragma omp parallel for schedule(static)
-    for (uint64_t s = 0; s < n_samples; s++) {
-      uint64_t sample_offset = s * bytes_per_sample;
-      for (uint64_t f = 0; f < n_features; f++) {
-        uint64_t byte_idx = f / CHAR_BIT;
-        uint8_t bit_idx = f % CHAR_BIT;
-        if (bitmap_data[sample_offset + byte_idx] & (1u << bit_idx))
-          atomic_fetch_add(&feat_counts[f], 1);
-      }
-    }
-
-    #pragma omp parallel for schedule(static)
-    for (uint64_t i = 0; i < labels->n; i++) {
-      int64_t bit = labels->a[i];
-      if (bit >= 0)
-        atomic_fetch_add(&label_counts[(uint64_t)bit % n_hidden], 1);
-    }
-
-    int n_threads = 1;
-    #pragma omp parallel
-    { n_threads = omp_get_num_threads(); }
-
-    tk_iumap_t **local_maps = (tk_iumap_t **)calloc((size_t)n_threads, sizeof(tk_iumap_t *));
-    if (!local_maps) {
-      free(feat_counts);
-      free(label_counts);
-      tk_iumap_destroy(active_counts);
-      return NULL;
-    }
-
-    #pragma omp parallel
-    {
-      int tid = omp_get_thread_num();
-      local_maps[tid] = tk_iumap_create(0, 0);
-
-      #pragma omp for schedule(dynamic, 64)
-      for (uint64_t s = 0; s < n_samples; s++) {
-        uint64_t sample_offset = s * bytes_per_sample;
-        int64_t label_start = tk_ivec_set_find(labels->a, 0, (int64_t)labels->n, (int64_t)(s * n_hidden));
-        if (label_start < 0)
-          label_start = -(label_start + 1);
-        for (uint64_t f = 0; f < n_features; f++) {
-          uint64_t byte_idx = f / CHAR_BIT;
-          uint8_t bit_idx = f % CHAR_BIT;
-          if (!(bitmap_data[sample_offset + byte_idx] & (1u << bit_idx)))
-            continue;
-          for (int64_t li = label_start;
-               li < (int64_t)labels->n && labels->a[li] >= 0 &&
-               (uint64_t)labels->a[li] / n_hidden == s;
-               li++) {
-            uint64_t h = (uint64_t)labels->a[li] % n_hidden;
-            int64_t key = (int64_t)(f * n_hidden + h);
-            tk_iumap_inc(local_maps[tid], key);
-          }
-        }
-      }
-    }
-
-    for (int t = 0; t < n_threads; t++) {
-      if (local_maps[t]) {
-        int64_t mk, mv;
-        tk_umap_foreach(local_maps[t], mk, mv, ({
-          khint_t kit = tk_iumap_get(active_counts, mk);
-          if (kit != kh_end(active_counts)) {
-            kh_value(active_counts, kit) += mv;
-          } else {
-            int absent;
-            khint_t newk = tk_iumap_put(active_counts, mk, &absent);
-            kh_value(active_counts, newk) = mv;
-          }
-        }));
-        tk_iumap_destroy(local_maps[t]);
-      }
-    }
-    free(local_maps);
-
-    double N = (double)n_samples;
-    double *feat_max = (double *)malloc(n_features * sizeof(double));
-    double *feat_min = (double *)malloc(n_features * sizeof(double));
-    double *feat_sum = (double *)calloc(n_features, sizeof(double));
-    uint64_t *feat_count = (uint64_t *)calloc(n_features, sizeof(uint64_t));
-    if (!feat_max || !feat_min || !feat_sum || !feat_count) {
-      free(feat_max);
-      free(feat_min);
-      free(feat_sum);
-      free(feat_count);
-      free(feat_counts);
-      free(label_counts);
-      tk_iumap_destroy(active_counts);
-      tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
-      tk_dvec_create(L, 0, 0, 0);
-      return out;
-    }
-    for (uint64_t f = 0; f < n_features; f++) {
-      feat_max[f] = -DBL_MAX;
-      feat_min[f] = DBL_MAX;
-    }
-
-    int64_t k, v;
-    tk_umap_foreach(active_counts, k, v, ({
-      uint64_t f = (uint64_t)k / n_hidden;
-      uint64_t b = (uint64_t)k % n_hidden;
-      if (f >= n_features || b >= n_hidden) continue;
-      double C = (double)atomic_load(&feat_counts[f]);
-      double P = (double)atomic_load(&label_counts[b]);
-      double A = (double)v;
-      double bns = tk_bns_from_marginals(N, C, P, A);
-      feat_sum[f] += bns;
-      if (bns > feat_max[f]) feat_max[f] = bns;
-      if (bns < feat_min[f]) feat_min[f] = bns;
-      feat_count[f]++;
-    }));
-
-    tk_rvec_t *max_heap = tk_rvec_create(NULL, 0, 0, 0);
-    for (uint64_t f = 0; f < n_features; f++) {
-      double C = (double)atomic_load(&feat_counts[f]);
-      if (feat_count[f] > 0 && C > 0 && C < N) {
-        tk_rank_t r = { (int64_t)f, feat_max[f] };
-        tk_rvec_hmin(max_heap, top_k, r);
-      }
-    }
-
-    tk_rvec_t *pool_heap = tk_rvec_create(NULL, 0, 0, 0);
-    if (pool != TK_POOL_MAX) {
-      for (uint64_t f = 0; f < n_features; f++) {
-        double C = (double)atomic_load(&feat_counts[f]);
-        if (feat_count[f] > 0 && C > 0 && C < N) {
-          double score;
-          switch (pool) {
-            case TK_POOL_MIN: score = feat_min[f]; break;
-            case TK_POOL_AVG: score = feat_sum[f] / (double)feat_count[f]; break;
-            default:          score = feat_sum[f]; break;
-          }
-          tk_rank_t r = { (int64_t)f, score };
-          tk_rvec_hmin(pool_heap, top_k, r);
-        }
-      }
-    }
-
-    tk_iuset_t *candidate_set = tk_iuset_create(0, 0);
-    for (uint64_t i = 0; i < max_heap->n; i++) {
-      int absent;
-      tk_iuset_put(candidate_set, max_heap->a[i].i, &absent);
-    }
-    for (uint64_t i = 0; i < pool_heap->n; i++) {
-      int absent;
-      tk_iuset_put(candidate_set, pool_heap->a[i].i, &absent);
-    }
-    tk_rvec_destroy(max_heap);
-    tk_rvec_destroy(pool_heap);
-
-    free(feat_max);
-    free(feat_min);
-    free(feat_sum);
-    free(feat_count);
-
-    uint64_t n_cand = tk_iuset_size(candidate_set);
-    int64_t *cand_features = (int64_t *)malloc(n_cand * sizeof(int64_t));
-    uint64_t ci = 0;
-    int64_t ckey;
-    tk_umap_foreach_keys(candidate_set, ckey, ({
-      cand_features[ci++] = ckey;
-    }));
-    tk_iuset_destroy(candidate_set);
-
-    double *final_scores = (double *)calloc(n_cand, sizeof(double));
-
-    #pragma omp parallel for schedule(dynamic)
-    for (uint64_t ci = 0; ci < n_cand; ci++) {
-      uint64_t f = (uint64_t)cand_features[ci];
-      double C = (double)atomic_load(&feat_counts[f]);
-      if (C <= 0 || C >= N) continue;
-      double pool_sum = 0.0, pool_min = DBL_MAX, pool_max = -DBL_MAX;
-      uint64_t pool_count = 0;
-      for (uint64_t b = 0; b < n_hidden; b++) {
-        double P = (double)atomic_load(&label_counts[b]);
-        if (P <= 0 || P >= N) continue;
-        int64_t key = (int64_t)(f * n_hidden + b);
-        khint_t kit = tk_iumap_get(active_counts, key);
-        double A = (kit != kh_end(active_counts)) ? (double)kh_value(active_counts, kit) : 0.0;
-        double bns = tk_bns_from_marginals(N, C, P, A);
-        pool_sum += bns;
-        if (bns < pool_min) pool_min = bns;
-        if (bns > pool_max) pool_max = bns;
-        pool_count++;
-      }
-      if (pool_count > 0) {
-        switch (pool) {
-          case TK_POOL_MIN: final_scores[ci] = pool_min; break;
-          case TK_POOL_MAX: final_scores[ci] = pool_max; break;
-          case TK_POOL_AVG: final_scores[ci] = pool_sum / (double)pool_count; break;
-          default: final_scores[ci] = pool_sum; break;
-        }
-      }
-    }
-
-    tk_rvec_t *top_heap = tk_rvec_create(NULL, 0, 0, 0);
-    for (uint64_t ci = 0; ci < n_cand; ci++) {
-      tk_rank_t r = { cand_features[ci], final_scores[ci] };
-      tk_rvec_hmin(top_heap, top_k, r);
-    }
-
-    free(cand_features);
-    free(final_scores);
-    tk_iumap_destroy(active_counts);
-    free(feat_counts);
-    free(label_counts);
-
-    tk_rvec_desc(top_heap, 0, top_heap->n);
-    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
-    tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
-    tk_rvec_keys(L, top_heap, out);
-    tk_rvec_values(L, top_heap, weights);
-    tk_rvec_destroy(top_heap);
-    return out;
-
-  } else {
-    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
-    tk_dvec_create(L, 0, 0, 0);
-    return out;
-  }
-}
 
 #endif

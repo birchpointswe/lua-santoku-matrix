@@ -3,60 +3,16 @@
 #include <santoku/cvec.h>
 #include <string.h>
 
-static inline int tk_ivec_bits_top_mi_lua (lua_State *L)
-{
-  lua_settop(L, 7);
-  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
-  uint64_t n_samples = tk_lua_checkunsigned(L, 3, "samples");
-  uint64_t n_visible = tk_lua_checkunsigned(L, 4, "visible");
-  uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
-  uint64_t top_k = lua_isnil(L, 6) ? n_visible : tk_lua_checkunsigned(L, 6, "top_k");
-  tk_pool_t pool = tk_pool_from_string(lua_tostring(L, 7));
-  char *codes = NULL;
-  tk_ivec_t *labels = NULL;
-  if (lua_isnil(L, 2)) {
-  } else if (tk_lua_testuserdata(L, 2, "tk_cvec_t")) {
-    tk_cvec_t *cvec = tk_cvec_peek(L, 2, "codes");
-    codes = cvec->a;
-  } else {
-    tk_ivec_t *m1 = tk_ivec_peek(L, 2, "labels");
-    labels = m1;
-  }
-  tk_ivec_bits_top_mi(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, top_k, pool);
-  return 2;
-}
-
 static inline int tk_ivec_bits_top_chi2_lua (lua_State *L)
 {
-  lua_settop(L, 7);
+  lua_settop(L, 8);
   tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
   uint64_t n_samples = tk_lua_checkunsigned(L, 3, "samples");
   uint64_t n_visible = tk_lua_checkunsigned(L, 4, "visible");
   uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
-  uint64_t top_k = lua_isnil(L, 6) ? n_visible : tk_lua_checkunsigned(L, 6, "top_k");
-  tk_pool_t pool = tk_pool_from_string(lua_tostring(L, 7));
-  char *codes = NULL;
-  tk_ivec_t *labels = NULL;
-  if (lua_isnil(L, 2)) {
-  } else if (tk_lua_testuserdata(L, 2, "tk_cvec_t")) {
-    tk_cvec_t *cvec = tk_cvec_peek(L, 2, "codes");
-    codes = cvec->a;
-  } else {
-    tk_ivec_t *m1 = tk_ivec_peek(L, 2, "labels");
-    labels = m1;
-  }
-  tk_ivec_bits_top_chi2(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, top_k, pool);
-  return 2;
-}
-
-static inline int tk_ivec_bits_top_chi2_grouped_lua (lua_State *L)
-{
-  lua_settop(L, 6);
-  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
-  uint64_t n_samples = tk_lua_checkunsigned(L, 3, "samples");
-  uint64_t n_visible = tk_lua_checkunsigned(L, 4, "visible");
-  uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
-  uint64_t top_k = lua_isnil(L, 6) ? n_visible : tk_lua_checkunsigned(L, 6, "top_k");
+  uint64_t per_class_k = lua_isnil(L, 6) ? n_visible : tk_lua_checkunsigned(L, 6, "per_class_k");
+  uint64_t union_top_k = lua_isnil(L, 7) ? 0 : tk_lua_checkunsigned(L, 7, "union_top_k");
+  tk_pool_t pool = tk_pool_from_string(lua_tostring(L, 8));
   char *codes = NULL;
   tk_ivec_t *labels = NULL;
   if (lua_isnil(L, 2)) {
@@ -66,18 +22,20 @@ static inline int tk_ivec_bits_top_chi2_grouped_lua (lua_State *L)
   } else {
     labels = tk_ivec_peek(L, 2, "labels");
   }
-  tk_ivec_bits_top_chi2_grouped(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, top_k);
-  return 3;
+  tk_ivec_bits_top_chi2(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, per_class_k, union_top_k, pool);
+  return 5;
 }
 
-static inline int tk_ivec_bits_top_mi_grouped_lua (lua_State *L)
+static inline int tk_ivec_bits_top_mi_lua (lua_State *L)
 {
-  lua_settop(L, 6);
+  lua_settop(L, 8);
   tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
   uint64_t n_samples = tk_lua_checkunsigned(L, 3, "samples");
   uint64_t n_visible = tk_lua_checkunsigned(L, 4, "visible");
   uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
-  uint64_t top_k = lua_isnil(L, 6) ? n_visible : tk_lua_checkunsigned(L, 6, "top_k");
+  uint64_t per_class_k = lua_isnil(L, 6) ? n_visible : tk_lua_checkunsigned(L, 6, "per_class_k");
+  uint64_t union_top_k = lua_isnil(L, 7) ? 0 : tk_lua_checkunsigned(L, 7, "union_top_k");
+  tk_pool_t pool = tk_pool_from_string(lua_tostring(L, 8));
   char *codes = NULL;
   tk_ivec_t *labels = NULL;
   if (lua_isnil(L, 2)) {
@@ -87,18 +45,20 @@ static inline int tk_ivec_bits_top_mi_grouped_lua (lua_State *L)
   } else {
     labels = tk_ivec_peek(L, 2, "labels");
   }
-  tk_ivec_bits_top_mi_grouped(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, top_k);
-  return 3;
+  tk_ivec_bits_top_mi(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, per_class_k, union_top_k, pool);
+  return 5;
 }
 
-static inline int tk_ivec_bits_top_bns_grouped_lua (lua_State *L)
+static inline int tk_ivec_bits_top_bns_lua (lua_State *L)
 {
-  lua_settop(L, 6);
+  lua_settop(L, 8);
   tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
   uint64_t n_samples = tk_lua_checkunsigned(L, 3, "samples");
   uint64_t n_visible = tk_lua_checkunsigned(L, 4, "visible");
   uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
-  uint64_t top_k = lua_isnil(L, 6) ? n_visible : tk_lua_checkunsigned(L, 6, "top_k");
+  uint64_t per_class_k = lua_isnil(L, 6) ? n_visible : tk_lua_checkunsigned(L, 6, "per_class_k");
+  uint64_t union_top_k = lua_isnil(L, 7) ? 0 : tk_lua_checkunsigned(L, 7, "union_top_k");
+  tk_pool_t pool = tk_pool_from_string(lua_tostring(L, 8));
   char *codes = NULL;
   tk_ivec_t *labels = NULL;
   if (lua_isnil(L, 2)) {
@@ -108,8 +68,8 @@ static inline int tk_ivec_bits_top_bns_grouped_lua (lua_State *L)
   } else {
     labels = tk_ivec_peek(L, 2, "labels");
   }
-  tk_ivec_bits_top_bns_grouped(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, top_k);
-  return 3;
+  tk_ivec_bits_top_bns(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, per_class_k, union_top_k, pool);
+  return 5;
 }
 
 static inline int tk_ivec_bits_top_entropy_lua (lua_State *L)
@@ -139,14 +99,17 @@ static inline int tk_ivec_bits_top_df_lua (lua_State *L)
 
 static inline int tk_ivec_bits_top_reg_f_lua (lua_State *L)
 {
-  lua_settop(L, 5);
+  lua_settop(L, 8);
   tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
   tk_dvec_t *targets = tk_dvec_peek(L, 2, "targets");
   uint64_t n_samples = tk_lua_checkunsigned(L, 3, "n_samples");
   uint64_t n_features = tk_lua_checkunsigned(L, 4, "n_features");
-  uint64_t top_k = lua_isnil(L, 5) ? n_features : tk_lua_checkunsigned(L, 5, "top_k");
-  tk_ivec_bits_top_reg_f(L, set_bits, targets, n_samples, n_features, top_k);
-  return 2;
+  uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "n_hidden");
+  uint64_t per_class_k = lua_isnil(L, 6) ? n_features : tk_lua_checkunsigned(L, 6, "per_class_k");
+  uint64_t union_top_k = lua_isnil(L, 7) ? 0 : tk_lua_checkunsigned(L, 7, "union_top_k");
+  tk_pool_t pool = tk_pool_from_string(lua_tostring(L, 8));
+  tk_ivec_bits_top_reg_f(L, set_bits, targets, n_samples, n_features, n_hidden, per_class_k, union_top_k, pool);
+  return 5;
 }
 
 static inline int tk_ivec_bits_top_reg_pearson_lua (lua_State *L)
@@ -172,19 +135,6 @@ static inline int tk_ivec_bits_top_reg_mi_lua (lua_State *L)
   uint64_t n_bins = lua_isnil(L, 6) ? 10 : tk_lua_checkunsigned(L, 6, "n_bins");
   tk_ivec_bits_top_reg_mi(L, set_bits, targets, n_samples, n_features, top_k, n_bins);
   return 2;
-}
-
-static inline int tk_ivec_bits_top_reg_f_grouped_lua (lua_State *L)
-{
-  lua_settop(L, 6);
-  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
-  tk_dvec_t *targets = tk_dvec_peek(L, 2, "targets");
-  uint64_t n_samples = tk_lua_checkunsigned(L, 3, "n_samples");
-  uint64_t n_features = tk_lua_checkunsigned(L, 4, "n_features");
-  uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "n_hidden");
-  uint64_t top_k = lua_isnil(L, 6) ? n_features : tk_lua_checkunsigned(L, 6, "top_k");
-  tk_ivec_bits_top_reg_f_grouped(L, set_bits, targets, n_samples, n_features, n_hidden, top_k);
-  return 3;
 }
 
 static inline int tk_ivec_bits_select_lua (lua_State *L)
@@ -746,28 +696,6 @@ static inline int tk_ivec_to_dvec_lua (lua_State *L) {
   return 1;
 }
 
-static inline int tk_ivec_bits_top_bns_lua (lua_State *L)
-{
-  lua_settop(L, 7);
-  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
-  uint64_t n_samples = tk_lua_checkunsigned(L, 3, "samples");
-  uint64_t n_visible = tk_lua_checkunsigned(L, 4, "visible");
-  uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "hidden");
-  uint64_t top_k = lua_isnil(L, 6) ? n_visible : tk_lua_checkunsigned(L, 6, "top_k");
-  tk_pool_t pool = tk_pool_from_string(lua_tostring(L, 7));
-  char *codes = NULL;
-  tk_ivec_t *labels = NULL;
-  if (lua_isnil(L, 2)) {
-  } else if (tk_lua_testuserdata(L, 2, "tk_cvec_t")) {
-    tk_cvec_t *cvec = tk_cvec_peek(L, 2, "codes");
-    codes = cvec->a;
-  } else {
-    labels = tk_ivec_peek(L, 2, "labels");
-  }
-  tk_ivec_bits_top_bns(L, set_bits, codes, labels, n_samples, n_visible, n_hidden, top_k, pool);
-  return 2;
-}
-
 static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
 {
   { "bits_to_csr", tk_ivec_bits_to_csr_lua },
@@ -777,14 +705,11 @@ static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
   { "copy_pvalues", tk_ivec_copy_pvalues_lua },
   { "copy_rvalues", tk_ivec_copy_rvalues_lua },
   { "bits_top_chi2", tk_ivec_bits_top_chi2_lua },
-  { "bits_top_chi2_grouped", tk_ivec_bits_top_chi2_grouped_lua },
   { "bits_top_mi", tk_ivec_bits_top_mi_lua },
-  { "bits_top_mi_grouped", tk_ivec_bits_top_mi_grouped_lua },
-  { "bits_top_bns_grouped", tk_ivec_bits_top_bns_grouped_lua },
+  { "bits_top_bns", tk_ivec_bits_top_bns_lua },
   { "bits_top_entropy", tk_ivec_bits_top_entropy_lua },
   { "bits_top_df", tk_ivec_bits_top_df_lua },
   { "bits_top_reg_f", tk_ivec_bits_top_reg_f_lua },
-  { "bits_top_reg_f_grouped", tk_ivec_bits_top_reg_f_grouped_lua },
   { "bits_top_reg_pearson", tk_ivec_bits_top_reg_pearson_lua },
   { "bits_top_reg_mi", tk_ivec_bits_top_reg_mi_lua },
   { "bits_select", tk_ivec_bits_select_lua },
@@ -806,7 +731,6 @@ static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
   { "index", tk_ivec_index_lua },
   { "scores_elbow", tk_ivec_scores_elbow_lua },
   { "to_dvec", tk_ivec_to_dvec_lua },
-  { "bits_top_bns", tk_ivec_bits_top_bns_lua },
   { NULL, NULL }
 };
 

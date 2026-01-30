@@ -134,7 +134,7 @@ test("ivec:bits_top_bns with labels basic", function ()
     4 * n_classes + 1,
     5 * n_classes + 1,
   })
-  local top_features, weights = bits:bits_top_bns(labels, n_samples, n_features, n_classes, 2)
+  local top_features, weights = bits:bits_top_bns(labels, n_samples, n_features, n_classes, nil, 2, "max")
   assert(top_features:size() == 2)
   assert(weights:size() == 2)
   local w = weights:table()
@@ -159,7 +159,7 @@ test("ivec:bits_top_bns excludes uninformative features", function ()
     2 * n_classes + 1,
     3 * n_classes + 1,
   })
-  local top_features, _ = bits:bits_top_bns(labels, n_samples, n_features, n_classes)
+  local top_features, _ = bits:bits_top_bns(labels, n_samples, n_features, n_classes, nil, nil, "max")
   local f = top_features:table()
   for _, feat in ipairs(f) do
     assert(feat ~= 0, "feature 0 (appears in all samples) should be excluded")
@@ -194,9 +194,12 @@ test("cvec:bits_top_bns with labels basic", function ()
     4 * n_classes + 1,
     5 * n_classes + 1,
   })
-  local top_features, weights = bitmap:bits_top_bns(labels, n_samples, n_features, n_classes, 2)
-  assert(top_features:size() == 2)
-  assert(weights:size() == 2)
+  local union_ids, union_weights, class_offsets, class_ids, class_weights = bitmap:bits_top_bns(labels, n_samples, n_features, n_classes, nil, 2, "max")
+  assert(union_ids:size() == 2)
+  assert(union_weights:size() == 2)
+  assert(class_offsets:size() == n_classes + 1)
+  assert(class_ids:size() > 0)
+  assert(class_ids:size() == class_weights:size())
 end)
 
 
@@ -259,10 +262,10 @@ test("ivec:bits_top_bns multi-label", function ()
     2 * n_labels + 2,
     3 * n_labels + 2,
   })
-  local top_features, weights = bits:bits_top_bns(labels, n_samples, n_features, n_labels, 3)
+  local top_features, weights = bits:bits_top_bns(labels, n_samples, n_features, n_labels, nil, 3, "max")
   assert(top_features ~= nil, "top_features should not be nil")
   assert(weights ~= nil, "weights should not be nil")
-  assert(top_features:size() <= 3, "should return at most top_k features")
+  assert(top_features:size() <= 3, "should return at most union_top_k features")
   assert(top_features:size() == weights:size(), "features and weights should match")
 end)
 
