@@ -1337,6 +1337,7 @@ static inline void tk_ivec_bits_top_chi2_grouped (
           khint_t kit = tk_iumap_get(active_counts, (int64_t)(f * n_hidden + b));
           if (kit != kh_end(active_counts))
             A = (double)kh_value(active_counts, kit);
+          if (A <= C * P / N) continue;
           double chi2 = tk_chi2_from_marginals(N, C, P, A);
           tk_rank_t r = { (int64_t)f, chi2 };
           tk_rvec_hmin(heap, top_k, r);
@@ -1443,6 +1444,7 @@ static inline void tk_ivec_bits_top_chi2_grouped (
           khint_t kit = tk_iumap_get(active_counts, (int64_t)(f * n_hidden + b));
           if (kit != kh_end(active_counts))
             A = (double)kh_value(active_counts, kit);
+          if (A <= C * P / N) continue;
           double chi2 = tk_chi2_from_marginals(N, C, P, A);
           tk_rank_t r = { (int64_t)f, chi2 };
           tk_rvec_hmin(heap, top_k, r);
@@ -1569,6 +1571,7 @@ static inline void tk_ivec_bits_top_mi_grouped (
           khint_t kit = tk_iumap_get(active_counts, (int64_t)(f * n_hidden + b));
           if (kit != kh_end(active_counts))
             A = (double)kh_value(active_counts, kit);
+          if (A <= C * P / N) continue;
           double mi = tk_mi_from_marginals(N, C, P, A);
           tk_rank_t r = { (int64_t)f, mi };
           tk_rvec_hmin(heap, top_k, r);
@@ -1675,6 +1678,7 @@ static inline void tk_ivec_bits_top_mi_grouped (
           khint_t kit = tk_iumap_get(active_counts, (int64_t)(f * n_hidden + b));
           if (kit != kh_end(active_counts))
             A = (double)kh_value(active_counts, kit);
+          if (A <= C * P / N) continue;
           double mi = tk_mi_from_marginals(N, C, P, A);
           tk_rank_t r = { (int64_t)f, mi };
           tk_rvec_hmin(heap, top_k, r);
@@ -1801,6 +1805,7 @@ static inline void tk_ivec_bits_top_bns_grouped (
           khint_t kit = tk_iumap_get(active_counts, (int64_t)(f * n_hidden + b));
           if (kit != kh_end(active_counts))
             A = (double)kh_value(active_counts, kit);
+          if (A <= C * P / N) continue;
           double bns = tk_bns_from_marginals(N, C, P, A);
           tk_rank_t r = { (int64_t)f, bns };
           tk_rvec_hmin(heap, top_k, r);
@@ -1907,6 +1912,7 @@ static inline void tk_ivec_bits_top_bns_grouped (
           khint_t kit = tk_iumap_get(active_counts, (int64_t)(f * n_hidden + b));
           if (kit != kh_end(active_counts))
             A = (double)kh_value(active_counts, kit);
+          if (A <= C * P / N) continue;
           double bns = tk_bns_from_marginals(N, C, P, A);
           tk_rank_t r = { (int64_t)f, bns };
           tk_rvec_hmin(heap, top_k, r);
@@ -2749,6 +2755,7 @@ static inline void tk_cvec_bits_top_chi2_grouped (
           double C = (double)atomic_load(&feat_counts[f]);
           if (C <= 0 || C >= N) continue;
           double A = (double)atomic_load(&active_counts[f * n_hidden + b]);
+          if (A <= C * P / N) continue;
           double chi2 = tk_chi2_from_marginals(N, C, P, A);
           tk_rank_t r = { (int64_t)f, chi2 };
           tk_rvec_hmin(heap, top_k, r);
@@ -2860,6 +2867,7 @@ static inline void tk_cvec_bits_top_chi2_grouped (
           khint_t kit = tk_iumap_get(active_counts, (int64_t)(f * n_hidden + b));
           if (kit != kh_end(active_counts))
             A = (double)kh_value(active_counts, kit);
+          if (A <= C * P / N) continue;
           double chi2 = tk_chi2_from_marginals(N, C, P, A);
           tk_rank_t r = { (int64_t)f, chi2 };
           tk_rvec_hmin(heap, top_k, r);
@@ -2949,6 +2957,7 @@ static inline void tk_cvec_bits_top_mi_grouped (
           double C = (double)atomic_load(&feat_counts[f]);
           if (C <= 0 || C >= N) continue;
           double A = (double)atomic_load(&active_counts[f * n_hidden + b]);
+          if (A <= C * P / N) continue;
           double mi = tk_mi_from_marginals(N, C, P, A);
           tk_rank_t r = { (int64_t)f, mi };
           tk_rvec_hmin(heap, top_k, r);
@@ -3060,6 +3069,7 @@ static inline void tk_cvec_bits_top_mi_grouped (
           khint_t kit = tk_iumap_get(active_counts, (int64_t)(f * n_hidden + b));
           if (kit != kh_end(active_counts))
             A = (double)kh_value(active_counts, kit);
+          if (A <= C * P / N) continue;
           double mi = tk_mi_from_marginals(N, C, P, A);
           tk_rank_t r = { (int64_t)f, mi };
           tk_rvec_hmin(heap, top_k, r);
@@ -3149,6 +3159,7 @@ static inline void tk_cvec_bits_top_bns_grouped (
           double C = (double)atomic_load(&feat_counts[f]);
           if (C <= 0 || C >= N) continue;
           double A = (double)atomic_load(&active_counts[f * n_hidden + b]);
+          if (A <= C * P / N) continue;
           double bns = tk_bns_from_marginals(N, C, P, A);
           tk_rank_t r = { (int64_t)f, bns };
           tk_rvec_hmin(heap, top_k, r);
@@ -3260,6 +3271,7 @@ static inline void tk_cvec_bits_top_bns_grouped (
           khint_t kit = tk_iumap_get(active_counts, (int64_t)(f * n_hidden + b));
           if (kit != kh_end(active_counts))
             A = (double)kh_value(active_counts, kit);
+          if (A <= C * P / N) continue;
           double bns = tk_bns_from_marginals(N, C, P, A);
           tk_rank_t r = { (int64_t)f, bns };
           tk_rvec_hmin(heap, top_k, r);
