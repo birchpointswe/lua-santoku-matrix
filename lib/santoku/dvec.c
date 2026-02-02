@@ -380,6 +380,38 @@ static inline int tk_dvec_to_ivec_lua (lua_State *L)
   return 1;
 }
 
+static inline int tk_dvec_mtx_center_lua (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_dvec_t *codes = tk_dvec_peek(L, 1, "codes");
+  uint64_t n_dims = tk_lua_checkunsigned(L, 2, "n_dims");
+  tk_dvec_t *centered = NULL;
+  tk_dvec_t *means = NULL;
+  tk_dvec_mtx_center(L, codes, n_dims, &centered, &means);
+  return 2;
+}
+
+static inline int tk_dvec_mtx_sign_lua (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_dvec_t *codes = tk_dvec_peek(L, 1, "codes");
+  uint64_t n_dims = tk_lua_checkunsigned(L, 2, "n_dims");
+  tk_dvec_mtx_sign(L, codes, n_dims);
+  lua_pushinteger(L, (lua_Integer)n_dims);
+  return 2;
+}
+
+static inline int tk_dvec_mtx_median_lua (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_dvec_t *codes = tk_dvec_peek(L, 1, "codes");
+  uint64_t n_dims = tk_lua_checkunsigned(L, 2, "n_dims");
+  tk_dvec_t *medians = NULL;
+  tk_dvec_mtx_median(L, codes, n_dims, &medians);
+  lua_pushinteger(L, (lua_Integer)n_dims);
+  return 3;
+}
+
 static luaL_Reg tk_dvec_lua_mt_ext2_fns[] =
 {
   { "center", tk_dvec_center_lua },
@@ -411,6 +443,9 @@ static luaL_Reg tk_dvec_lua_mt_ext2_fns[] =
   { "floor", tk_dvec_floor_lua },
   { "ceil", tk_dvec_ceil_lua },
   { "to_ivec", tk_dvec_to_ivec_lua },
+  { "mtx_center", tk_dvec_mtx_center_lua },
+  { "mtx_sign", tk_dvec_mtx_sign_lua },
+  { "mtx_median", tk_dvec_mtx_median_lua },
   { NULL, NULL }
 };
 

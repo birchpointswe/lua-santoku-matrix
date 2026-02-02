@@ -596,6 +596,144 @@ static inline tk_dvec_t *tk_dvec_csums_override(lua_State *L, tk_dvec_t *m0, uin
 #endif
 
 #include <santoku/iumap.h>
+#include <santoku/cvec/ext.h>
+
+static inline void tk_dvec_mtx_center (
+  lua_State *L,
+  tk_dvec_t *codes,
+  uint64_t n_dims,
+  tk_dvec_t **centered_out,
+  tk_dvec_t **means_out
+) {
+  const uint64_t K = n_dims;
+  const size_t N = codes->n / K;
+  tk_dvec_t *means = tk_dvec_create(L, K, 0, 0);
+  means->n = K;
+  tk_dvec_t *centered = tk_dvec_create(L, N * K, 0, 0);
+  centered->n = N * K;
+  memcpy(centered->a, codes->a, N * K * sizeof(double));
+  #pragma omp parallel for
+  for (uint64_t d = 0; d < K; d++) {
+    double sum = 0.0;
+    for (uint64_t i = 0; i < N; i++)
+      sum += centered->a[i * K + d];
+    double mu = sum / (double)N;
+    means->a[d] = mu;
+    for (uint64_t i = 0; i < N; i++)
+      centered->a[i * K + d] -= mu;
+  }
+  *centered_out = centered;
+  if (means_out)
+    *means_out = means;
+}
+
+static inline void tk_dvec_mtx_sign_raw (
+  char *out,
+  double *X,
+  uint64_t N,
+  uint64_t K
+) {
+  #pragma omp parallel for
+  for (uint64_t i = 0; i < N; i++) {
+    double *row = X + i * K;
+    uint8_t *out_row = (uint8_t *)(out + i * TK_CVEC_BITS_BYTES(K));
+    uint64_t full_bytes = K / 8;
+    for (uint64_t byte_idx = 0; byte_idx < full_bytes; byte_idx++) {
+      uint8_t byte_val = 0;
+      uint64_t j_base = byte_idx * 8;
+      for (uint64_t bit = 0; bit < 8; bit++)
+        byte_val |= (uint8_t)((row[j_base + bit] >= 0.0) << bit);
+      out_row[byte_idx] = byte_val;
+    }
+    uint64_t remaining_start = full_bytes * 8;
+    if (remaining_start < K) {
+      uint8_t byte_val = 0;
+      for (uint64_t j = remaining_start; j < K; j++)
+        byte_val |= (uint8_t)((row[j] >= 0.0) << (j - remaining_start));
+      out_row[full_bytes] = byte_val;
+    }
+  }
+}
+
+static inline tk_cvec_t *tk_dvec_mtx_sign (
+  lua_State *L,
+  tk_dvec_t *codes,
+  uint64_t n_dims
+) {
+  const uint64_t K = n_dims;
+  const size_t N = codes->n / K;
+  tk_cvec_t *binary = tk_cvec_create(L, N * TK_CVEC_BITS_BYTES(K), 0, 0);
+  binary->n = N * TK_CVEC_BITS_BYTES(K);
+  tk_cvec_zero(binary);
+  tk_dvec_mtx_sign_raw(binary->a, codes->a, N, K);
+  return binary;
+}
+
+static inline void tk_dvec_mtx_threshold_raw (
+  char *out,
+  double *X,
+  double *thresholds,
+  uint64_t N,
+  uint64_t K
+) {
+  #pragma omp parallel for
+  for (uint64_t i = 0; i < N; i++) {
+    double *row = X + i * K;
+    uint8_t *out_row = (uint8_t *)(out + i * TK_CVEC_BITS_BYTES(K));
+    uint64_t full_bytes = K / 8;
+    for (uint64_t byte_idx = 0; byte_idx < full_bytes; byte_idx++) {
+      uint8_t byte_val = 0;
+      uint64_t j_base = byte_idx * 8;
+      for (uint64_t bit = 0; bit < 8; bit++)
+        byte_val |= (uint8_t)((row[j_base + bit] >= thresholds[j_base + bit]) << bit);
+      out_row[byte_idx] = byte_val;
+    }
+    uint64_t remaining_start = full_bytes * 8;
+    if (remaining_start < K) {
+      uint8_t byte_val = 0;
+      for (uint64_t j = remaining_start; j < K; j++)
+        byte_val |= (uint8_t)((row[j] >= thresholds[j]) << (j - remaining_start));
+      out_row[full_bytes] = byte_val;
+    }
+  }
+}
+
+static int tk_dvec_mtx_cmp_double (const void *a, const void *b) {
+  double da = *(const double *)a;
+  double db = *(const double *)b;
+  return (da > db) - (da < db);
+}
+
+static inline tk_cvec_t *tk_dvec_mtx_median (
+  lua_State *L,
+  tk_dvec_t *codes,
+  uint64_t n_dims,
+  tk_dvec_t **medians_out
+) {
+  const uint64_t K = n_dims;
+  const size_t N = codes->n / K;
+  tk_cvec_t *binary = tk_cvec_create(L, N * TK_CVEC_BITS_BYTES(K), 0, 0);
+  binary->n = N * TK_CVEC_BITS_BYTES(K);
+  tk_cvec_zero(binary);
+  double *medians = malloc(K * sizeof(double));
+  double *col_buf = malloc(N * sizeof(double));
+  for (uint64_t k = 0; k < K; k++) {
+    for (uint64_t i = 0; i < N; i++)
+      col_buf[i] = codes->a[i * K + k];
+    qsort(col_buf, N, sizeof(double), tk_dvec_mtx_cmp_double);
+    medians[k] = (N % 2 == 1) ? col_buf[N / 2] : (col_buf[N / 2 - 1] + col_buf[N / 2]) / 2.0;
+  }
+  free(col_buf);
+  tk_dvec_mtx_threshold_raw(binary->a, codes->a, medians, N, K);
+  if (medians_out) {
+    tk_dvec_t *med_vec = tk_dvec_create(L, K, 0, 0);
+    med_vec->n = K;
+    memcpy(med_vec->a, medians, K * sizeof(double));
+    *medians_out = med_vec;
+  }
+  free(medians);
+  return binary;
+}
 
 static inline void tk_dvec_round (tk_dvec_t *v, uint64_t start, uint64_t end) {
   if (end > v->n) end = v->n;
