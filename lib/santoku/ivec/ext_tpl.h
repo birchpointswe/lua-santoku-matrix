@@ -179,3 +179,117 @@ static inline int tk_parallel_sfx(tk_ivec_bits_extend_mapped) (tk_ivec_t *base, 
   return 0;
 }
 
+static inline tk_ivec_t *tk_parallel_sfx(tk_ivec_bits_bipartite) (
+  lua_State *L,
+  tk_ivec_t *src,
+  uint64_t n_docs,
+  uint64_t n_labels,
+  tk_ivec_t *rank1,
+  uint64_t n_rank1,
+  bool inherit,
+  uint64_t *out_n_edges
+) {
+  if (src == NULL) return NULL;
+  uint64_t n_edges = src->n;
+  *out_n_edges = n_edges;
+  if (n_edges == 0) {
+    tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+    return out;
+  }
+  uint64_t n_features = (rank1 != NULL) ? (n_edges + n_rank1) : n_edges;
+  uint64_t n_rank1_entries = (rank1 != NULL) ? rank1->n : 0;
+  uint64_t out_size = 2 * n_edges + n_rank1_entries;
+  tk_ivec_t *out = tk_ivec_create(L, out_size, 0, 0);
+  if (!out) return NULL;
+  if (tk_ivec_ensure(out, out_size) != 0) {
+    tk_ivec_destroy(out);
+    lua_pop(L, 1);
+    return NULL;
+  }
+  TK_PARALLEL_FOR(schedule(static))
+  for (uint64_t e = 0; e < n_edges; e++) {
+    uint64_t bit = (uint64_t)src->a[e];
+    uint64_t doc = bit / n_labels;
+    uint64_t label = bit % n_labels;
+    out->a[e] = (int64_t)(doc * n_features + e);
+    out->a[n_edges + e] = (int64_t)((n_docs + label) * n_features + e);
+  }
+  if (rank1 != NULL && n_rank1 > 0) {
+    TK_PARALLEL_FOR(schedule(static))
+    for (uint64_t i = 0; i < n_rank1_entries; i++) {
+      uint64_t bit = (uint64_t)rank1->a[i];
+      uint64_t doc = bit / n_rank1;
+      uint64_t tok = bit % n_rank1;
+      out->a[2 * n_edges + i] = (int64_t)(doc * n_features + n_edges + tok);
+    }
+  }
+  out->n = out_size;
+  if (inherit && rank1 != NULL && n_rank1 > 0) {
+    uint64_t *r1_offsets = calloc(n_docs + 1, sizeof(uint64_t));
+    for (uint64_t i = 0; i < rank1->n; i++) {
+      uint64_t doc = (uint64_t)rank1->a[i] / n_rank1;
+      r1_offsets[doc + 1]++;
+    }
+    for (uint64_t d = 0; d < n_docs; d++)
+      r1_offsets[d + 1] += r1_offsets[d];
+    uint64_t *lab_offsets = calloc(n_labels + 1, sizeof(uint64_t));
+    uint64_t *lab_docs = malloc(n_edges * sizeof(uint64_t));
+    for (uint64_t e = 0; e < n_edges; e++) {
+      uint64_t label = (uint64_t)src->a[e] % n_labels;
+      lab_offsets[label + 1]++;
+    }
+    for (uint64_t l = 0; l < n_labels; l++)
+      lab_offsets[l + 1] += lab_offsets[l];
+    uint64_t *cursors = malloc(n_labels * sizeof(uint64_t));
+    memcpy(cursors, lab_offsets, n_labels * sizeof(uint64_t));
+    for (uint64_t e = 0; e < n_edges; e++) {
+      uint64_t bit = (uint64_t)src->a[e];
+      uint64_t doc = bit / n_labels;
+      uint64_t label = bit % n_labels;
+      lab_docs[cursors[label]++] = doc;
+    }
+    free(cursors);
+    uint64_t bm_bytes = TK_CVEC_BITS_BYTES(n_rank1);
+    uint8_t *bm = calloc(1, bm_bytes);
+    uint64_t total_inherited = 0;
+    for (uint64_t l = 0; l < n_labels; l++) {
+      memset(bm, 0, bm_bytes);
+      for (uint64_t j = lab_offsets[l]; j < lab_offsets[l + 1]; j++) {
+        uint64_t doc = lab_docs[j];
+        for (uint64_t k = r1_offsets[doc]; k < r1_offsets[doc + 1]; k++) {
+          uint64_t tok = (uint64_t)rank1->a[k] % n_rank1;
+          uint64_t byte = tok / CHAR_BIT;
+          uint64_t bit_pos = tok % CHAR_BIT;
+          bm[byte] |= (1 << bit_pos);
+        }
+      }
+      for (uint64_t b = 0; b < bm_bytes; b++)
+        total_inherited += (uint64_t)__builtin_popcount(bm[b]);
+    }
+    tk_ivec_ensure(out, out->n + total_inherited);
+    uint64_t write_pos = out->n;
+    for (uint64_t l = 0; l < n_labels; l++) {
+      memset(bm, 0, bm_bytes);
+      for (uint64_t j = lab_offsets[l]; j < lab_offsets[l + 1]; j++) {
+        uint64_t doc = lab_docs[j];
+        for (uint64_t k = r1_offsets[doc]; k < r1_offsets[doc + 1]; k++) {
+          uint64_t tok = (uint64_t)rank1->a[k] % n_rank1;
+          uint64_t byte = tok / CHAR_BIT;
+          uint64_t bit_pos = tok % CHAR_BIT;
+          if (!(bm[byte] & (1 << bit_pos))) {
+            bm[byte] |= (1 << bit_pos);
+            out->a[write_pos++] = (int64_t)((n_docs + l) * n_features + n_edges + tok);
+          }
+        }
+      }
+    }
+    out->n = write_pos;
+    free(bm);
+    free(lab_docs);
+    free(lab_offsets);
+    free(r1_offsets);
+  }
+  tk_ivec_asc(out, 0, out->n);
+  return out;
+}
+
