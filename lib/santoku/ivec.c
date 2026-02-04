@@ -139,21 +139,11 @@ static inline int tk_ivec_bits_top_reg_mi_lua (lua_State *L)
 
 static inline int tk_ivec_bits_bipartite_lua (lua_State *L)
 {
-  int n_args = lua_gettop(L);
   tk_ivec_t *src = tk_ivec_peek(L, 1, "src_bits");
   uint64_t n_docs = tk_lua_checkunsigned(L, 2, "n_docs");
   uint64_t n_labels = tk_lua_checkunsigned(L, 3, "n_labels");
-  tk_ivec_t *rank1 = NULL;
-  uint64_t n_rank1 = 0;
-  if (n_args >= 5) {
-    rank1 = tk_ivec_peekopt(L, 4);
-    n_rank1 = tk_lua_checkunsigned(L, 5, "n_rank1");
-  }
-  bool inherit = false;
-  if (n_args >= 6)
-    inherit = lua_toboolean(L, 6);
   uint64_t n_edges = 0;
-  tk_ivec_t *out = tk_ivec_bits_bipartite(L, src, n_docs, n_labels, rank1, n_rank1, inherit, &n_edges);
+  tk_ivec_t *out = tk_ivec_bits_bipartite(L, src, n_docs, n_labels, &n_edges);
   if (!out)
     return luaL_error(L, "bits_bipartite: allocation failed");
   lua_pushinteger(L, (lua_Integer)n_edges);
