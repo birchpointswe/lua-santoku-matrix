@@ -203,7 +203,7 @@ static inline double tk_csr_spearman_distance(
   int64_t exp_end,
   tk_ivec_t *retrieved_ids,
   tk_pvec_t *sorted_bin_ranks,
-  tk_pvec_t *weight_ranks_buffer,
+  tk_rvec_t *weight_ranks_buffer,
   tk_dumap_t *weight_rank_map
 ) {
   uint64_t m = (uint64_t)(exp_end - exp_start);
@@ -211,24 +211,22 @@ static inline double tk_csr_spearman_distance(
     return 0.0;
   if (sorted_bin_ranks->n < 2)
     return 0.0;
-  if (tk_pvec_ensure(weight_ranks_buffer, m) != 0)
+  if (tk_rvec_ensure(weight_ranks_buffer, m) != 0)
     return 0.0;
-
   weight_ranks_buffer->n = m;
   uint64_t idx = 0;
   for (int64_t j = exp_start; j < exp_end; j++) {
     int64_t neighbor_idx = expected_neighbors->a[j];
     int64_t neighbor_id = expected_ids->a[neighbor_idx];
     double weight = expected_weights->a[j];
-    weight_ranks_buffer->a[idx++] = tk_pair(neighbor_id, weight);
+    weight_ranks_buffer->a[idx++] = (tk_rank_t) { neighbor_id, weight };
   }
-  tk_pvec_desc(weight_ranks_buffer, 0, weight_ranks_buffer->n);
-
+  tk_rvec_desc(weight_ranks_buffer, 0, weight_ranks_buffer->n);
   tk_dumap_clear(weight_rank_map);
   for (uint64_t i = 0; i < weight_ranks_buffer->n; ) {
-    double val = weight_ranks_buffer->a[i].p;
+    double val = weight_ranks_buffer->a[i].d;
     uint64_t j = i;
-    while (j < weight_ranks_buffer->n && weight_ranks_buffer->a[j].p == val)
+    while (j < weight_ranks_buffer->n && weight_ranks_buffer->a[j].d == val)
       j++;
     double avg_rank = (double)(i + j - 1) / 2.0;
     for (uint64_t k = i; k < j; k++) {
