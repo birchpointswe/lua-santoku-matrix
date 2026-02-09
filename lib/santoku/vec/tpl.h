@@ -658,7 +658,8 @@ static inline int tk_vec_pfx(setn_lua) (lua_State *L)
   tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
   uint64_t n = tk_lua_checkunsigned(L, 2, "n");
   tk_vec_pfx(setn)(m0, n);
-  return 0;
+  lua_settop(L, 1);
+  return 1;
 }
 
 static inline int tk_vec_pfx(size_lua) (lua_State *L)

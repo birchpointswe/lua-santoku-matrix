@@ -54,6 +54,220 @@ static inline tk_ivec_t *tk_parallel_sfx(tk_ivec_bits_from_cvec) (lua_State *L, 
   return out;
 }
 
+static inline tk_cvec_t *tk_parallel_sfx(tk_ivec_bits_to_cvec) (lua_State *L, tk_ivec_t *set_bits, uint64_t n_samples, uint64_t n_features, bool flip_interleave) {
+  uint64_t output_features = flip_interleave ? (n_features * 2) : n_features;
+  uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(output_features);
+  size_t len = n_samples * bytes_per_sample;
+  tk_cvec_t *out_cvec = tk_cvec_create(L, len, NULL, NULL);
+  uint8_t *out = (uint8_t *)out_cvec->a;
+
+  uint64_t *counts = (uint64_t *)calloc(n_samples, sizeof(uint64_t));
+  if (!counts) return out_cvec;
+  for (uint64_t idx = 0; idx < set_bits->n; idx++) {
+    int64_t v = set_bits->a[idx];
+    if (v < 0) continue;
+    uint64_t s = (uint64_t)v / n_features;
+    if (s < n_samples) counts[s]++;
+  }
+  uint64_t *sample_offsets = (uint64_t *)malloc((n_samples + 1) * sizeof(uint64_t));
+  if (!sample_offsets) { free(counts); return out_cvec; }
+  sample_offsets[0] = 0;
+  for (uint64_t s = 0; s < n_samples; s++)
+    sample_offsets[s + 1] = sample_offsets[s] + counts[s];
+  uint64_t *binned = (uint64_t *)malloc(sample_offsets[n_samples] * sizeof(uint64_t));
+  if (!binned) { free(counts); free(sample_offsets); return out_cvec; }
+  memset(counts, 0, n_samples * sizeof(uint64_t));
+  for (uint64_t idx = 0; idx < set_bits->n; idx++) {
+    int64_t v = set_bits->a[idx];
+    if (v < 0) continue;
+    uint64_t s = (uint64_t)v / n_features;
+    if (s >= n_samples) continue;
+    binned[sample_offsets[s] + counts[s]] = (uint64_t)v % n_features;
+    counts[s]++;
+  }
+  free(counts);
+
+  if (flip_interleave) {
+    TK_PARALLEL_FOR(schedule(static))
+    for (uint64_t s = 0; s < n_samples; s++) {
+      uint64_t sample_offset = s * bytes_per_sample;
+      memset(out + sample_offset, 0, bytes_per_sample);
+      uint64_t neg_byte_offset = n_features / CHAR_BIT;
+      uint8_t neg_bit_shift = n_features & (CHAR_BIT - 1);
+      if (neg_bit_shift == 0) {
+        uint64_t full_bytes = n_features / CHAR_BIT;
+        memset(out + sample_offset + neg_byte_offset, 0xFF, full_bytes);
+        uint64_t remaining_bits = n_features % CHAR_BIT;
+        if (remaining_bits > 0)
+          out[sample_offset + neg_byte_offset + full_bytes] = (1u << remaining_bits) - 1;
+      } else {
+        for (uint64_t k = 0; k < n_features; k++) {
+          uint64_t bit_pos = n_features + k;
+          uint64_t byte_off = sample_offset + (bit_pos / CHAR_BIT);
+          uint8_t bit_off = bit_pos & (CHAR_BIT - 1);
+          out[byte_off] |= (1u << bit_off);
+        }
+      }
+      for (uint64_t bi = sample_offsets[s]; bi < sample_offsets[s + 1]; bi++) {
+        uint64_t k = binned[bi];
+        uint64_t pos_byte = sample_offset + (k / CHAR_BIT);
+        uint8_t pos_bit = k & (CHAR_BIT - 1);
+        out[pos_byte] |= (1u << pos_bit);
+        uint64_t neg_bit_pos = n_features + k;
+        uint64_t neg_byte = sample_offset + (neg_bit_pos / CHAR_BIT);
+        uint8_t neg_bit = neg_bit_pos & (CHAR_BIT - 1);
+        out[neg_byte] &= ~(1u << neg_bit);
+      }
+    }
+  } else {
+    memset(out, 0, len);
+    TK_PARALLEL_FOR(schedule(static))
+    for (uint64_t s = 0; s < n_samples; s++) {
+      uint64_t sample_offset = s * bytes_per_sample;
+      for (uint64_t bi = sample_offsets[s]; bi < sample_offsets[s + 1]; bi++) {
+        uint64_t f = binned[bi];
+        uint64_t byte_off = sample_offset + (f / CHAR_BIT);
+        uint8_t bit_off = f & (CHAR_BIT - 1);
+        out[byte_off] |= (1u << bit_off);
+      }
+    }
+  }
+
+  free(binned);
+  free(sample_offsets);
+  return out_cvec;
+}
+
+static inline uint64_t tk_parallel_sfx(tk_ivec_bits_to_cvec_grouped) (
+  lua_State *L,
+  tk_ivec_t *set_bits,
+  uint64_t n_samples,
+  uint64_t n_visible,
+  tk_ivec_t *offsets,
+  tk_ivec_t *features,
+  bool flip_interleave
+) {
+  uint64_t n_classes = offsets->n > 0 ? offsets->n - 1 : 0;
+  if (n_classes == 0) {
+    tk_cvec_create(L, 0, NULL, NULL);
+    return 0;
+  }
+  uint64_t max_k = 0;
+  for (uint64_t c = 0; c < n_classes; c++) {
+    uint64_t class_k = (uint64_t)(offsets->a[c + 1] - offsets->a[c]);
+    if (class_k > max_k) max_k = class_k;
+  }
+  if (max_k == 0) {
+    tk_cvec_create(L, 0, NULL, NULL);
+    return 0;
+  }
+  uint64_t bytes_per_class = flip_interleave ? TK_CVEC_BITS_BYTES(max_k * 2) : TK_CVEC_BITS_BYTES(max_k);
+  uint64_t bytes_per_sample = n_classes * bytes_per_class;
+  uint64_t bits_per_class = bytes_per_class * CHAR_BIT;
+  size_t len = n_samples * bytes_per_sample;
+  tk_cvec_t *out_cvec = tk_cvec_create(L, len, NULL, NULL);
+  uint8_t *out = (uint8_t *)out_cvec->a;
+
+  tk_iumap_t *feat_map = tk_iumap_create(0, 0);
+  if (!feat_map) return max_k;
+  for (uint64_t c = 0; c < n_classes; c++) {
+    uint64_t start = (uint64_t)offsets->a[c];
+    uint64_t end = (uint64_t)offsets->a[c + 1];
+    for (uint64_t i = start; i < end; i++) {
+      int64_t fid = features->a[i];
+      if (fid < 0 || (uint64_t)fid >= n_visible) continue;
+      uint64_t local = i - start;
+      int64_t key = (int64_t)((uint64_t)fid * n_classes + c);
+      int absent;
+      khint_t kit = tk_iumap_put(feat_map, key, &absent);
+      kh_value(feat_map, kit) = (int64_t)local;
+    }
+  }
+
+  uint64_t *counts = (uint64_t *)calloc(n_samples, sizeof(uint64_t));
+  if (!counts) { tk_iumap_destroy(feat_map); return max_k; }
+  for (uint64_t idx = 0; idx < set_bits->n; idx++) {
+    int64_t v = set_bits->a[idx];
+    if (v < 0) continue;
+    uint64_t s = (uint64_t)v / n_visible;
+    if (s < n_samples) counts[s]++;
+  }
+  uint64_t *sample_offsets = (uint64_t *)malloc((n_samples + 1) * sizeof(uint64_t));
+  if (!sample_offsets) { free(counts); tk_iumap_destroy(feat_map); return max_k; }
+  sample_offsets[0] = 0;
+  for (uint64_t s = 0; s < n_samples; s++)
+    sample_offsets[s + 1] = sample_offsets[s] + counts[s];
+  uint64_t *binned = (uint64_t *)malloc(sample_offsets[n_samples] * sizeof(uint64_t));
+  if (!binned) { free(counts); free(sample_offsets); tk_iumap_destroy(feat_map); return max_k; }
+  memset(counts, 0, n_samples * sizeof(uint64_t));
+  for (uint64_t idx = 0; idx < set_bits->n; idx++) {
+    int64_t v = set_bits->a[idx];
+    if (v < 0) continue;
+    uint64_t s = (uint64_t)v / n_visible;
+    if (s >= n_samples) continue;
+    binned[sample_offsets[s] + counts[s]] = (uint64_t)v % n_visible;
+    counts[s]++;
+  }
+  free(counts);
+
+  if (flip_interleave) {
+    TK_PARALLEL_FOR(schedule(static))
+    for (uint64_t s = 0; s < n_samples; s++) {
+      uint64_t sample_offset = s * bytes_per_sample;
+      memset(out + sample_offset, 0, bytes_per_sample);
+      for (uint64_t c = 0; c < n_classes; c++) {
+        for (uint64_t local = 0; local < max_k; local++) {
+          uint64_t neg_bit = c * bits_per_class + max_k + local;
+          uint64_t byte_off = sample_offset + (neg_bit / CHAR_BIT);
+          uint8_t bit_off = neg_bit & (CHAR_BIT - 1);
+          out[byte_off] |= (1u << bit_off);
+        }
+      }
+      for (uint64_t bi = sample_offsets[s]; bi < sample_offsets[s + 1]; bi++) {
+        uint64_t f = binned[bi];
+        for (uint64_t c = 0; c < n_classes; c++) {
+          int64_t key = (int64_t)(f * n_classes + c);
+          khint_t kit = tk_iumap_get(feat_map, key);
+          if (kit == kh_end(feat_map)) continue;
+          int64_t local = kh_value(feat_map, kit);
+          uint64_t pos_bit = c * bits_per_class + (uint64_t)local;
+          uint64_t pos_byte = sample_offset + (pos_bit / CHAR_BIT);
+          uint8_t pos_bit_off = pos_bit & (CHAR_BIT - 1);
+          out[pos_byte] |= (1u << pos_bit_off);
+          uint64_t neg_bit = c * bits_per_class + max_k + (uint64_t)local;
+          uint64_t neg_byte = sample_offset + (neg_bit / CHAR_BIT);
+          uint8_t neg_bit_off = neg_bit & (CHAR_BIT - 1);
+          out[neg_byte] &= ~(1u << neg_bit_off);
+        }
+      }
+    }
+  } else {
+    memset(out, 0, len);
+    TK_PARALLEL_FOR(schedule(static))
+    for (uint64_t s = 0; s < n_samples; s++) {
+      uint64_t sample_offset = s * bytes_per_sample;
+      for (uint64_t bi = sample_offsets[s]; bi < sample_offsets[s + 1]; bi++) {
+        uint64_t f = binned[bi];
+        for (uint64_t c = 0; c < n_classes; c++) {
+          int64_t key = (int64_t)(f * n_classes + c);
+          khint_t kit = tk_iumap_get(feat_map, key);
+          if (kit == kh_end(feat_map)) continue;
+          int64_t local = kh_value(feat_map, kit);
+          uint64_t out_idx = c * max_k + (uint64_t)local;
+          uint64_t byte_off = sample_offset + (out_idx / CHAR_BIT);
+          uint8_t bit_off = out_idx & (CHAR_BIT - 1);
+          out[byte_off] |= (1u << bit_off);
+        }
+      }
+    }
+  }
+
+  free(binned);
+  free(sample_offsets);
+  tk_iumap_destroy(feat_map);
+  return max_k;
+}
+
 static inline tk_ivec_t *tk_parallel_sfx(tk_ivec_bits_extend) (tk_ivec_t *base, tk_ivec_t *ext, uint64_t n_base_features, uint64_t n_ext_features) {
   if (base == NULL || ext == NULL)
     return NULL;
@@ -334,5 +548,41 @@ static inline tk_ivec_t *tk_parallel_sfx(tk_ivec_bits_bipartite) (
   free(bm); free(r1_offsets); free(lab_offsets); free(lab_docs);
   tk_ivec_asc(out, 0, out->n);
   return out;
+}
+
+static inline void tk_parallel_sfx(tk_ivec_bits_to_hv) (
+  lua_State *L,
+  tk_ivec_t *offsets,
+  tk_ivec_t *features,
+  tk_cvec_t *tokens,
+  uint64_t n_tokens,
+  uint64_t hv_size,
+  uint64_t shift_stride
+) {
+  uint64_t n_samples = offsets->n > 0 ? offsets->n - 1 : 0;
+  uint64_t hv_bytes = TK_CVEC_BITS_BYTES(hv_size);
+  uint64_t total = n_samples * hv_bytes;
+  tk_cvec_t *out_cvec = tk_cvec_create(L, total, NULL, NULL);
+  uint8_t *out = (uint8_t *)out_cvec->a;
+  memset(out, 0, total);
+  uint8_t *tok = (uint8_t *)tokens->a;
+  TK_PARALLEL_FOR(schedule(static))
+  for (uint64_t i = 0; i < n_samples; i++) {
+    uint64_t start = (uint64_t)offsets->a[i];
+    uint64_t end = (uint64_t)offsets->a[i + 1];
+    uint8_t *row = out + i * hv_bytes;
+    for (uint64_t j = start; j < end; j++) {
+      int64_t fid = features->a[j];
+      if (fid < 0 || (uint64_t)fid >= n_tokens) continue;
+      uint8_t *token = tok + (uint64_t)fid * hv_bytes;
+      uint64_t shift = ((j - start) * shift_stride) % hv_size;
+      if (shift == 0) {
+        for (uint64_t b = 0; b < hv_bytes; b++)
+          row[b] |= token[b];
+      } else {
+        tk_hv_shift_or(row, token, hv_size, hv_bytes, shift);
+      }
+    }
+  }
 }
 
