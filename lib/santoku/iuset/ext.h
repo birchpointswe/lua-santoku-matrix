@@ -3024,7 +3024,7 @@ static inline void tk_ivec_bits_top_reg_f (
   tk_ivec_t *features = tk_ivec_create(L, 0, 0, 0);
   tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
 
-  atomic_uint *feat_counts = (atomic_uint *)calloc(n_features, sizeof(atomic_uint));
+  uint64_t *feat_counts = (uint64_t *)calloc(n_features, sizeof(uint64_t));
   tk_dvec_t **feat_sums = (tk_dvec_t **)calloc(n_hidden, sizeof(tk_dvec_t *));
   tk_dvec_t **feat_sum_sq = (tk_dvec_t **)calloc(n_hidden, sizeof(tk_dvec_t *));
   tk_dvec_t *overall_sums = tk_dvec_create(0, n_hidden, 0, 0);
@@ -3071,21 +3071,64 @@ static inline void tk_ivec_bits_top_reg_f (
     free(local_total_sq);
   }
 
-  #pragma omp parallel for schedule(static)
-  for (uint64_t i = 0; i < set_bits->n; i++) {
-    int64_t bit = set_bits->a[i];
-    if (bit < 0) continue;
-    uint64_t sample = (uint64_t)bit / n_features;
-    uint64_t feature = (uint64_t)bit % n_features;
-    if (sample >= n_samples || feature >= n_features) continue;
-    atomic_fetch_add(&feat_counts[feature], 1);
-    for (uint64_t h = 0; h < n_hidden; h++) {
-      double y = targets->a[sample * n_hidden + h];
-      #pragma omp atomic
-      feat_sums[h]->a[feature] += y;
-      #pragma omp atomic
-      feat_sum_sq[h]->a[feature] += y * y;
+  {
+    int max_thr = omp_get_max_threads();
+    uint64_t **thr_counts = (uint64_t **)malloc((size_t)max_thr * sizeof(uint64_t *));
+    #pragma omp parallel
+    {
+      int tid = omp_get_thread_num();
+      thr_counts[tid] = (uint64_t *)calloc(n_features, sizeof(uint64_t));
+      #pragma omp for schedule(static)
+      for (uint64_t i = 0; i < set_bits->n; i++) {
+        int64_t bit = set_bits->a[i];
+        if (bit < 0) continue;
+        uint64_t sample = (uint64_t)bit / n_features;
+        uint64_t feature = (uint64_t)bit % n_features;
+        if (sample < n_samples && feature < n_features)
+          thr_counts[tid][feature]++;
+      }
+      #pragma omp for schedule(static)
+      for (uint64_t f = 0; f < n_features; f++)
+        for (int t = 0; t < max_thr; t++)
+          feat_counts[f] += thr_counts[t][f];
     }
+    for (int t = 0; t < max_thr; t++) free(thr_counts[t]);
+    free(thr_counts);
+
+    uint64_t *feat_off = (uint64_t *)malloc((n_features + 1) * sizeof(uint64_t));
+    feat_off[0] = 0;
+    for (uint64_t f = 0; f < n_features; f++)
+      feat_off[f + 1] = feat_off[f] + feat_counts[f];
+    uint64_t total_entries = feat_off[n_features];
+    uint64_t *feat_samples = (uint64_t *)malloc(total_entries * sizeof(uint64_t));
+    uint64_t *feat_cur = (uint64_t *)calloc(n_features, sizeof(uint64_t));
+    for (uint64_t i = 0; i < set_bits->n; i++) {
+      int64_t bit = set_bits->a[i];
+      if (bit < 0) continue;
+      uint64_t sample = (uint64_t)bit / n_features;
+      uint64_t feature = (uint64_t)bit % n_features;
+      if (sample >= n_samples || feature >= n_features) continue;
+      feat_samples[feat_off[feature] + feat_cur[feature]] = sample;
+      feat_cur[feature]++;
+    }
+    free(feat_cur);
+
+    #pragma omp parallel for schedule(guided)
+    for (uint64_t f = 0; f < n_features; f++) {
+      uint64_t n1 = feat_counts[f];
+      if (n1 == 0) continue;
+      uint64_t base = feat_off[f];
+      for (uint64_t j = 0; j < n1; j++) {
+        uint64_t s = feat_samples[base + j];
+        for (uint64_t h = 0; h < n_hidden; h++) {
+          double y = targets->a[s * n_hidden + h];
+          feat_sums[h]->a[f] += y;
+          feat_sum_sq[h]->a[f] += y * y;
+        }
+      }
+    }
+    free(feat_samples);
+    free(feat_off);
   }
 
   tk_ivec_push(offsets, 0);
@@ -3102,7 +3145,7 @@ static inline void tk_ivec_bits_top_reg_f (
       local_heaps[tid] = tk_rvec_create(NULL, 0, 0, 0);
       #pragma omp for schedule(static)
       for (uint64_t f = 0; f < n_features; f++) {
-        int64_t n1 = (int64_t)atomic_load(&feat_counts[f]);
+        int64_t n1 = (int64_t)feat_counts[f];
         int64_t n0 = (int64_t)n_samples - n1;
         if (n1 <= 1 || n0 <= 1) continue;
 

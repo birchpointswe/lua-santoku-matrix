@@ -131,7 +131,8 @@ static inline int tk_vec_pfx(cdesc_lua) (lua_State *L)
 
 static inline void tk_vec_pfx(persist) (lua_State *L, tk_vec_pfx(t) *v, FILE *fh)
 {
-  tk_lua_fwrite(L, (char *) &v->n, sizeof(size_t), 1, fh);
+  uint64_t n64 = (uint64_t) v->n;
+  tk_lua_fwrite(L, (char *) &n64, sizeof(uint64_t), 1, fh);
   tk_lua_fwrite(L, (char *) v->a, sizeof(tk_vec_base) * v->n, 1, fh);
 }
 

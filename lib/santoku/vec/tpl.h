@@ -528,8 +528,9 @@ static inline int tk_vec_pfx(gc_lua) (lua_State *L)
 
 static inline tk_vec_pfx(t) *tk_vec_pfx(load) (lua_State *L, FILE *fh)
 {
-  size_t n;
-  tk_lua_fread(L, &n, sizeof(size_t), 1, fh);
+  uint64_t n64;
+  tk_lua_fread(L, &n64, sizeof(uint64_t), 1, fh);
+  size_t n = (size_t) n64;
   tk_vec_pfx(t) *v = tk_vec_pfx(create)(L, n, 0, 0);
   tk_lua_fread(L, v->a, sizeof(tk_vec_base), n, fh);
   return v;
