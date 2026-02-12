@@ -450,6 +450,8 @@ static inline tk_ivec_t *tk_parallel_sfx(tk_ivec_bits_bipartite) (
     return out;
   }
 
+  if (strcmp(mode, "inherit") == 0) {
+
   if (tokens == NULL)
     return NULL;
 
@@ -548,6 +550,10 @@ static inline tk_ivec_t *tk_parallel_sfx(tk_ivec_bits_bipartite) (
   free(bm); free(r1_offsets); free(lab_offsets); free(lab_docs);
   tk_ivec_asc(out, 0, out->n);
   return out;
+
+  }
+
+  return NULL;
 }
 
 static inline void tk_parallel_sfx(tk_ivec_bits_to_hv) (
