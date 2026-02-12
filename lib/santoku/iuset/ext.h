@@ -3025,8 +3025,8 @@ static inline void tk_ivec_bits_top_reg_f (
   tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
 
   uint64_t *feat_counts = (uint64_t *)calloc(n_features, sizeof(uint64_t));
-  tk_dvec_t **feat_sums = (tk_dvec_t **)calloc(n_hidden, sizeof(tk_dvec_t *));
-  tk_dvec_t **feat_sum_sq = (tk_dvec_t **)calloc(n_hidden, sizeof(tk_dvec_t *));
+  double *feat_sums = (double *)calloc(n_features * n_hidden, sizeof(double));
+  double *feat_sum_sq = (double *)calloc(n_features * n_hidden, sizeof(double));
   tk_dvec_t *overall_sums = tk_dvec_create(0, n_hidden, 0, 0);
   tk_dvec_t *total_sum_sq = tk_dvec_create(0, n_hidden, 0, 0);
 
@@ -3039,12 +3039,6 @@ static inline void tk_ivec_bits_top_reg_f (
     return;
   }
 
-  for (uint64_t h = 0; h < n_hidden; h++) {
-    feat_sums[h] = tk_dvec_create(0, n_features, 0, 0);
-    feat_sum_sq[h] = tk_dvec_create(0, n_features, 0, 0);
-    tk_dvec_zero(feat_sums[h]);
-    tk_dvec_zero(feat_sum_sq[h]);
-  }
   tk_dvec_zero(overall_sums);
   tk_dvec_zero(total_sum_sq);
 
@@ -3102,14 +3096,17 @@ static inline void tk_ivec_bits_top_reg_f (
     uint64_t total_entries = feat_off[n_features];
     uint64_t *feat_samples = (uint64_t *)malloc(total_entries * sizeof(uint64_t));
     uint64_t *feat_cur = (uint64_t *)calloc(n_features, sizeof(uint64_t));
+    #pragma omp parallel for schedule(static)
     for (uint64_t i = 0; i < set_bits->n; i++) {
       int64_t bit = set_bits->a[i];
       if (bit < 0) continue;
       uint64_t sample = (uint64_t)bit / n_features;
       uint64_t feature = (uint64_t)bit % n_features;
       if (sample >= n_samples || feature >= n_features) continue;
-      feat_samples[feat_off[feature] + feat_cur[feature]] = sample;
-      feat_cur[feature]++;
+      uint64_t pos;
+      #pragma omp atomic capture
+      pos = feat_cur[feature]++;
+      feat_samples[feat_off[feature] + pos] = sample;
     }
     free(feat_cur);
 
@@ -3118,12 +3115,14 @@ static inline void tk_ivec_bits_top_reg_f (
       uint64_t n1 = feat_counts[f];
       if (n1 == 0) continue;
       uint64_t base = feat_off[f];
+      double *fs = feat_sums + f * n_hidden;
+      double *fq = feat_sum_sq + f * n_hidden;
       for (uint64_t j = 0; j < n1; j++) {
         uint64_t s = feat_samples[base + j];
+        const double *tgt = targets->a + s * n_hidden;
         for (uint64_t h = 0; h < n_hidden; h++) {
-          double y = targets->a[s * n_hidden + h];
-          feat_sums[h]->a[f] += y;
-          feat_sum_sq[h]->a[f] += y * y;
+          fs[h] += tgt[h];
+          fq[h] += tgt[h] * tgt[h];
         }
       }
     }
@@ -3149,7 +3148,7 @@ static inline void tk_ivec_bits_top_reg_f (
         int64_t n0 = (int64_t)n_samples - n1;
         if (n1 <= 1 || n0 <= 1) continue;
 
-        double sum1 = feat_sums[h]->a[f];
+        double sum1 = feat_sums[f * n_hidden + h];
         double sum0 = overall_sums->a[h] - sum1;
         double mean1 = sum1 / (double)n1;
         double mean0 = sum0 / (double)n0;
@@ -3157,7 +3156,7 @@ static inline void tk_ivec_bits_top_reg_f (
         double ssb = (double)n1 * (mean1 - overall_mean) * (mean1 - overall_mean) +
                      (double)n0 * (mean0 - overall_mean) * (mean0 - overall_mean);
 
-        double sum_sq1 = feat_sum_sq[h]->a[f];
+        double sum_sq1 = feat_sum_sq[f * n_hidden + h];
         double sum_sq0 = total_sum_sq->a[h] - sum_sq1;
         double ssw1 = sum_sq1 - (sum1 * sum1) / (double)n1;
         double ssw0 = sum_sq0 - (sum0 * sum0) / (double)n0;
@@ -3189,10 +3188,6 @@ static inline void tk_ivec_bits_top_reg_f (
   }
 
   free(feat_counts);
-  for (uint64_t h = 0; h < n_hidden; h++) {
-    tk_dvec_destroy(feat_sums[h]);
-    tk_dvec_destroy(feat_sum_sq[h]);
-  }
   free(feat_sums);
   free(feat_sum_sq);
   tk_dvec_destroy(overall_sums);
