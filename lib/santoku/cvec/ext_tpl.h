@@ -210,14 +210,14 @@ static inline void tk_parallel_sfx(tk_cvec_bits_popcount_andnot) (
   for (uint64_t i = offset; i < main_bytes; i++) {
     uint8_t va = a[i];
     pop_a += (uint64_t)__builtin_popcount(va);
-    pop_andnot += (uint64_t)__builtin_popcount(va & ~b[i]);
+    pop_andnot += (uint64_t)__builtin_popcount((unsigned)(va & ~b[i]));
   }
 
   if (rem_bits > 0) {
     uint8_t mask = (1U << rem_bits) - 1;
     uint8_t va = a[full_bytes - 1] & mask;
     pop_a += (uint64_t)__builtin_popcount(va);
-    pop_andnot += (uint64_t)__builtin_popcount(va & ~b[full_bytes - 1]);
+    pop_andnot += (uint64_t)__builtin_popcount((unsigned)(va & ~b[full_bytes - 1]));
   }
 
   *pop_a_out = pop_a;

@@ -1183,17 +1183,8 @@ static inline tk_dvec_t *tk_dvec_mtx_select (
       (sample_ids == NULL || sample_ids->n == 0))
     return src_matrix;
 
-  tk_iuset_t *sample_set = NULL;
-  uint64_t n_output_samples = 0;
-
-  if (sample_ids != NULL && sample_ids->n > 0) {
-    sample_set = tk_iuset_from_ivec(NULL, sample_ids);
-    if (!sample_set)
-      return NULL;
-    n_output_samples = sample_ids->n;
-  } else {
-    n_output_samples = n_samples;
-  }
+  uint64_t n_output_samples = (sample_ids != NULL && sample_ids->n > 0)
+    ? sample_ids->n : n_samples;
 
   uint64_t n_selected_features = (selected_features != NULL && selected_features->n > 0)
     ? selected_features->n : n_features;
@@ -1211,65 +1202,74 @@ static inline tk_dvec_t *tk_dvec_mtx_select (
     }
 
     double *dest_data = dest->a;
-    uint64_t dest_idx = 0;
 
-    for (uint64_t s = 0; s < n_samples; s++) {
-      if (sample_set != NULL && !tk_iuset_contains(sample_set, (int64_t) s))
-        continue;
+    for (uint64_t si = 0; si < n_output_samples; si++) {
+      uint64_t s = (sample_ids != NULL && sample_ids->n > 0)
+        ? (uint64_t) sample_ids->a[si] : si;
+      if (s >= n_samples) continue;
 
       uint64_t src_offset = s * n_features;
-      uint64_t dest_offset = (dest_sample + dest_idx) * final_stride;
+      uint64_t dest_offset = (dest_sample + si) * final_stride;
 
       if (selected_features != NULL && selected_features->n > 0) {
         for (uint64_t f = 0; f < selected_features->n; f++) {
           int64_t feat_idx = selected_features->a[f];
-          if (feat_idx >= 0 && (uint64_t)feat_idx < n_features) {
+          if (feat_idx >= 0 && (uint64_t)feat_idx < n_features)
             dest_data[dest_offset + f] = src_data[src_offset + (uint64_t)feat_idx];
-          }
         }
       } else {
         memcpy(dest_data + dest_offset, src_data + src_offset, n_features * sizeof(double));
       }
-
-      dest_idx++;
     }
-
-    if (sample_set)
-      tk_iuset_destroy(sample_set);
 
     return dest;
   } else {
-    double *src_data = src_matrix->a;
-    uint64_t write_idx = 0;
+    if (sample_ids != NULL && sample_ids->n > 0) {
+      double *tmp = (double *) malloc(n_output_samples * n_selected_features * sizeof(double));
+      if (!tmp) return NULL;
 
-    for (uint64_t s = 0; s < n_samples; s++) {
-      if (sample_set != NULL && !tk_iuset_contains(sample_set, (int64_t) s))
-        continue;
+      for (uint64_t si = 0; si < n_output_samples; si++) {
+        uint64_t s = (uint64_t) sample_ids->a[si];
+        if (s >= n_samples) continue;
 
-      uint64_t src_offset = s * n_features;
-      uint64_t dest_offset = write_idx * n_selected_features;
+        uint64_t src_offset = s * n_features;
+        uint64_t tmp_offset = si * n_selected_features;
 
-      if (selected_features != NULL && selected_features->n > 0) {
-        for (uint64_t f = 0; f < selected_features->n; f++) {
-          int64_t feat_idx = selected_features->a[f];
-          if (feat_idx >= 0 && (uint64_t)feat_idx < n_features) {
-            src_data[dest_offset + f] = src_data[src_offset + (uint64_t)feat_idx];
+        if (selected_features != NULL && selected_features->n > 0) {
+          for (uint64_t f = 0; f < selected_features->n; f++) {
+            int64_t feat_idx = selected_features->a[f];
+            if (feat_idx >= 0 && (uint64_t)feat_idx < n_features)
+              tmp[tmp_offset + f] = src_data[src_offset + (uint64_t)feat_idx];
           }
-        }
-      } else {
-        if (dest_offset != src_offset) {
-          memmove(src_data + dest_offset, src_data + src_offset, n_features * sizeof(double));
+        } else {
+          memcpy(tmp + tmp_offset, src_data + src_offset, n_features * sizeof(double));
         }
       }
 
-      write_idx++;
+      memcpy(src_data, tmp, n_output_samples * n_selected_features * sizeof(double));
+      free(tmp);
+    } else {
+      uint64_t write_idx = 0;
+      for (uint64_t s = 0; s < n_samples; s++) {
+        uint64_t src_offset = s * n_features;
+        uint64_t dest_offset = write_idx * n_selected_features;
+
+        if (selected_features != NULL && selected_features->n > 0) {
+          for (uint64_t f = 0; f < selected_features->n; f++) {
+            int64_t feat_idx = selected_features->a[f];
+            if (feat_idx >= 0 && (uint64_t)feat_idx < n_features)
+              src_data[dest_offset + f] = src_data[src_offset + (uint64_t)feat_idx];
+          }
+        } else {
+          if (dest_offset != src_offset)
+            memmove(src_data + dest_offset, src_data + src_offset, n_features * sizeof(double));
+        }
+
+        write_idx++;
+      }
     }
 
     src_matrix->n = n_output_samples * n_selected_features;
-
-    if (sample_set)
-      tk_iuset_destroy(sample_set);
-
     return src_matrix;
   }
 }
