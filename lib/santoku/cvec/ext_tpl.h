@@ -12,6 +12,20 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_popcount) (
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
   uint64_t main_bytes = full_bytes - (rem_bits > 0 ? 1 : 0);
 
+  uint64_t count = 0;
+
+#ifdef __aarch64__
+  uint64_t n16 = main_bytes / 16, ni = 0;
+  while (ni < n16) {
+    uint16x8_t vacc = vdupq_n_u16(0);
+    uint64_t end = ni + 4095; if (end > n16) end = n16;
+    for (; ni < end; ni++)
+      vacc = vpadalq_u8(vacc, vcntq_u8(vld1q_u8(data + ni * 16)));
+    count += vaddlvq_u16(vacc);
+  }
+  for (uint64_t i = n16 * 16; i < main_bytes; i++)
+    count += (uint64_t)__builtin_popcount(data[i]);
+#else
   uint64_t c0 = 0, c1 = 0, c2 = 0, c3 = 0;
   uint64_t n64 = main_bytes / 8;
   uint64_t n64_4 = (n64 / 4) * 4;
@@ -28,8 +42,7 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_popcount) (
     c2 += (uint64_t)__builtin_popcountll(d2);
     c3 += (uint64_t)__builtin_popcountll(d3);
   }
-
-  uint64_t count = c0 + c1 + c2 + c3;
+  count = c0 + c1 + c2 + c3;
 
   for (uint64_t i = n64_4; i < n64; i++) {
     uint64_t chunk;
@@ -40,6 +53,7 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_popcount) (
   uint64_t offset = n64 * 8;
   for (uint64_t i = offset; i < main_bytes; i++)
     count += (uint64_t)__builtin_popcount(data[i]);
+#endif
 
   if (rem_bits > 0) {
     uint8_t mask = (1U << rem_bits) - 1;
@@ -58,6 +72,20 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming) (
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
   uint64_t main_bytes = full_bytes - (rem_bits > 0 ? 1 : 0);
 
+  uint64_t dist = 0;
+
+#ifdef __aarch64__
+  uint64_t n16 = main_bytes / 16, ni = 0;
+  while (ni < n16) {
+    uint16x8_t vacc = vdupq_n_u16(0);
+    uint64_t end = ni + 4095; if (end > n16) end = n16;
+    for (; ni < end; ni++)
+      vacc = vpadalq_u8(vacc, vcntq_u8(veorq_u8(vld1q_u8(a + ni * 16), vld1q_u8(b + ni * 16))));
+    dist += vaddlvq_u16(vacc);
+  }
+  for (uint64_t i = n16 * 16; i < main_bytes; i++)
+    dist += (uint64_t)__builtin_popcount(a[i] ^ b[i]);
+#else
   uint64_t d0 = 0, d1 = 0, d2 = 0, d3 = 0;
   uint64_t n64 = main_bytes / 8;
   uint64_t n64_4 = (n64 / 4) * 4;
@@ -78,8 +106,7 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming) (
     d2 += (uint64_t)__builtin_popcountll(a2 ^ b2);
     d3 += (uint64_t)__builtin_popcountll(a3 ^ b3);
   }
-
-  uint64_t dist = d0 + d1 + d2 + d3;
+  dist = d0 + d1 + d2 + d3;
 
   for (uint64_t i = n64_4; i < n64; i++) {
     uint64_t a_chunk, b_chunk;
@@ -91,6 +118,7 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming) (
   uint64_t offset = n64 * 8;
   for (uint64_t i = offset; i < main_bytes; i++)
     dist += (uint64_t)__builtin_popcount(a[i] ^ b[i]);
+#endif
 
   if (rem_bits > 0) {
     uint8_t mask = (1U << rem_bits) - 1;
@@ -110,6 +138,21 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming_mask) (
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
   uint64_t main_bytes = full_bytes - (rem_bits > 0 ? 1 : 0);
 
+  uint64_t dist = 0;
+
+#ifdef __aarch64__
+  uint64_t n16 = main_bytes / 16, ni = 0;
+  while (ni < n16) {
+    uint16x8_t vacc = vdupq_n_u16(0);
+    uint64_t end = ni + 4095; if (end > n16) end = n16;
+    for (; ni < end; ni++)
+      vacc = vpadalq_u8(vacc, vcntq_u8(vandq_u8(veorq_u8(
+        vld1q_u8(a + ni * 16), vld1q_u8(b + ni * 16)), vld1q_u8(mask + ni * 16))));
+    dist += vaddlvq_u16(vacc);
+  }
+  for (uint64_t i = n16 * 16; i < main_bytes; i++)
+    dist += (uint64_t)__builtin_popcount((a[i] ^ b[i]) & mask[i]);
+#else
   uint64_t d0 = 0, d1 = 0, d2 = 0, d3 = 0;
   uint64_t n64 = main_bytes / 8;
   uint64_t n64_4 = (n64 / 4) * 4;
@@ -134,8 +177,7 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming_mask) (
     d2 += (uint64_t)__builtin_popcountll((a2 ^ b2) & m2);
     d3 += (uint64_t)__builtin_popcountll((a3 ^ b3) & m3);
   }
-
-  uint64_t dist = d0 + d1 + d2 + d3;
+  dist = d0 + d1 + d2 + d3;
 
   for (uint64_t i = n64_4; i < n64; i++) {
     uint64_t a_chunk, b_chunk, m_chunk;
@@ -148,6 +190,7 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming_mask) (
   uint64_t offset = n64 * 8;
   for (uint64_t i = offset; i < main_bytes; i++)
     dist += (uint64_t)__builtin_popcount((a[i] ^ b[i]) & mask[i]);
+#endif
 
   if (rem_bits > 0) {
     uint8_t m = mask[full_bytes - 1] & ((1U << rem_bits) - 1);
@@ -168,6 +211,26 @@ static inline void tk_parallel_sfx(tk_cvec_bits_popcount_andnot) (
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
   uint64_t main_bytes = full_bytes - (rem_bits > 0 ? 1 : 0);
 
+  uint64_t pop_a = 0, pop_andnot = 0;
+
+#ifdef __aarch64__
+  uint64_t n16 = main_bytes / 16, ni = 0;
+  while (ni < n16) {
+    uint16x8_t va16 = vdupq_n_u16(0), vn16 = vdupq_n_u16(0);
+    uint64_t end = ni + 4095; if (end > n16) end = n16;
+    for (; ni < end; ni++) {
+      uint8x16_t va = vld1q_u8(a + ni * 16), vb = vld1q_u8(b + ni * 16);
+      va16 = vpadalq_u8(va16, vcntq_u8(va));
+      vn16 = vpadalq_u8(vn16, vcntq_u8(vbicq_u8(va, vb)));
+    }
+    pop_a += vaddlvq_u16(va16); pop_andnot += vaddlvq_u16(vn16);
+  }
+  for (uint64_t i = n16 * 16; i < main_bytes; i++) {
+    uint8_t va = a[i];
+    pop_a += (uint64_t)__builtin_popcount(va);
+    pop_andnot += (uint64_t)__builtin_popcount((unsigned)(va & ~b[i]));
+  }
+#else
   uint64_t pop_a0 = 0, pop_a1 = 0, pop_a2 = 0, pop_a3 = 0;
   uint64_t pop_n0 = 0, pop_n1 = 0, pop_n2 = 0, pop_n3 = 0;
 
@@ -194,9 +257,8 @@ static inline void tk_parallel_sfx(tk_cvec_bits_popcount_andnot) (
     pop_n2 += (uint64_t)__builtin_popcountll(a2 & ~b2);
     pop_n3 += (uint64_t)__builtin_popcountll(a3 & ~b3);
   }
-
-  uint64_t pop_a = pop_a0 + pop_a1 + pop_a2 + pop_a3;
-  uint64_t pop_andnot = pop_n0 + pop_n1 + pop_n2 + pop_n3;
+  pop_a = pop_a0 + pop_a1 + pop_a2 + pop_a3;
+  pop_andnot = pop_n0 + pop_n1 + pop_n2 + pop_n3;
 
   for (uint64_t i = n64_4; i < n64; i++) {
     uint64_t a_chunk, b_chunk;
@@ -212,6 +274,7 @@ static inline void tk_parallel_sfx(tk_cvec_bits_popcount_andnot) (
     pop_a += (uint64_t)__builtin_popcount(va);
     pop_andnot += (uint64_t)__builtin_popcount((unsigned)(va & ~b[i]));
   }
+#endif
 
   if (rem_bits > 0) {
     uint8_t mask = (1U << rem_bits) - 1;

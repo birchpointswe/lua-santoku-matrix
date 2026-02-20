@@ -4,6 +4,9 @@
 #if defined(_OPENMP) && !defined(__EMSCRIPTEN__)
 #include <omp.h>
 #endif
+#ifdef __aarch64__
+#include <arm_neon.h>
+#endif
 #include <santoku/cvec/base.h>
 #include <santoku/ivec.h>
 #include <santoku/dvec.h>
