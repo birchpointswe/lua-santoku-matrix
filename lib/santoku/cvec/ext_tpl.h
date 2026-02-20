@@ -14,7 +14,15 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_popcount) (
 
   uint64_t count = 0;
 
-#ifdef __aarch64__
+#if defined(__AVX512VPOPCNTDQ__)
+  uint64_t n512 = main_bytes / 64;
+  __m512i vacc = _mm512_setzero_si512();
+  for (uint64_t i = 0; i < n512; i++)
+    vacc = _mm512_add_epi64(vacc, _mm512_popcnt_epi64(_mm512_loadu_si512(data + i * 64)));
+  count = _mm512_reduce_add_epi64(vacc);
+  for (uint64_t i = n512 * 64; i < main_bytes; i++)
+    count += (uint64_t)__builtin_popcount(data[i]);
+#elif defined(__aarch64__)
   uint64_t n16 = main_bytes / 16, ni = 0;
   while (ni < n16) {
     uint16x8_t vacc = vdupq_n_u16(0);
@@ -74,7 +82,16 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming) (
 
   uint64_t dist = 0;
 
-#ifdef __aarch64__
+#if defined(__AVX512VPOPCNTDQ__)
+  uint64_t n512 = main_bytes / 64;
+  __m512i vacc = _mm512_setzero_si512();
+  for (uint64_t i = 0; i < n512; i++)
+    vacc = _mm512_add_epi64(vacc, _mm512_popcnt_epi64(_mm512_xor_si512(
+      _mm512_loadu_si512(a + i * 64), _mm512_loadu_si512(b + i * 64))));
+  dist = _mm512_reduce_add_epi64(vacc);
+  for (uint64_t i = n512 * 64; i < main_bytes; i++)
+    dist += (uint64_t)__builtin_popcount(a[i] ^ b[i]);
+#elif defined(__aarch64__)
   uint64_t n16 = main_bytes / 16, ni = 0;
   while (ni < n16) {
     uint16x8_t vacc = vdupq_n_u16(0);
@@ -140,7 +157,17 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming_mask) (
 
   uint64_t dist = 0;
 
-#ifdef __aarch64__
+#if defined(__AVX512VPOPCNTDQ__)
+  uint64_t n512 = main_bytes / 64;
+  __m512i vacc = _mm512_setzero_si512();
+  for (uint64_t i = 0; i < n512; i++)
+    vacc = _mm512_add_epi64(vacc, _mm512_popcnt_epi64(_mm512_and_si512(
+      _mm512_xor_si512(_mm512_loadu_si512(a + i * 64), _mm512_loadu_si512(b + i * 64)),
+      _mm512_loadu_si512(mask + i * 64))));
+  dist = _mm512_reduce_add_epi64(vacc);
+  for (uint64_t i = n512 * 64; i < main_bytes; i++)
+    dist += (uint64_t)__builtin_popcount((a[i] ^ b[i]) & mask[i]);
+#elif defined(__aarch64__)
   uint64_t n16 = main_bytes / 16, ni = 0;
   while (ni < n16) {
     uint16x8_t vacc = vdupq_n_u16(0);
@@ -213,7 +240,22 @@ static inline void tk_parallel_sfx(tk_cvec_bits_popcount_andnot) (
 
   uint64_t pop_a = 0, pop_andnot = 0;
 
-#ifdef __aarch64__
+#if defined(__AVX512VPOPCNTDQ__)
+  uint64_t n512 = main_bytes / 64;
+  __m512i vacc_a = _mm512_setzero_si512(), vacc_n = _mm512_setzero_si512();
+  for (uint64_t i = 0; i < n512; i++) {
+    __m512i va = _mm512_loadu_si512(a + i * 64), vb = _mm512_loadu_si512(b + i * 64);
+    vacc_a = _mm512_add_epi64(vacc_a, _mm512_popcnt_epi64(va));
+    vacc_n = _mm512_add_epi64(vacc_n, _mm512_popcnt_epi64(_mm512_andnot_si512(vb, va)));
+  }
+  pop_a = _mm512_reduce_add_epi64(vacc_a);
+  pop_andnot = _mm512_reduce_add_epi64(vacc_n);
+  for (uint64_t i = n512 * 64; i < main_bytes; i++) {
+    uint8_t va = a[i];
+    pop_a += (uint64_t)__builtin_popcount(va);
+    pop_andnot += (uint64_t)__builtin_popcount((unsigned)(va & ~b[i]));
+  }
+#elif defined(__aarch64__)
   uint64_t n16 = main_bytes / 16, ni = 0;
   while (ni < n16) {
     uint16x8_t va16 = vdupq_n_u16(0), vn16 = vdupq_n_u16(0);
@@ -297,7 +339,13 @@ static inline void tk_parallel_sfx(tk_cvec_bits_andnot) (
   uint64_t rem_bits = TK_CVEC_BITS_BIT(n_bits);
   uint64_t main_bytes = full_bytes - (rem_bits > 0 ? 1 : 0);
 
-#ifdef __SIZEOF_INT128__
+#if defined(__AVX512F__)
+  uint64_t n512 = main_bytes / 64;
+  for (uint64_t i = 0; i < n512; i++)
+    _mm512_storeu_si512(out + i * 64, _mm512_andnot_si512(
+      _mm512_loadu_si512(b + i * 64), _mm512_loadu_si512(a + i * 64)));
+  uint64_t offset = n512 * 64;
+#elif defined(__SIZEOF_INT128__)
   uint64_t n128 = main_bytes / 16;
 
   TK_PARALLEL_FOR(schedule(static))

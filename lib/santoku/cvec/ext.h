@@ -6,6 +6,8 @@
 #endif
 #ifdef __aarch64__
 #include <arm_neon.h>
+#elif defined(__AVX512F__)
+#include <immintrin.h>
 #endif
 #include <santoku/cvec/base.h>
 #include <santoku/ivec.h>
