@@ -19,7 +19,7 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_popcount) (
   __m512i vacc = _mm512_setzero_si512();
   for (uint64_t i = 0; i < n512; i++)
     vacc = _mm512_add_epi64(vacc, _mm512_popcnt_epi64(_mm512_loadu_si512(data + i * 64)));
-  count = _mm512_reduce_add_epi64(vacc);
+  count = (uint64_t)_mm512_reduce_add_epi64(vacc);
   for (uint64_t i = n512 * 64; i < main_bytes; i++)
     count += (uint64_t)__builtin_popcount(data[i]);
 #elif defined(__aarch64__)
@@ -88,7 +88,7 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming) (
   for (uint64_t i = 0; i < n512; i++)
     vacc = _mm512_add_epi64(vacc, _mm512_popcnt_epi64(_mm512_xor_si512(
       _mm512_loadu_si512(a + i * 64), _mm512_loadu_si512(b + i * 64))));
-  dist = _mm512_reduce_add_epi64(vacc);
+  dist = (uint64_t)_mm512_reduce_add_epi64(vacc);
   for (uint64_t i = n512 * 64; i < main_bytes; i++)
     dist += (uint64_t)__builtin_popcount(a[i] ^ b[i]);
 #elif defined(__aarch64__)
@@ -164,7 +164,7 @@ static inline uint64_t tk_parallel_sfx(tk_cvec_bits_hamming_mask) (
     vacc = _mm512_add_epi64(vacc, _mm512_popcnt_epi64(_mm512_and_si512(
       _mm512_xor_si512(_mm512_loadu_si512(a + i * 64), _mm512_loadu_si512(b + i * 64)),
       _mm512_loadu_si512(mask + i * 64))));
-  dist = _mm512_reduce_add_epi64(vacc);
+  dist = (uint64_t)_mm512_reduce_add_epi64(vacc);
   for (uint64_t i = n512 * 64; i < main_bytes; i++)
     dist += (uint64_t)__builtin_popcount((a[i] ^ b[i]) & mask[i]);
 #elif defined(__aarch64__)
@@ -248,8 +248,8 @@ static inline void tk_parallel_sfx(tk_cvec_bits_popcount_andnot) (
     vacc_a = _mm512_add_epi64(vacc_a, _mm512_popcnt_epi64(va));
     vacc_n = _mm512_add_epi64(vacc_n, _mm512_popcnt_epi64(_mm512_andnot_si512(vb, va)));
   }
-  pop_a = _mm512_reduce_add_epi64(vacc_a);
-  pop_andnot = _mm512_reduce_add_epi64(vacc_n);
+  pop_a = (uint64_t)_mm512_reduce_add_epi64(vacc_a);
+  pop_andnot = (uint64_t)_mm512_reduce_add_epi64(vacc_n);
   for (uint64_t i = n512 * 64; i < main_bytes; i++) {
     uint8_t va = a[i];
     pop_a += (uint64_t)__builtin_popcount(va);
