@@ -141,7 +141,8 @@ Integer vector module providing dynamic arrays of 64-bit integers.
 | `bits_top_chi2` | `set_bits, codes/labels, samples, visible, hidden, k, min_set` | `ivec, dvec` | Top k features by chi-squared. `codes` can be string, light userdata, or cvec; `labels` can be ivec |
 | `bits_top_mi` | `set_bits, codes/labels, samples, visible, hidden, k, min_set` | `ivec, dvec` | Top k features by mutual information. `codes` can be string, light userdata, or cvec; `labels` can be ivec |
 | `bits_top_entropy` | `set_bits, samples, hidden, k, min_set` | `ivec, dvec` | Top k features by entropy |
-| `bits_top_df` | `set_bits, samples, visible, k, min_set, min_df, max_df` | `ivec, dvec` | Top k features by IDF-weighted document frequency |
+| `bits_top_idf` | `set_bits, samples, visible, k, min_df, max_df` | `ivec, dvec` | Top k features by IDF score |
+| `bits_top_df` | `set_bits, samples, visible, k, min_df, max_df` | `ivec, dvec` | Top k features by raw document frequency |
 
 ##### Bit Operations
 
@@ -250,7 +251,8 @@ Character vector module providing byte arrays and bitmap operations.
 | `bits_top_chi2` | `labels, samples, visible, hidden, k, min_set` | `ivec, dvec` | Top k features by chi-squared for packed bitmap |
 | `bits_top_mi` | `labels, samples, visible, hidden, k, min_set` | `ivec, dvec` | Top k features by mutual information for packed bitmap |
 | `bits_top_entropy` | `samples, hidden, k, min_set` | `ivec, dvec` | Top k features by entropy for packed bitmap |
-| `bits_top_df` | `samples, visible, k, min_set, min_df, max_df` | `ivec, dvec` | Top k features by IDF-weighted document frequency for packed bitmap |
+| `bits_top_idf` | `samples, visible, k, min_df, max_df` | `ivec, dvec` | Top k features by IDF score for packed bitmap |
+| `bits_top_df` | `samples, visible, k, min_df, max_df` | `ivec, dvec` | Top k features by raw document frequency for packed bitmap |
 
 ### `santoku.rvec`
 Rank vector module for storing pairs of (integer, double).

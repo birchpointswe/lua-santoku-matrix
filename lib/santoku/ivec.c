@@ -83,6 +83,20 @@ static inline int tk_ivec_bits_top_entropy_lua (lua_State *L)
   return 2;
 }
 
+static inline int tk_ivec_bits_top_idf_lua (lua_State *L)
+{
+  lua_settop(L, 6);
+  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
+  uint64_t n_samples = tk_lua_checkunsigned(L, 2, "samples");
+  uint64_t n_visible = tk_lua_checkunsigned(L, 3, "features");
+  uint64_t top_k = lua_isnil(L, 4) ? n_visible : tk_lua_checkunsigned(L, 4, "top_k");
+  double min_df = tk_lua_optnumber(L, 5, "min_df", 0.0);
+  double max_df = tk_lua_optnumber(L, 6, "max_df", 1.0);
+  if (!tk_ivec_bits_top_idf(L, set_bits, n_samples, n_visible, min_df, max_df, top_k))
+    return tk_lua_verror(L, 2, "bits_top_idf", "allocation failed");
+  return 2;
+}
+
 static inline int tk_ivec_bits_top_df_lua (lua_State *L)
 {
   lua_settop(L, 6);
@@ -725,6 +739,7 @@ static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
   { "bits_top_mi", tk_ivec_bits_top_mi_lua },
   { "bits_top_bns", tk_ivec_bits_top_bns_lua },
   { "bits_top_entropy", tk_ivec_bits_top_entropy_lua },
+  { "bits_top_idf", tk_ivec_bits_top_idf_lua },
   { "bits_top_df", tk_ivec_bits_top_df_lua },
   { "bits_top_reg_f", tk_ivec_bits_top_reg_f_lua },
   { "bits_top_reg_pearson", tk_ivec_bits_top_reg_pearson_lua },

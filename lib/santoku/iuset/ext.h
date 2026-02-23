@@ -2875,7 +2875,7 @@ static inline tk_ivec_t *tk_cvec_bits_top_entropy (
   return out;
 }
 
-static inline tk_ivec_t *tk_ivec_bits_top_df (
+static inline tk_ivec_t *tk_ivec_bits_top_idf (
   lua_State *L,
   tk_ivec_t *set_bits,
   uint64_t n_samples,
@@ -2946,8 +2946,78 @@ static inline tk_ivec_t *tk_ivec_bits_top_df (
   return out;
 }
 
+static inline tk_ivec_t *tk_ivec_bits_top_df (
+  lua_State *L,
+  tk_ivec_t *set_bits,
+  uint64_t n_samples,
+  uint64_t n_visible,
+  double min_df,
+  double max_df,
+  uint64_t top_k
+) {
+  atomic_uint *df_counts = (atomic_uint *)calloc(n_visible, sizeof(atomic_uint));
+  if (!df_counts)
+    return NULL;
+  uint64_t *last_sample = (uint64_t *)malloc(n_visible * sizeof(uint64_t));
+  if (!last_sample) {
+    free(df_counts);
+    return NULL;
+  }
+  for (uint64_t i = 0; i < n_visible; i++)
+    last_sample[i] = UINT64_MAX;
+  for (uint64_t i = 0; i < set_bits->n; i++) {
+    int64_t bit_idx = set_bits->a[i];
+    if (bit_idx < 0)
+      continue;
+    uint64_t sample_idx = (uint64_t)bit_idx / n_visible;
+    uint64_t feature_idx = (uint64_t)bit_idx % n_visible;
+    if (sample_idx < n_samples && feature_idx < n_visible) {
+      if (last_sample[feature_idx] != sample_idx) {
+        last_sample[feature_idx] = sample_idx;
+        atomic_fetch_add(&df_counts[feature_idx], 1);
+      }
+    }
+  }
+  free(last_sample);
+  double min_df_abs = min_df < 0 ? -min_df : min_df * n_samples;
+  double max_df_abs = max_df < 0 ? -max_df : max_df * n_samples;
+  int n_threads = 1;
+  #pragma omp parallel
+  { n_threads = omp_get_num_threads(); }
+  tk_rvec_t **local_heaps = (tk_rvec_t **)calloc((size_t)n_threads, sizeof(tk_rvec_t *));
+  #pragma omp parallel
+  {
+    int tid = omp_get_thread_num();
+    local_heaps[tid] = tk_rvec_create(NULL, 0, 0, 0);
+    #pragma omp for schedule(static)
+    for (uint64_t i = 0; i < n_visible; i++) {
+      double df_count = (double)atomic_load(&df_counts[i]);
+      if (df_count <= 0 || df_count >= n_samples) continue;
+      if (df_count >= min_df_abs && df_count <= max_df_abs) {
+        tk_rank_t r = { (int64_t)i, df_count };
+        tk_rvec_hmin(local_heaps[tid], top_k, r);
+      }
+    }
+  }
+  tk_rvec_t *top_heap = tk_rvec_create(NULL, 0, 0, 0);
+  for (int t = 0; t < n_threads; t++) {
+    for (uint64_t i = 0; i < local_heaps[t]->n; i++)
+      tk_rvec_hmin(top_heap, top_k, local_heaps[t]->a[i]);
+    tk_rvec_destroy(local_heaps[t]);
+  }
+  free(local_heaps);
+  free(df_counts);
+  tk_rvec_desc(top_heap, 0, top_heap->n);
+  tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+  tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+  tk_rvec_keys(L, top_heap, out);
+  tk_rvec_values(L, top_heap, weights);
+  tk_rvec_destroy(top_heap);
+  return out;
+}
 
-static inline tk_ivec_t *tk_cvec_bits_top_df (
+
+static inline tk_ivec_t *tk_cvec_bits_top_idf (
   lua_State *L,
   tk_cvec_t *bitmap,
   uint64_t n_samples,
@@ -2988,6 +3058,67 @@ static inline tk_ivec_t *tk_cvec_bits_top_df (
       double idf = log((double)(n_samples + 1) / (df_count + 1));
       if (df_count >= min_df_abs && df_count <= max_df_abs) {
         tk_rank_t r = { (int64_t)i, idf };
+        tk_rvec_hmin(local_heaps[tid], top_k, r);
+      }
+    }
+  }
+  tk_rvec_t *top_heap = tk_rvec_create(NULL, 0, 0, 0);
+  for (int t = 0; t < n_threads; t++) {
+    for (uint64_t i = 0; i < local_heaps[t]->n; i++)
+      tk_rvec_hmin(top_heap, top_k, local_heaps[t]->a[i]);
+    tk_rvec_destroy(local_heaps[t]);
+  }
+  free(local_heaps);
+  free(df_counts);
+  tk_rvec_desc(top_heap, 0, top_heap->n);
+  tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
+  tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+  tk_rvec_keys(L, top_heap, out);
+  tk_rvec_values(L, top_heap, weights);
+  tk_rvec_destroy(top_heap);
+  return out;
+}
+
+static inline tk_ivec_t *tk_cvec_bits_top_df (
+  lua_State *L,
+  tk_cvec_t *bitmap,
+  uint64_t n_samples,
+  uint64_t n_features,
+  double min_df,
+  double max_df,
+  uint64_t top_k
+) {
+  atomic_uint *df_counts = (atomic_uint *)calloc(n_features, sizeof(atomic_uint));
+  if (!df_counts)
+    return NULL;
+  uint8_t *data = (uint8_t *)bitmap->a;
+  uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
+  #pragma omp parallel for schedule(static)
+  for (uint64_t s = 0; s < n_samples; s++) {
+    uint64_t sample_offset = s * bytes_per_sample;
+    for (uint64_t f = 0; f < n_features; f++) {
+      uint64_t byte_idx = f / CHAR_BIT;
+      uint8_t bit_idx = f % CHAR_BIT;
+      if (data[sample_offset + byte_idx] & (1u << bit_idx))
+        atomic_fetch_add(&df_counts[f], 1);
+    }
+  }
+  double min_df_abs = min_df < 0 ? -min_df : min_df * n_samples;
+  double max_df_abs = max_df < 0 ? -max_df : max_df * n_samples;
+  int n_threads = 1;
+  #pragma omp parallel
+  { n_threads = omp_get_num_threads(); }
+  tk_rvec_t **local_heaps = (tk_rvec_t **)calloc((size_t)n_threads, sizeof(tk_rvec_t *));
+  #pragma omp parallel
+  {
+    int tid = omp_get_thread_num();
+    local_heaps[tid] = tk_rvec_create(NULL, 0, 0, 0);
+    #pragma omp for schedule(static)
+    for (uint64_t i = 0; i < n_features; i++) {
+      double df_count = (double)atomic_load(&df_counts[i]);
+      if (df_count <= 0 || df_count >= n_samples) continue;
+      if (df_count >= min_df_abs && df_count <= max_df_abs) {
+        tk_rank_t r = { (int64_t)i, df_count };
         tk_rvec_hmin(local_heaps[tid], top_k, r);
       }
     }

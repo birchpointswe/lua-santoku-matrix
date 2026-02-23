@@ -6,7 +6,7 @@ require("santoku.cvec")
 local tbl = require("santoku.table")
 local teq = tbl.equals
 
-test("ivec:bits_top_df basic", function ()
+test("ivec:bits_top_idf basic", function ()
   local n_samples = 4
   local n_features = 5
   local bits = ivec.create({
@@ -21,7 +21,7 @@ test("ivec:bits_top_df basic", function ()
     3 * n_features + 0,
     3 * n_features + 3,
   })
-  local top_features, weights = bits:bits_top_df(n_samples, n_features, 3)
+  local top_features, weights = bits:bits_top_idf(n_samples, n_features, 3)
   assert(top_features:size() == 3)
   assert(weights:size() == 3)
   local w = weights:table()
@@ -30,7 +30,7 @@ test("ivec:bits_top_df basic", function ()
   assert(not teq(f, {0}), "feature 0 (df=4) should be excluded")
 end)
 
-test("ivec:bits_top_df excludes df=0 and df=n_samples", function ()
+test("ivec:bits_top_idf excludes df=0 and df=n_samples", function ()
   local n_samples = 3
   local n_features = 4
   local bits = ivec.create({
@@ -40,7 +40,7 @@ test("ivec:bits_top_df excludes df=0 and df=n_samples", function ()
     0 * n_features + 1,
     1 * n_features + 1,
   })
-  local top_features = bits:bits_top_df(n_samples, n_features)
+  local top_features = bits:bits_top_idf(n_samples, n_features)
   local f = top_features:table()
   for _, feat in ipairs(f) do
     assert(feat ~= 0, "feature 0 (df=3=n_samples) should be excluded")
@@ -50,7 +50,7 @@ test("ivec:bits_top_df excludes df=0 and df=n_samples", function ()
   assert(teq(f, {1}), "only feature 1 (df=2) should remain")
 end)
 
-test("ivec:bits_top_df min_df/max_df filtering", function ()
+test("ivec:bits_top_idf min_df/max_df filtering", function ()
   local n_samples = 10
   local n_features = 4
   local bits = ivec.create({})
@@ -58,13 +58,13 @@ test("ivec:bits_top_df min_df/max_df filtering", function ()
   for s = 0, 2 do bits:push(s * n_features + 1) end
   for s = 0, 4 do bits:push(s * n_features + 2) end
   for s = 0, 7 do bits:push(s * n_features + 3) end
-  local top_features, _ = bits:bits_top_df(n_samples, n_features, 4, 0.2, 0.6)
+  local top_features, _ = bits:bits_top_idf(n_samples, n_features, 4, 0.2, 0.6)
   local f = top_features:table()
   assert(not teq(f, {0}), "feature 0 (df=1, 10%) should be excluded by min_df=0.2")
   assert(not teq(f, {3}), "feature 3 (df=8, 80%) should be excluded by max_df=0.6")
 end)
 
-test("cvec:bits_top_df basic", function ()
+test("cvec:bits_top_idf basic", function ()
   local n_samples = 4
   local n_features = 5
   local bits = ivec.create({
@@ -80,14 +80,14 @@ test("cvec:bits_top_df basic", function ()
     3 * n_features + 3,
   })
   local bitmap = bits:bits_to_cvec(n_samples, n_features)
-  local top_features, weights = bitmap:bits_top_df(n_samples, n_features, 3)
+  local top_features, weights = bitmap:bits_top_idf(n_samples, n_features, 3)
   assert(top_features:size() == 3)
   assert(weights:size() == 3)
   local w = weights:table()
   assert(w[1] >= w[2] and w[2] >= w[3], "weights should be descending")
 end)
 
-test("cvec:bits_top_df excludes df=0 and df=n_samples", function ()
+test("cvec:bits_top_idf excludes df=0 and df=n_samples", function ()
   local n_samples = 3
   local n_features = 4
   local bits = ivec.create({
@@ -98,7 +98,7 @@ test("cvec:bits_top_df excludes df=0 and df=n_samples", function ()
     1 * n_features + 1,
   })
   local bitmap = bits:bits_to_cvec(n_samples, n_features)
-  local top_features, _ = bitmap:bits_top_df(n_samples, n_features)
+  local top_features, _ = bitmap:bits_top_idf(n_samples, n_features)
   local f = top_features:table()
   for _, feat in ipairs(f) do
     assert(feat ~= 0, "feature 0 (df=3=n_samples) should be excluded")
@@ -204,14 +204,14 @@ end)
 
 
 
-test("ivec:bits_top_df IDF value correctness", function ()
+test("ivec:bits_top_idf IDF value correctness", function ()
   local n_samples = 100
   local n_features = 3
   local bits = ivec.create({})
   for s = 0, 0 do bits:push(s * n_features + 0) end
   for s = 0, 49 do bits:push(s * n_features + 1) end
   for s = 0, 98 do bits:push(s * n_features + 2) end
-  local top_features, weights = bits:bits_top_df(n_samples, n_features)
+  local top_features, weights = bits:bits_top_idf(n_samples, n_features)
   local f = top_features:table()
   local w = weights:table()
   assert(f[1] == 0, "feature 0 (df=1) should have highest IDF")
@@ -222,7 +222,7 @@ test("ivec:bits_top_df IDF value correctness", function ()
   assert(math.abs(w[2] - expected_idf_1) < 0.01, "IDF for df=50 should be ~" .. expected_idf_1)
 end)
 
-test("ivec:bits_top_df weights are distinct (not all identical)", function ()
+test("ivec:bits_top_idf weights are distinct (not all identical)", function ()
   local n_samples = 50
   local n_features = 10
   local bits = ivec.create({})
@@ -234,7 +234,7 @@ test("ivec:bits_top_df weights are distinct (not all identical)", function ()
       end
     end
   end
-  local _, weights = bits:bits_top_df(n_samples, n_features, 5)
+  local _, weights = bits:bits_top_idf(n_samples, n_features, 5)
   local w = weights:table()
   assert(#w >= 2, "should have at least 2 features")
   assert(w[1] ~= w[2], "IDF weights should not all be identical (regression test)")
