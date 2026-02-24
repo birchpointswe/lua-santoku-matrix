@@ -3256,59 +3256,52 @@ static inline void tk_ivec_bits_top_reg_f (
     free(local_sum);
     free(local_sq);
   }
+  tk_rvec_t **dim_heaps = (tk_rvec_t **)calloc(n_hidden, sizeof(tk_rvec_t *));
+  #pragma omp parallel for schedule(dynamic)
+  for (uint64_t h = 0; h < n_hidden; h++) {
+    double *col = (double *)malloc(n_samples * sizeof(double));
+    for (uint64_t s = 0; s < n_samples; s++)
+      col[s] = targets->a[s * n_hidden + h];
+    double overall_mean = overall_sum[h] / (double)n_samples;
+    dim_heaps[h] = tk_rvec_create(NULL, 0, 0, 0);
+    for (uint64_t f = 0; f < n_features; f++) {
+      uint64_t n1 = feat_counts[f];
+      if (n1 <= 1) continue;
+      uint64_t n0 = n_samples - n1;
+      if (n0 <= 1) continue;
+      double sum1 = 0.0, sum_sq1 = 0.0;
+      uint64_t base = feat_off[f];
+      for (uint64_t j = 0; j < n1; j++) {
+        double y = col[feat_samp[base + j]];
+        sum1 += y;
+        sum_sq1 += y * y;
+      }
+      double sum0 = overall_sum[h] - sum1;
+      double mean1 = sum1 / (double)n1;
+      double mean0 = sum0 / (double)n0;
+      double ssb = (double)n1 * (mean1 - overall_mean) * (mean1 - overall_mean) +
+                   (double)n0 * (mean0 - overall_mean) * (mean0 - overall_mean);
+      double sum_sq0 = total_sum_sq[h] - sum_sq1;
+      double ssw = (sum_sq1 - sum1 * sum1 / (double)n1) +
+                   (sum_sq0 - sum0 * sum0 / (double)n0);
+      if (ssw < 1e-12) continue;
+      double F = ssb / (ssw / (double)(n_samples - 2));
+      tk_rank_t r = { (int64_t)f, F };
+      tk_rvec_hmin(dim_heaps[h], per_class_k, r);
+    }
+    free(col);
+    tk_rvec_desc(dim_heaps[h], 0, dim_heaps[h]->n);
+  }
   tk_ivec_push(offsets, 0);
   for (uint64_t h = 0; h < n_hidden; h++) {
-    double overall_mean = overall_sum[h] / (double)n_samples;
-    int n_threads = 1;
-    #pragma omp parallel
-    { n_threads = omp_get_num_threads(); }
-    tk_rvec_t **local_heaps = (tk_rvec_t **)calloc((size_t)n_threads, sizeof(tk_rvec_t *));
-    #pragma omp parallel
-    {
-      int tid = omp_get_thread_num();
-      local_heaps[tid] = tk_rvec_create(NULL, 0, 0, 0);
-      #pragma omp for schedule(guided)
-      for (uint64_t f = 0; f < n_features; f++) {
-        uint64_t n1 = feat_counts[f];
-        if (n1 <= 1) continue;
-        uint64_t n0 = n_samples - n1;
-        if (n0 <= 1) continue;
-        double sum1 = 0.0, sum_sq1 = 0.0;
-        uint64_t base = feat_off[f];
-        for (uint64_t j = 0; j < n1; j++) {
-          double y = targets->a[feat_samp[base + j] * n_hidden + h];
-          sum1 += y;
-          sum_sq1 += y * y;
-        }
-        double sum0 = overall_sum[h] - sum1;
-        double mean1 = sum1 / (double)n1;
-        double mean0 = sum0 / (double)n0;
-        double ssb = (double)n1 * (mean1 - overall_mean) * (mean1 - overall_mean) +
-                     (double)n0 * (mean0 - overall_mean) * (mean0 - overall_mean);
-        double sum_sq0 = total_sum_sq[h] - sum_sq1;
-        double ssw = (sum_sq1 - sum1 * sum1 / (double)n1) +
-                     (sum_sq0 - sum0 * sum0 / (double)n0);
-        if (ssw < 1e-12) continue;
-        double F = ssb / (ssw / (double)(n_samples - 2));
-        tk_rank_t r = { (int64_t)f, F };
-        tk_rvec_hmin(local_heaps[tid], per_class_k, r);
-      }
-    }
-    tk_rvec_t *merged = tk_rvec_create(NULL, 0, 0, 0);
-    for (int t = 0; t < n_threads; t++) {
-      for (uint64_t j = 0; j < local_heaps[t]->n; j++)
-        tk_rvec_hmin(merged, per_class_k, local_heaps[t]->a[j]);
-      tk_rvec_destroy(local_heaps[t]);
-    }
-    free(local_heaps);
-    tk_rvec_desc(merged, 0, merged->n);
-    for (uint64_t j = 0; j < merged->n; j++) {
-      tk_ivec_push(features, merged->a[j].i);
-      tk_dvec_push(weights, merged->a[j].d);
+    for (uint64_t j = 0; j < dim_heaps[h]->n; j++) {
+      tk_ivec_push(features, dim_heaps[h]->a[j].i);
+      tk_dvec_push(weights, dim_heaps[h]->a[j].d);
     }
     tk_ivec_push(offsets, (int64_t)features->n);
-    tk_rvec_destroy(merged);
+    tk_rvec_destroy(dim_heaps[h]);
   }
+  free(dim_heaps);
   free(feat_counts); free(feat_off); free(feat_samp);
   free(overall_sum); free(total_sum_sq);
   tk_build_pooled_union(L, offsets, features, weights, n_hidden, union_top_k, pool);
@@ -3351,21 +3344,14 @@ static inline void tk_ivec_bits_top_reg_pearson (
     double mean = overall_sum[h] / (double)n_samples;
     overall_std[h] = sqrt(overall_std[h] / (double)n_samples - mean * mean);
   }
-  tk_ivec_push(offsets, 0);
+  tk_rvec_t **dim_heaps = (tk_rvec_t **)calloc(n_hidden, sizeof(tk_rvec_t *));
+  #pragma omp parallel for schedule(dynamic)
   for (uint64_t h = 0; h < n_hidden; h++) {
-    if (overall_std[h] < 1e-12) {
-      tk_ivec_push(offsets, (int64_t)features->n);
-      continue;
-    }
-    int n_threads = 1;
-    #pragma omp parallel
-    { n_threads = omp_get_num_threads(); }
-    tk_rvec_t **local_heaps = (tk_rvec_t **)calloc((size_t)n_threads, sizeof(tk_rvec_t *));
-    #pragma omp parallel
-    {
-      int tid = omp_get_thread_num();
-      local_heaps[tid] = tk_rvec_create(NULL, 0, 0, 0);
-      #pragma omp for schedule(guided)
+    dim_heaps[h] = tk_rvec_create(NULL, 0, 0, 0);
+    if (overall_std[h] >= 1e-12) {
+      double *col = (double *)malloc(n_samples * sizeof(double));
+      for (uint64_t s = 0; s < n_samples; s++)
+        col[s] = targets->a[s * n_hidden + h];
       for (uint64_t f = 0; f < n_features; f++) {
         uint64_t n1 = feat_counts[f];
         if (n1 == 0) continue;
@@ -3374,31 +3360,29 @@ static inline void tk_ivec_bits_top_reg_pearson (
         double sum1 = 0.0;
         uint64_t base = feat_off[f];
         for (uint64_t j = 0; j < n1; j++)
-          sum1 += targets->a[feat_samp[base + j] * n_hidden + h];
+          sum1 += col[feat_samp[base + j]];
         double sum0 = overall_sum[h] - sum1;
         double mean1 = sum1 / (double)n1;
         double mean0 = sum0 / (double)n0;
         double r = (mean1 - mean0) / overall_std[h] *
                    sqrt((double)n1 * (double)n0 / ((double)n_samples * (double)n_samples));
         tk_rank_t rk = { (int64_t)f, r < 0 ? -r : r };
-        tk_rvec_hmin(local_heaps[tid], per_class_k, rk);
+        tk_rvec_hmin(dim_heaps[h], per_class_k, rk);
       }
+      free(col);
     }
-    tk_rvec_t *merged = tk_rvec_create(NULL, 0, 0, 0);
-    for (int t = 0; t < n_threads; t++) {
-      for (uint64_t j = 0; j < local_heaps[t]->n; j++)
-        tk_rvec_hmin(merged, per_class_k, local_heaps[t]->a[j]);
-      tk_rvec_destroy(local_heaps[t]);
-    }
-    free(local_heaps);
-    tk_rvec_desc(merged, 0, merged->n);
-    for (uint64_t j = 0; j < merged->n; j++) {
-      tk_ivec_push(features, merged->a[j].i);
-      tk_dvec_push(weights, merged->a[j].d);
+    tk_rvec_desc(dim_heaps[h], 0, dim_heaps[h]->n);
+  }
+  tk_ivec_push(offsets, 0);
+  for (uint64_t h = 0; h < n_hidden; h++) {
+    for (uint64_t j = 0; j < dim_heaps[h]->n; j++) {
+      tk_ivec_push(features, dim_heaps[h]->a[j].i);
+      tk_dvec_push(weights, dim_heaps[h]->a[j].d);
     }
     tk_ivec_push(offsets, (int64_t)features->n);
-    tk_rvec_destroy(merged);
+    tk_rvec_destroy(dim_heaps[h]);
   }
+  free(dim_heaps);
   free(feat_counts); free(feat_off); free(feat_samp);
   free(overall_sum); free(overall_std);
   tk_build_pooled_union(L, offsets, features, weights, n_hidden, union_top_k, pool);
