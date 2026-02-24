@@ -128,27 +128,17 @@ static inline int tk_ivec_bits_top_reg_f_lua (lua_State *L)
 
 static inline int tk_ivec_bits_top_reg_pearson_lua (lua_State *L)
 {
-  lua_settop(L, 5);
+  lua_settop(L, 8);
   tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
   tk_dvec_t *targets = tk_dvec_peek(L, 2, "targets");
   uint64_t n_samples = tk_lua_checkunsigned(L, 3, "n_samples");
   uint64_t n_features = tk_lua_checkunsigned(L, 4, "n_features");
-  uint64_t top_k = lua_isnil(L, 5) ? n_features : tk_lua_checkunsigned(L, 5, "top_k");
-  tk_ivec_bits_top_reg_pearson(L, set_bits, targets, n_samples, n_features, top_k);
-  return 2;
-}
-
-static inline int tk_ivec_bits_top_reg_mi_lua (lua_State *L)
-{
-  lua_settop(L, 6);
-  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
-  tk_dvec_t *targets = tk_dvec_peek(L, 2, "targets");
-  uint64_t n_samples = tk_lua_checkunsigned(L, 3, "n_samples");
-  uint64_t n_features = tk_lua_checkunsigned(L, 4, "n_features");
-  uint64_t top_k = lua_isnil(L, 5) ? n_features : tk_lua_checkunsigned(L, 5, "top_k");
-  uint64_t n_bins = lua_isnil(L, 6) ? 10 : tk_lua_checkunsigned(L, 6, "n_bins");
-  tk_ivec_bits_top_reg_mi(L, set_bits, targets, n_samples, n_features, top_k, n_bins);
-  return 2;
+  uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "n_hidden");
+  uint64_t per_class_k = lua_isnil(L, 6) ? n_features : tk_lua_checkunsigned(L, 6, "per_class_k");
+  uint64_t union_top_k = lua_isnil(L, 7) ? 0 : tk_lua_checkunsigned(L, 7, "union_top_k");
+  tk_pool_t pool = tk_pool_from_string(lua_tostring(L, 8));
+  tk_ivec_bits_top_reg_pearson(L, set_bits, targets, n_samples, n_features, n_hidden, per_class_k, union_top_k, pool);
+  return 5;
 }
 
 static inline int tk_ivec_bits_bipartite_lua (lua_State *L)
@@ -743,7 +733,6 @@ static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
   { "bits_top_df", tk_ivec_bits_top_df_lua },
   { "bits_top_reg_f", tk_ivec_bits_top_reg_f_lua },
   { "bits_top_reg_pearson", tk_ivec_bits_top_reg_pearson_lua },
-  { "bits_top_reg_mi", tk_ivec_bits_top_reg_mi_lua },
   { "bits_select", tk_ivec_bits_select_lua },
   { "bits_bipartite", tk_ivec_bits_bipartite_lua },
   { "bits_to_cvec", tk_ivec_bits_to_cvec_lua },
