@@ -276,6 +276,20 @@ static inline int tk_cvec_bits_top_reg_cohen_lua (lua_State *L) {
   return 5;
 }
 
+static inline int tk_cvec_bits_top_reg_auc_lua (lua_State *L) {
+  lua_settop(L, 8);
+  tk_cvec_t *bitmap = tk_cvec_peek(L, 1, "bitmap");
+  tk_dvec_t *targets = tk_dvec_peek(L, 2, "targets");
+  uint64_t n_samples = tk_lua_checkunsigned(L, 3, "n_samples");
+  uint64_t n_features = tk_lua_checkunsigned(L, 4, "n_features");
+  uint64_t n_hidden = tk_lua_checkunsigned(L, 5, "n_hidden");
+  uint64_t per_class_k = lua_isnil(L, 6) ? n_features : tk_lua_checkunsigned(L, 6, "per_class_k");
+  uint64_t union_top_k = lua_isnil(L, 7) ? 0 : tk_lua_checkunsigned(L, 7, "union_top_k");
+  tk_pool_t pool = tk_pool_from_string(lua_tostring(L, 8));
+  tk_cvec_bits_top_reg_auc(L, bitmap, targets, n_samples, n_features, n_hidden, per_class_k, union_top_k, pool);
+  return 5;
+}
+
 static inline int tk_cvec_bits_popcount_lua (lua_State *L) {
   lua_settop(L, 2);
   tk_cvec_t *vec = tk_cvec_peek(L, 1, "cvec");
@@ -402,6 +416,7 @@ static luaL_Reg tk_cvec_lua_mt_ext2_fns[] =
   { "bits_top_reg_pearson", tk_cvec_bits_top_reg_pearson_lua },
   { "bits_top_reg_r2", tk_cvec_bits_top_reg_r2_lua },
   { "bits_top_reg_cohen", tk_cvec_bits_top_reg_cohen_lua },
+  { "bits_top_reg_auc", tk_cvec_bits_top_reg_auc_lua },
   { "bits_popcount", tk_cvec_bits_popcount_lua },
   { "bits_hamming", tk_cvec_bits_hamming_lua },
   { "bits_hamming_mask", tk_cvec_bits_hamming_mask_lua },
