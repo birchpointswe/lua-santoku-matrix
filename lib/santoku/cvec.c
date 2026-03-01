@@ -402,8 +402,49 @@ static inline int tk_cvec_bits_transpose_lua (lua_State *L)
   return 1;
 }
 
+static int tk_cvec_bits_to_csc_lua (lua_State *L)
+{
+  tk_cvec_t *cv = tk_cvec_peek(L, 1, "cvec");
+  uint64_t n_samples = tk_lua_checkunsigned(L, 2, "n_samples");
+  uint64_t n_features = tk_lua_checkunsigned(L, 3, "n_features");
+  uint64_t bits_per_sample = 2 * n_features;
+  uint64_t bytes_per_sample = (bits_per_sample + 7) / 8;
+  uint64_t *counts = (uint64_t *)calloc(n_features, sizeof(uint64_t));
+  if (!counts)
+    return luaL_error(L, "bits_to_csc: allocation failed");
+  const uint8_t *data = (const uint8_t *)cv->a;
+  for (uint64_t s = 0; s < n_samples; s++) {
+    const uint8_t *row = data + s * bytes_per_sample;
+    for (uint64_t f = 0; f < n_features; f++) {
+      if (row[f / 8] & (1 << (f % 8)))
+        counts[f]++;
+    }
+  }
+  tk_ivec_t *off = tk_ivec_create(L, n_features + 1, 0, 0);
+  off->n = n_features + 1;
+  off->a[0] = 0;
+  for (uint64_t f = 0; f < n_features; f++)
+    off->a[f + 1] = off->a[f] + (int64_t)counts[f];
+  uint64_t total = (uint64_t)off->a[n_features];
+  tk_ivec_t *idx = tk_ivec_create(L, total, 0, 0);
+  idx->n = total;
+  memset(counts, 0, n_features * sizeof(uint64_t));
+  for (uint64_t s = 0; s < n_samples; s++) {
+    const uint8_t *row = data + s * bytes_per_sample;
+    for (uint64_t f = 0; f < n_features; f++) {
+      if (row[f / 8] & (1 << (f % 8))) {
+        idx->a[(uint64_t)off->a[f] + counts[f]] = (int64_t)s;
+        counts[f]++;
+      }
+    }
+  }
+  free(counts);
+  return 2;
+}
+
 static luaL_Reg tk_cvec_lua_mt_ext2_fns[] =
 {
+  { "bits_to_csc", tk_cvec_bits_to_csc_lua },
   { "bits_flip_interleave", tk_cvec_bits_flip_interleave_lua },
   { "bits_to_ivec", tk_cvec_bits_to_ivec_lua },
   { "bits_select", tk_cvec_bits_select_lua },

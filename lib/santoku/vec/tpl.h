@@ -708,7 +708,7 @@ static inline int tk_vec_pfx(zero_lua) (lua_State *L)
   lua_settop(L, 1);
   tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
   tk_vec_pfx(zero)(m0);
-  return 0;
+  return 1;
 }
 
 static inline int tk_vec_pfx(shrink_lua) (lua_State *L)
