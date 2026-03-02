@@ -1190,4 +1190,48 @@ static inline tk_ivec_t *tk_dvec_mtx_top_dip (
   return out;
 }
 
+static inline void tk_dvec_mtx_standardize (
+  lua_State *L,
+  tk_dvec_t *data,
+  uint64_t n_cols,
+  tk_dvec_t *mean_in,
+  tk_dvec_t *istd_in,
+  tk_dvec_t **mean_out,
+  tk_dvec_t **istd_out
+) {
+  uint64_t N = data->n / n_cols;
+  if (mean_in) {
+    #pragma omp parallel for
+    for (uint64_t d = 0; d < n_cols; d++) {
+      double mu = mean_in->a[d];
+      double is = istd_in->a[d];
+      for (uint64_t s = 0; s < N; s++)
+        data->a[s * n_cols + d] = (data->a[s * n_cols + d] - mu) * is;
+    }
+  } else {
+    tk_dvec_t *mu = tk_dvec_create(L, n_cols, 0, 0);
+    mu->n = n_cols;
+    tk_dvec_t *is = tk_dvec_create(L, n_cols, 0, 0);
+    is->n = n_cols;
+    #pragma omp parallel for
+    for (uint64_t d = 0; d < n_cols; d++) {
+      double sum = 0, sum2 = 0;
+      for (uint64_t s = 0; s < N; s++) {
+        double v = data->a[s * n_cols + d];
+        sum += v;
+        sum2 += v * v;
+      }
+      double m = sum / (double)N;
+      double var = sum2 / (double)N - m * m;
+      double istd = var > 1e-24 ? 1.0 / sqrt(var) : 0.0;
+      mu->a[d] = m;
+      is->a[d] = istd;
+      for (uint64_t s = 0; s < N; s++)
+        data->a[s * n_cols + d] = (data->a[s * n_cols + d] - m) * istd;
+    }
+    *mean_out = mu;
+    *istd_out = is;
+  }
+}
+
 #endif

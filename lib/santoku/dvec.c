@@ -401,6 +401,22 @@ static inline int tk_dvec_mtx_sign_lua (lua_State *L)
   return 2;
 }
 
+static inline int tk_dvec_mtx_standardize_lua (lua_State *L)
+{
+  tk_dvec_t *data = tk_dvec_peek(L, 1, "data");
+  uint64_t n_cols = tk_lua_checkunsigned(L, 2, "n_cols");
+  if (lua_gettop(L) >= 4 && !lua_isnil(L, 3)) {
+    tk_dvec_t *mean_in = tk_dvec_peek(L, 3, "mean");
+    tk_dvec_t *istd_in = tk_dvec_peek(L, 4, "inv_std");
+    tk_dvec_mtx_standardize(L, data, n_cols, mean_in, istd_in, NULL, NULL);
+    return 0;
+  } else {
+    tk_dvec_t *mu = NULL, *is = NULL;
+    tk_dvec_mtx_standardize(L, data, n_cols, NULL, NULL, &mu, &is);
+    return 2;
+  }
+}
+
 static inline int tk_dvec_mtx_median_lua (lua_State *L)
 {
   lua_settop(L, 2);
@@ -444,6 +460,7 @@ static luaL_Reg tk_dvec_lua_mt_ext2_fns[] =
   { "ceil", tk_dvec_ceil_lua },
   { "to_ivec", tk_dvec_to_ivec_lua },
   { "mtx_center", tk_dvec_mtx_center_lua },
+  { "mtx_standardize", tk_dvec_mtx_standardize_lua },
   { "mtx_sign", tk_dvec_mtx_sign_lua },
   { "mtx_median", tk_dvec_mtx_median_lua },
   { NULL, NULL }
