@@ -732,6 +732,23 @@ static inline int tk_ivec_bits_to_csr_lua (lua_State *L)
   return 2;
 }
 
+static inline int tk_ivec_bits_to_dvec_lua (lua_State *L)
+{
+  lua_settop(L, 3);
+  tk_ivec_t *set_bits = tk_ivec_peek(L, 1, "set_bits");
+  uint64_t n_samples = tk_lua_checkunsigned(L, 2, "n_samples");
+  uint64_t n_features = tk_lua_checkunsigned(L, 3, "n_features");
+  uint64_t total = n_samples * n_features;
+  tk_dvec_t *out = tk_dvec_create(L, total, NULL, NULL);
+  memset(out->a, 0, total * sizeof(double));
+  for (uint64_t i = 0; i < set_bits->n; i++) {
+    int64_t v = set_bits->a[i];
+    if (v >= 0 && (uint64_t)v < total)
+      out->a[(uint64_t)v] = 1.0;
+  }
+  return 1;
+}
+
 static inline int tk_ivec_bits_transpose_lua (lua_State *L)
 {
   lua_settop(L, 3);
@@ -765,6 +782,7 @@ static inline int tk_ivec_to_dvec_lua (lua_State *L) {
 static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
 {
   { "bits_to_csr", tk_ivec_bits_to_csr_lua },
+  { "bits_to_dvec", tk_ivec_bits_to_dvec_lua },
   { "bits_transpose", tk_ivec_bits_transpose_lua },
   { "copy_pkeys", tk_ivec_copy_pkeys_lua },
   { "copy_rkeys", tk_ivec_copy_rkeys_lua },
