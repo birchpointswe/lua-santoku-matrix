@@ -459,6 +459,33 @@ static int tk_csr_sample_select_lua (lua_State *L)
   return 4;
 }
 
+static tk_ivec_t *tk_csr_dedup_to_flat (
+  lua_State *L,
+  tk_ivec_t *offsets,
+  tk_ivec_t *neighbors,
+  uint64_t n_samples,
+  uint64_t n_features
+) {
+  tk_ivec_t *out = tk_ivec_create(L, neighbors->n, NULL, NULL);
+  char *seen = (char *)calloc(n_features, 1);
+  uint64_t pos = 0;
+  for (uint64_t s = 0; s < n_samples; s++) {
+    int64_t lo = offsets->a[s], hi = offsets->a[s + 1];
+    for (int64_t j = lo; j < hi; j++) {
+      uint64_t f = (uint64_t)neighbors->a[j];
+      if (!seen[f]) {
+        seen[f] = 1;
+        out->a[pos++] = (int64_t)(s * n_features + f);
+      }
+    }
+    for (int64_t j = lo; j < hi; j++)
+      seen[(uint64_t)neighbors->a[j]] = 0;
+  }
+  out->n = pos;
+  free(seen);
+  return out;
+}
+
 static int tk_csr_top_chi2_lua (lua_State *L)
 {
   lua_settop(L, 9);
@@ -486,13 +513,7 @@ static int tk_csr_top_chi2_lua (lua_State *L)
         labels->a[j] = (int64_t)(s * n_hidden + (uint64_t)label_nbr->a[j]);
     }
   }
-  tk_ivec_t *set_bits = tk_ivec_create(L, feat_neighbors->n, NULL, NULL);
-  set_bits->n = feat_neighbors->n;
-  for (uint64_t s = 0; s < n_samples; s++) {
-    int64_t lo = feat_offsets->a[s], hi = feat_offsets->a[s + 1];
-    for (int64_t j = lo; j < hi; j++)
-      set_bits->a[j] = (int64_t)(s * n_features + (uint64_t)feat_neighbors->a[j]);
-  }
+  tk_ivec_t *set_bits = tk_csr_dedup_to_flat(L, feat_offsets, feat_neighbors, n_samples, n_features);
   tk_ivec_bits_top_chi2(L, set_bits, codes, labels, n_samples, n_features, n_hidden, per_class_k, union_top_k, pool);
   return 5;
 }
@@ -524,13 +545,7 @@ static int tk_csr_top_mi_lua (lua_State *L)
         labels->a[j] = (int64_t)(s * n_hidden + (uint64_t)label_nbr->a[j]);
     }
   }
-  tk_ivec_t *set_bits = tk_ivec_create(L, feat_neighbors->n, NULL, NULL);
-  set_bits->n = feat_neighbors->n;
-  for (uint64_t s = 0; s < n_samples; s++) {
-    int64_t lo = feat_offsets->a[s], hi = feat_offsets->a[s + 1];
-    for (int64_t j = lo; j < hi; j++)
-      set_bits->a[j] = (int64_t)(s * n_features + (uint64_t)feat_neighbors->a[j]);
-  }
+  tk_ivec_t *set_bits = tk_csr_dedup_to_flat(L, feat_offsets, feat_neighbors, n_samples, n_features);
   tk_ivec_bits_top_mi(L, set_bits, codes, labels, n_samples, n_features, n_hidden, per_class_k, union_top_k, pool);
   return 5;
 }
@@ -562,13 +577,7 @@ static int tk_csr_top_bns_lua (lua_State *L)
         labels->a[j] = (int64_t)(s * n_hidden + (uint64_t)label_nbr->a[j]);
     }
   }
-  tk_ivec_t *set_bits = tk_ivec_create(L, feat_neighbors->n, NULL, NULL);
-  set_bits->n = feat_neighbors->n;
-  for (uint64_t s = 0; s < n_samples; s++) {
-    int64_t lo = feat_offsets->a[s], hi = feat_offsets->a[s + 1];
-    for (int64_t j = lo; j < hi; j++)
-      set_bits->a[j] = (int64_t)(s * n_features + (uint64_t)feat_neighbors->a[j]);
-  }
+  tk_ivec_t *set_bits = tk_csr_dedup_to_flat(L, feat_offsets, feat_neighbors, n_samples, n_features);
   tk_ivec_bits_top_bns(L, set_bits, codes, labels, n_samples, n_features, n_hidden, per_class_k, union_top_k, pool);
   return 5;
 }
@@ -581,13 +590,7 @@ static int tk_csr_top_entropy_lua (lua_State *L)
   uint64_t n_features = tk_lua_checkunsigned(L, 3, "n_features");
   uint64_t top_k = lua_isnil(L, 4) ? n_features : tk_lua_checkunsigned(L, 4, "top_k");
   uint64_t n_samples = feat_offsets->n - 1;
-  tk_ivec_t *set_bits = tk_ivec_create(L, feat_neighbors->n, NULL, NULL);
-  set_bits->n = feat_neighbors->n;
-  for (uint64_t s = 0; s < n_samples; s++) {
-    int64_t lo = feat_offsets->a[s], hi = feat_offsets->a[s + 1];
-    for (int64_t j = lo; j < hi; j++)
-      set_bits->a[j] = (int64_t)(s * n_features + (uint64_t)feat_neighbors->a[j]);
-  }
+  tk_ivec_t *set_bits = tk_csr_dedup_to_flat(L, feat_offsets, feat_neighbors, n_samples, n_features);
   tk_ivec_bits_top_entropy(L, set_bits, n_samples, n_features, top_k);
   return 2;
 }
@@ -602,13 +605,7 @@ static int tk_csr_top_idf_lua (lua_State *L)
   double min_df = tk_lua_optnumber(L, 5, "min_df", 0.0);
   double max_df = tk_lua_optnumber(L, 6, "max_df", 1.0);
   uint64_t n_samples = feat_offsets->n - 1;
-  tk_ivec_t *set_bits = tk_ivec_create(L, feat_neighbors->n, NULL, NULL);
-  set_bits->n = feat_neighbors->n;
-  for (uint64_t s = 0; s < n_samples; s++) {
-    int64_t lo = feat_offsets->a[s], hi = feat_offsets->a[s + 1];
-    for (int64_t j = lo; j < hi; j++)
-      set_bits->a[j] = (int64_t)(s * n_features + (uint64_t)feat_neighbors->a[j]);
-  }
+  tk_ivec_t *set_bits = tk_csr_dedup_to_flat(L, feat_offsets, feat_neighbors, n_samples, n_features);
   if (!tk_ivec_bits_top_idf(L, set_bits, n_samples, n_features, min_df, max_df, top_k))
     return tk_lua_verror(L, 2, "top_idf", "allocation failed");
   return 2;
@@ -624,13 +621,7 @@ static int tk_csr_top_df_lua (lua_State *L)
   double min_df = tk_lua_optnumber(L, 5, "min_df", 0.0);
   double max_df = tk_lua_optnumber(L, 6, "max_df", 1.0);
   uint64_t n_samples = feat_offsets->n - 1;
-  tk_ivec_t *set_bits = tk_ivec_create(L, feat_neighbors->n, NULL, NULL);
-  set_bits->n = feat_neighbors->n;
-  for (uint64_t s = 0; s < n_samples; s++) {
-    int64_t lo = feat_offsets->a[s], hi = feat_offsets->a[s + 1];
-    for (int64_t j = lo; j < hi; j++)
-      set_bits->a[j] = (int64_t)(s * n_features + (uint64_t)feat_neighbors->a[j]);
-  }
+  tk_ivec_t *set_bits = tk_csr_dedup_to_flat(L, feat_offsets, feat_neighbors, n_samples, n_features);
   if (!tk_ivec_bits_top_df(L, set_bits, n_samples, n_features, min_df, max_df, top_k))
     return tk_lua_verror(L, 2, "top_df", "allocation failed");
   return 2;
@@ -648,13 +639,7 @@ static int tk_csr_top_reg_f_lua (lua_State *L)
   uint64_t union_top_k = lua_isnil(L, 7) ? 0 : tk_lua_checkunsigned(L, 7, "union_top_k");
   tk_pool_t pool = tk_pool_from_string(lua_tostring(L, 8));
   uint64_t n_samples = feat_offsets->n - 1;
-  tk_ivec_t *set_bits = tk_ivec_create(L, feat_neighbors->n, NULL, NULL);
-  set_bits->n = feat_neighbors->n;
-  for (uint64_t s = 0; s < n_samples; s++) {
-    int64_t lo = feat_offsets->a[s], hi = feat_offsets->a[s + 1];
-    for (int64_t j = lo; j < hi; j++)
-      set_bits->a[j] = (int64_t)(s * n_features + (uint64_t)feat_neighbors->a[j]);
-  }
+  tk_ivec_t *set_bits = tk_csr_dedup_to_flat(L, feat_offsets, feat_neighbors, n_samples, n_features);
   tk_ivec_bits_top_reg_f(L, set_bits, targets, n_samples, n_features, n_hidden, per_class_k, union_top_k, pool);
   return 5;
 }
@@ -671,13 +656,7 @@ static int tk_csr_top_reg_pearson_lua (lua_State *L)
   uint64_t union_top_k = lua_isnil(L, 7) ? 0 : tk_lua_checkunsigned(L, 7, "union_top_k");
   tk_pool_t pool = tk_pool_from_string(lua_tostring(L, 8));
   uint64_t n_samples = feat_offsets->n - 1;
-  tk_ivec_t *set_bits = tk_ivec_create(L, feat_neighbors->n, NULL, NULL);
-  set_bits->n = feat_neighbors->n;
-  for (uint64_t s = 0; s < n_samples; s++) {
-    int64_t lo = feat_offsets->a[s], hi = feat_offsets->a[s + 1];
-    for (int64_t j = lo; j < hi; j++)
-      set_bits->a[j] = (int64_t)(s * n_features + (uint64_t)feat_neighbors->a[j]);
-  }
+  tk_ivec_t *set_bits = tk_csr_dedup_to_flat(L, feat_offsets, feat_neighbors, n_samples, n_features);
   tk_ivec_bits_top_reg_pearson(L, set_bits, targets, n_samples, n_features, n_hidden, per_class_k, union_top_k, pool);
   return 5;
 }
@@ -694,13 +673,7 @@ static int tk_csr_top_reg_r2_lua (lua_State *L)
   uint64_t union_top_k = lua_isnil(L, 7) ? 0 : tk_lua_checkunsigned(L, 7, "union_top_k");
   tk_pool_t pool = tk_pool_from_string(lua_tostring(L, 8));
   uint64_t n_samples = feat_offsets->n - 1;
-  tk_ivec_t *set_bits = tk_ivec_create(L, feat_neighbors->n, NULL, NULL);
-  set_bits->n = feat_neighbors->n;
-  for (uint64_t s = 0; s < n_samples; s++) {
-    int64_t lo = feat_offsets->a[s], hi = feat_offsets->a[s + 1];
-    for (int64_t j = lo; j < hi; j++)
-      set_bits->a[j] = (int64_t)(s * n_features + (uint64_t)feat_neighbors->a[j]);
-  }
+  tk_ivec_t *set_bits = tk_csr_dedup_to_flat(L, feat_offsets, feat_neighbors, n_samples, n_features);
   tk_ivec_bits_top_reg_r2(L, set_bits, targets, n_samples, n_features, n_hidden, per_class_k, union_top_k, pool);
   return 5;
 }
@@ -717,13 +690,7 @@ static int tk_csr_top_reg_cohen_lua (lua_State *L)
   uint64_t union_top_k = lua_isnil(L, 7) ? 0 : tk_lua_checkunsigned(L, 7, "union_top_k");
   tk_pool_t pool = tk_pool_from_string(lua_tostring(L, 8));
   uint64_t n_samples = feat_offsets->n - 1;
-  tk_ivec_t *set_bits = tk_ivec_create(L, feat_neighbors->n, NULL, NULL);
-  set_bits->n = feat_neighbors->n;
-  for (uint64_t s = 0; s < n_samples; s++) {
-    int64_t lo = feat_offsets->a[s], hi = feat_offsets->a[s + 1];
-    for (int64_t j = lo; j < hi; j++)
-      set_bits->a[j] = (int64_t)(s * n_features + (uint64_t)feat_neighbors->a[j]);
-  }
+  tk_ivec_t *set_bits = tk_csr_dedup_to_flat(L, feat_offsets, feat_neighbors, n_samples, n_features);
   tk_ivec_bits_top_reg_cohen(L, set_bits, targets, n_samples, n_features, n_hidden, per_class_k, union_top_k, pool);
   return 5;
 }
@@ -740,13 +707,7 @@ static int tk_csr_top_reg_auc_lua (lua_State *L)
   uint64_t union_top_k = lua_isnil(L, 7) ? 0 : tk_lua_checkunsigned(L, 7, "union_top_k");
   tk_pool_t pool = tk_pool_from_string(lua_tostring(L, 8));
   uint64_t n_samples = feat_offsets->n - 1;
-  tk_ivec_t *set_bits = tk_ivec_create(L, feat_neighbors->n, NULL, NULL);
-  set_bits->n = feat_neighbors->n;
-  for (uint64_t s = 0; s < n_samples; s++) {
-    int64_t lo = feat_offsets->a[s], hi = feat_offsets->a[s + 1];
-    for (int64_t j = lo; j < hi; j++)
-      set_bits->a[j] = (int64_t)(s * n_features + (uint64_t)feat_neighbors->a[j]);
-  }
+  tk_ivec_t *set_bits = tk_csr_dedup_to_flat(L, feat_offsets, feat_neighbors, n_samples, n_features);
   tk_ivec_bits_top_reg_auc(L, set_bits, targets, n_samples, n_features, n_hidden, per_class_k, union_top_k, pool);
   return 5;
 }

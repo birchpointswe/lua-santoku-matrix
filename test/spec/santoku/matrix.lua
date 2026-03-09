@@ -3,6 +3,7 @@ local err = require("santoku.error")
 local assert = err.assert
 local dvec = require("santoku.dvec")
 local ivec = require("santoku.ivec")
+local csr = require("santoku.csr")
 local rvec = require("santoku.rvec")
 local pvec = require("santoku.pvec")
 local tbl = require("santoku.table")
@@ -624,47 +625,6 @@ test("ivec: lookup", function ()
   assert(teq(indices:table(), { 300, 100, 200, 300 }))
 end)
 
-test("ivec: bits_select", function ()
-  local corpus = ivec.create({ 0, 4, 8, 12 })
-  local subcorpus = ivec.create()
-  corpus:bits_select(nil, ivec.create({ 0, 3 }), 4, subcorpus)
-  assert(teq({ 0, 4 }, subcorpus:table()))
-end)
-
-test("ivec: bits_to_cvec and bits_top_mi", function ()
-  require("santoku.cvec")
-  local n_samples = 3
-  local n_features = 4
-  local n_hidden = 2
-  local features = ivec.create({ 0, 1, 4, 6, 9, 11 })
-  local labels = ivec.create({ 0, 1, 3, 4 })
-  local top_features, weights = features:bits_top_mi(labels, n_samples, n_features, n_hidden, nil, 2, "max")
-  assert(top_features:size() == 2)
-  assert(weights:size() == 2)
-  local w = weights:table()
-  assert(w[1] >= w[2])
-end)
-
-test("ivec: bits_top_chi2", function ()
-  require("santoku.cvec")
-  local n_samples = 3
-  local n_features = 4
-  local n_hidden = 2
-  local features = ivec.create({ 0, 1, 4, 6, 9, 11 })
-  local labels = ivec.create({ 0, 1, 3, 4 })
-  local top_features, weights = features:bits_top_chi2(labels, n_samples, n_features, n_hidden, nil, 2, "max")
-  assert(top_features:size() == 2)
-  assert(weights:size() == 2)
-end)
-
-test("ivec: cvec roundtrip", function ()
-  require("santoku.cvec")
-  local n_samples = 3
-  local n_features = 4
-  local features = ivec.create({ 0, 1, 4, 6, 9, 11 })
-  local bitmap = features:bits_to_cvec(n_samples, n_features)
-  assert(bitmap ~= nil)
-end)
 
 test("ivec: scores_elbow", function ()
   local v = ivec.create({ 100, 80, 50, 30, 25, 24, 23, 22 })
@@ -942,46 +902,13 @@ test("ivec: from_rvec", function ()
   assert(keys:get(2) == 30)
 end)
 
-test("ivec: bits_transpose", function ()
-  local bits = ivec.create({
-    0 * 3 + 0, 0 * 3 + 2,
-    1 * 3 + 1,
-    2 * 3 + 0, 2 * 3 + 1
-  })
-  local transposed = bits:bits_transpose(3, 3)
-  transposed:asc()
-  assert(teq(transposed:table(), {
-    0 * 3 + 0, 0 * 3 + 2,
-    1 * 3 + 1, 1 * 3 + 2,
-    2 * 3 + 0
-  }))
-end)
-
-test("ivec: bits_transpose non-square", function ()
-  local bits = ivec.create({
-    0 * 4 + 1, 0 * 4 + 3,
-    1 * 4 + 0,
-    2 * 4 + 2
-  })
-  local transposed = bits:bits_transpose(3, 4)
-  transposed:asc()
-  assert(teq(transposed:table(), {
-    0 * 3 + 1,
-    1 * 3 + 0,
-    2 * 3 + 2,
-    3 * 3 + 0
-  }))
-end)
 
 test("cvec: bits_transpose", function ()
   require("santoku.cvec")
   local n_rows, n_cols = 3, 4
-  local bits = ivec.create({
-    0 * 4 + 0, 0 * 4 + 2,
-    1 * 4 + 1, 1 * 4 + 3,
-    2 * 4 + 0, 2 * 4 + 1
-  })
-  local bitmap = bits:bits_to_cvec(n_rows, n_cols)
+  local off = ivec.create({ 0, 2, 4, 6 })
+  local nbr = ivec.create({ 0, 2, 1, 3, 0, 1 })
+  local bitmap = csr.to_cvec(off, nbr, n_rows, n_cols)
   local transposed = bitmap:bits_transpose(n_rows, n_cols)
   local result_bits = transposed:bits_to_ivec(n_rows)
   result_bits:asc()

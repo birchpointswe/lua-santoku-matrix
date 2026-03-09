@@ -18,19 +18,6 @@
 #define TK_CVEC_BITS_BYTES(n) (((n) + CHAR_BIT - 1) / CHAR_BIT)
 #endif
 
-static inline tk_ivec_t *tk_ivec_bits_from_cvec(lua_State *L, const char *bm, uint64_t n_samples, uint64_t n_features);
-static inline tk_ivec_t *tk_ivec_bits_from_cvec_serial(lua_State *L, const char *bm, uint64_t n_samples, uint64_t n_features);
-static inline tk_cvec_t *tk_ivec_bits_to_cvec(lua_State *L, tk_ivec_t *set_bits, uint64_t n_samples, uint64_t n_features, bool flip_interleave);
-static inline tk_cvec_t *tk_ivec_bits_to_cvec_serial(lua_State *L, tk_ivec_t *set_bits, uint64_t n_samples, uint64_t n_features, bool flip_interleave);
-static inline uint64_t tk_ivec_bits_to_cvec_grouped(lua_State *L, tk_ivec_t *set_bits, uint64_t n_samples, uint64_t n_visible, tk_ivec_t *offsets, tk_ivec_t *features, bool flip_interleave);
-static inline uint64_t tk_ivec_bits_to_cvec_grouped_serial(lua_State *L, tk_ivec_t *set_bits, uint64_t n_samples, uint64_t n_visible, tk_ivec_t *offsets, tk_ivec_t *features, bool flip_interleave);
-static inline tk_ivec_t *tk_ivec_bits_extend(tk_ivec_t *base, tk_ivec_t *ext, uint64_t n_base_features, uint64_t n_ext_features);
-static inline tk_ivec_t *tk_ivec_bits_extend_serial(tk_ivec_t *base, tk_ivec_t *ext, uint64_t n_base_features, uint64_t n_ext_features);
-static inline int tk_ivec_bits_extend_mapped(tk_ivec_t *base, tk_ivec_t *ext, tk_ivec_t *aids, tk_ivec_t *bids, uint64_t n_base_features, uint64_t n_ext_features, bool project);
-static inline int tk_ivec_bits_extend_mapped_serial(tk_ivec_t *base, tk_ivec_t *ext, tk_ivec_t *aids, tk_ivec_t *bids, uint64_t n_base_features, uint64_t n_ext_features, bool project);
-static inline tk_ivec_t *tk_ivec_bits_bipartite(lua_State *L, tk_ivec_t *src, uint64_t n_docs, uint64_t n_labels, const char *mode, tk_ivec_t *tokens, uint64_t n_tokens, uint64_t *out_n_features);
-static inline tk_ivec_t *tk_ivec_bits_bipartite_serial(lua_State *L, tk_ivec_t *src, uint64_t n_docs, uint64_t n_labels, const char *mode, tk_ivec_t *tokens, uint64_t n_tokens, uint64_t *out_n_features);
-
 static inline void tk_ivec_copy_pkeys (tk_ivec_t *m0, tk_pvec_t *m1, int64_t start, int64_t end, int64_t dest) {
   if (start < 0 || start >= end || start >= (int64_t) m1->n)
     return;
@@ -799,84 +786,5 @@ static inline size_t tk_ivec_scores_otsu (
   if (out_val) *out_val = v->a[best_k];
   return best_k;
 }
-
-static inline void tk_hv_shift_or (
-  uint8_t *out, const uint8_t *token,
-  uint64_t hv_size, uint64_t hv_bytes, uint64_t shift
-) {
-  for (uint64_t byte_i = 0; byte_i < hv_bytes; byte_i++) {
-    uint8_t b = token[byte_i];
-    while (b) {
-      unsigned int tz = (unsigned int)__builtin_ctz((unsigned int)b);
-      uint64_t src_bit = byte_i * 8 + tz;
-      if (src_bit >= hv_size) break;
-      uint64_t dst_bit = (src_bit + shift) % hv_size;
-      out[dst_bit / 8] |= (uint8_t)(1u << (dst_bit % 8));
-      b &= b - 1;
-    }
-  }
-}
-
-static inline tk_cvec_t *tk_hv_generate_tokens (
-  lua_State *L,
-  tk_ivec_t *features,
-  uint64_t hv_size,
-  uint64_t n_bits,
-  uint64_t *out_n_tokens
-) {
-  int64_t max_fid = -1;
-  for (uint64_t i = 0; i < features->n; i++) {
-    if (features->a[i] > max_fid)
-      max_fid = features->a[i];
-  }
-  if (max_fid < 0) {
-    *out_n_tokens = 0;
-    return tk_cvec_create(L, 0, NULL, NULL);
-  }
-  uint64_t n_tokens = (uint64_t)(max_fid + 1);
-  uint64_t hv_bytes = TK_CVEC_BITS_BYTES(hv_size);
-  uint64_t total = n_tokens * hv_bytes;
-  uint8_t *seen = (uint8_t *)calloc(TK_CVEC_BITS_BYTES(n_tokens), 1);
-  if (!seen) {
-    *out_n_tokens = 0;
-    return tk_cvec_create(L, 0, NULL, NULL);
-  }
-  for (uint64_t i = 0; i < features->n; i++) {
-    int64_t fid = features->a[i];
-    if (fid >= 0)
-      seen[(uint64_t)fid / 8] |= (uint8_t)(1u << ((uint64_t)fid % 8));
-  }
-  tk_cvec_t *tok_cvec = tk_cvec_create(L, total, NULL, NULL);
-  uint8_t *tok = (uint8_t *)tok_cvec->a;
-  memset(tok, 0, total);
-  for (uint64_t fid = 0; fid < n_tokens; fid++) {
-    if (!(seen[fid / 8] & (1u << (fid % 8)))) continue;
-    uint8_t *row = tok + fid * hv_bytes;
-    uint64_t set = 0;
-    while (set < n_bits) {
-      uint64_t pos = tk_fast_random() % hv_size;
-      uint64_t bi = pos / 8;
-      uint8_t bm = (uint8_t)(1u << (pos % 8));
-      if (!(row[bi] & bm)) {
-        row[bi] |= bm;
-        set++;
-      }
-    }
-  }
-  free(seen);
-  *out_n_tokens = n_tokens;
-  return tok_cvec;
-}
-
-static inline void tk_ivec_bits_to_hv(lua_State *L, tk_ivec_t *offsets, tk_ivec_t *features, tk_cvec_t *tokens, uint64_t n_tokens, uint64_t hv_size, uint64_t shift_stride);
-static inline void tk_ivec_bits_to_hv_serial(lua_State *L, tk_ivec_t *offsets, tk_ivec_t *features, tk_cvec_t *tokens, uint64_t n_tokens, uint64_t hv_size, uint64_t shift_stride);
-
-#define TK_GENERATE_SINGLE
-#include <santoku/parallel/tpl.h>
-#include <santoku/ivec/ext_tpl.h>
-#undef TK_GENERATE_SINGLE
-
-#include <santoku/parallel/tpl.h>
-#include <santoku/ivec/ext_tpl.h>
 
 #endif

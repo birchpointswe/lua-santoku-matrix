@@ -11,22 +11,17 @@ local teq = tbl.equals
 test("csr.from_cvec / csr.to_cvec roundtrip", function ()
   local n_samples = 3
   local n_features = 4
-  local bits = ivec.create({
-    0 * n_features + 0,
-    0 * n_features + 2,
-    1 * n_features + 1,
-    2 * n_features + 0,
-    2 * n_features + 3,
-  })
-  local bitmap = bits:bits_to_cvec(n_samples, n_features)
-  local offsets, neighbors = csr.from_cvec(bitmap, n_samples, n_features)
-  assert(offsets:size() == n_samples + 1)
-  assert(offsets:get(0) == 0)
-  assert(offsets:get(1) == 2)
-  assert(offsets:get(2) == 3)
-  assert(offsets:get(3) == 5)
-  assert(teq(neighbors:table(), { 0, 2, 1, 0, 3 }))
-  local bitmap2 = csr.to_cvec(offsets, neighbors, n_samples, n_features)
+  local offsets = ivec.create({ 0, 2, 3, 5 })
+  local neighbors = ivec.create({ 0, 2, 1, 0, 3 })
+  local bitmap = csr.to_cvec(offsets, neighbors, n_samples, n_features)
+  local offsets2, neighbors2 = csr.from_cvec(bitmap, n_samples, n_features)
+  assert(offsets2:size() == n_samples + 1)
+  assert(offsets2:get(0) == 0)
+  assert(offsets2:get(1) == 2)
+  assert(offsets2:get(2) == 3)
+  assert(offsets2:get(3) == 5)
+  assert(teq(neighbors2:table(), { 0, 2, 1, 0, 3 }))
+  local bitmap2 = csr.to_cvec(offsets2, neighbors2, n_samples, n_features)
   assert(bitmap2:size() == bitmap:size())
 end)
 
