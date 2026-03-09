@@ -23,6 +23,7 @@ static inline tk_ivec_t *tk_dvec_mtx_top_skewness (lua_State *L, tk_dvec_t *matr
 static inline tk_ivec_t *tk_dvec_mtx_top_entropy (lua_State *L, tk_dvec_t *matrix, uint64_t n_samples, uint64_t n_features, uint64_t top_k, uint64_t n_bins);
 static inline tk_ivec_t *tk_dvec_mtx_top_bimodality (lua_State *L, tk_dvec_t *matrix, uint64_t n_samples, uint64_t n_features, uint64_t top_k);
 static inline tk_ivec_t *tk_dvec_mtx_top_dip (lua_State *L, tk_dvec_t *matrix, uint64_t n_samples, uint64_t n_features, uint64_t top_k);
+static inline void tk_dvec_mtx_topk (lua_State *L, tk_dvec_t *queries, tk_dvec_t *corpus, uint64_t n_queries, uint64_t n_corpus, uint64_t d, uint64_t k);
 
 #define TK_GENERATE_SINGLE
 #include <santoku/parallel/tpl.h>
@@ -1189,6 +1190,78 @@ static inline tk_ivec_t *tk_dvec_mtx_top_dip (
   tk_rvec_destroy(top_heap);
   return out;
 }
+
+#if !defined(__EMSCRIPTEN__)
+static inline void tk_dvec_mtx_topk (
+  lua_State *L,
+  tk_dvec_t *queries,
+  tk_dvec_t *corpus,
+  uint64_t n_queries,
+  uint64_t n_corpus,
+  uint64_t d,
+  uint64_t k
+) {
+  if (k == 0 || n_queries == 0 || n_corpus == 0 || d == 0) {
+    tk_ivec_t *off = tk_ivec_create(L, n_queries + 1, 0, 0);
+    off->n = n_queries + 1;
+    memset(off->a, 0, (n_queries + 1) * sizeof(int64_t));
+    tk_ivec_create(L, 0, 0, 0);
+    tk_dvec_create(L, 0, 0, 0);
+    return;
+  }
+  if (k > n_corpus) k = n_corpus;
+  uint64_t total = n_queries * k;
+  tk_ivec_t *offsets = tk_ivec_create(L, n_queries + 1, 0, 0);
+  offsets->n = n_queries + 1;
+  for (uint64_t i = 0; i <= n_queries; i++)
+    offsets->a[i] = (int64_t)(i * k);
+  tk_ivec_t *indices = tk_ivec_create(L, total, 0, 0);
+  indices->n = total;
+  tk_dvec_t *out_scores = tk_dvec_create(L, total, 0, 0);
+  out_scores->n = total;
+  uint64_t max_buf = 128ULL * 1024 * 1024 / sizeof(double);
+  uint64_t tile = n_corpus > 0 ? max_buf / n_corpus : n_queries;
+  if (tile == 0) tile = 1;
+  if (tile > n_queries) tile = n_queries;
+  double *sbuf = (double *)malloc(tile * n_corpus * sizeof(double));
+  if (!sbuf) {
+    luaL_error(L, "mtx_topk: out of memory");
+    return;
+  }
+  for (uint64_t base = 0; base < n_queries; base += tile) {
+    uint64_t blk = (base + tile <= n_queries) ? tile : n_queries - base;
+    cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
+      (int)blk, (int)n_corpus, (int)d,
+      1.0, queries->a + base * d, (int)d,
+      corpus->a, (int)d,
+      0.0, sbuf, (int)n_corpus);
+    #pragma omp parallel
+    {
+      tk_rvec_t *heap = tk_rvec_create(NULL, k, 0, 0);
+      #pragma omp for schedule(static)
+      for (uint64_t i = 0; i < blk; i++) {
+        tk_rvec_clear(heap);
+        double *row = sbuf + i * n_corpus;
+        for (uint64_t j = 0; j < n_corpus; j++) {
+          double dist = 1.0 - row[j];
+          if (heap->n < k || dist < heap->a[0].d)
+            tk_rvec_hmax(heap, k, tk_rank((int64_t)j, dist));
+        }
+        tk_rvec_asc(heap, 0, heap->n);
+        uint64_t qi = base + i;
+        int64_t *idx_row = indices->a + qi * k;
+        double *sco_row = out_scores->a + qi * k;
+        for (uint64_t h = 0; h < heap->n; h++) {
+          idx_row[h] = heap->a[h].i;
+          sco_row[h] = heap->a[h].d;
+        }
+      }
+      tk_rvec_destroy(heap);
+    }
+  }
+  free(sbuf);
+}
+#endif
 
 static inline void tk_dvec_mtx_standardize (
   lua_State *L,

@@ -328,6 +328,19 @@ static inline int tk_dvec_mtx_top_dip_lua (lua_State *L)
   return 2;
 }
 
+static inline int tk_dvec_mtx_topk_lua (lua_State *L)
+{
+  lua_settop(L, 4);
+  tk_dvec_t *queries = tk_dvec_peek(L, 1, "queries");
+  tk_dvec_t *corpus = tk_dvec_peek(L, 2, "corpus");
+  uint64_t d = tk_lua_checkunsigned(L, 3, "d");
+  uint64_t k = tk_lua_checkunsigned(L, 4, "k");
+  uint64_t n_queries = queries->n / d;
+  uint64_t n_corpus = corpus->n / d;
+  tk_dvec_mtx_topk(L, queries, corpus, n_queries, n_corpus, d, k);
+  return 3;
+}
+
 static inline int tk_dvec_round_lua (lua_State *L)
 {
   int t = lua_gettop(L);
@@ -454,6 +467,7 @@ static luaL_Reg tk_dvec_lua_mt_ext2_fns[] =
   { "mtx_top_entropy", tk_dvec_mtx_top_entropy_lua },
   { "mtx_top_bimodality", tk_dvec_mtx_top_bimodality_lua },
   { "mtx_top_dip", tk_dvec_mtx_top_dip_lua },
+  { "mtx_topk", tk_dvec_mtx_topk_lua },
   { "round", tk_dvec_round_lua },
   { "trunc", tk_dvec_trunc_lua },
   { "floor", tk_dvec_floor_lua },
