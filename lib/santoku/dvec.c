@@ -406,11 +406,14 @@ static inline int tk_dvec_mtx_center_lua (lua_State *L)
 
 static inline int tk_dvec_mtx_sign_lua (lua_State *L)
 {
-  lua_settop(L, 2);
+  lua_settop(L, 3);
   tk_dvec_t *codes = tk_dvec_peek(L, 1, "codes");
   uint64_t n_dims = tk_lua_checkunsigned(L, 2, "n_dims");
-  tk_dvec_mtx_sign(L, codes, n_dims);
-  lua_pushinteger(L, (lua_Integer)n_dims);
+  uint64_t n_trunc = (lua_type(L, 3) == LUA_TNUMBER)
+    ? tk_lua_checkunsigned(L, 3, "n_truncated") : n_dims;
+  if (n_trunc > n_dims) n_trunc = n_dims;
+  tk_dvec_mtx_sign(L, codes, n_dims, n_trunc);
+  lua_pushinteger(L, (lua_Integer)n_trunc);
   return 2;
 }
 

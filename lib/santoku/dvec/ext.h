@@ -632,11 +632,12 @@ static inline void tk_dvec_mtx_sign_raw (
   char *out,
   double *X,
   uint64_t N,
+  uint64_t stride,
   uint64_t K
 ) {
   #pragma omp parallel for
   for (uint64_t i = 0; i < N; i++) {
-    double *row = X + i * K;
+    double *row = X + i * stride;
     uint8_t *out_row = (uint8_t *)(out + i * TK_CVEC_BITS_BYTES(K));
     uint64_t full_bytes = K / 8;
     for (uint64_t byte_idx = 0; byte_idx < full_bytes; byte_idx++) {
@@ -659,14 +660,14 @@ static inline void tk_dvec_mtx_sign_raw (
 static inline tk_cvec_t *tk_dvec_mtx_sign (
   lua_State *L,
   tk_dvec_t *codes,
-  uint64_t n_dims
+  uint64_t n_dims,
+  uint64_t n_trunc
 ) {
-  const uint64_t K = n_dims;
-  const size_t N = codes->n / K;
-  tk_cvec_t *binary = tk_cvec_create(L, N * TK_CVEC_BITS_BYTES(K), 0, 0);
-  binary->n = N * TK_CVEC_BITS_BYTES(K);
+  const size_t N = codes->n / n_dims;
+  tk_cvec_t *binary = tk_cvec_create(L, N * TK_CVEC_BITS_BYTES(n_trunc), 0, 0);
+  binary->n = N * TK_CVEC_BITS_BYTES(n_trunc);
   tk_cvec_zero(binary);
-  tk_dvec_mtx_sign_raw(binary->a, codes->a, N, K);
+  tk_dvec_mtx_sign_raw(binary->a, codes->a, N, n_dims, n_trunc);
   return binary;
 }
 
@@ -1242,12 +1243,9 @@ static inline void tk_dvec_mtx_topk (
       for (uint64_t i = 0; i < blk; i++) {
         tk_rvec_clear(heap);
         double *row = sbuf + i * n_corpus;
-        for (uint64_t j = 0; j < n_corpus; j++) {
-          double dist = 1.0 - row[j];
-          if (heap->n < k || dist < heap->a[0].d)
-            tk_rvec_hmax(heap, k, tk_rank((int64_t)j, dist));
-        }
-        tk_rvec_asc(heap, 0, heap->n);
+        for (uint64_t j = 0; j < n_corpus; j++)
+          tk_rvec_hmin(heap, k, tk_rank((int64_t)j, row[j]));
+        tk_rvec_desc(heap, 0, heap->n);
         uint64_t qi = base + i;
         int64_t *idx_row = indices->a + qi * k;
         double *sco_row = out_scores->a + qi * k;
