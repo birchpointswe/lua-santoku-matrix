@@ -1,0 +1,10 @@
+#undef tk_mmap_name
+#undef tk_mmap_base
+#undef tk_mmap_pushbase
+#undef tk_mmap_peekbase
+#undef tk_mmap_vec_name
+#undef tk_mmap_pfx
+#undef tk_mmap_mt
+#undef tk_mmap_err
+#undef tk_mmap_vec_pfx
+#undef tk_mmap_vec_t
