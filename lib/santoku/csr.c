@@ -1,4 +1,5 @@
 #include <santoku/ivec.h>
+#include <santoku/fvec.h>
 #include <santoku/dvec.h>
 #include <santoku/cvec.h>
 #include <santoku/cvec/ext.h>
@@ -146,6 +147,57 @@ static int tk_csr_to_dvec_lua (lua_State *L)
   return 1;
 }
 
+static int tk_csr_from_fvec_lua (lua_State *L)
+{
+  tk_fvec_t *dense = tk_fvec_peek(L, 1, "dense");
+  uint64_t n_samples = tk_lua_checkunsigned(L, 2, "n_samples");
+  uint64_t n_features = tk_lua_checkunsigned(L, 3, "n_features");
+  uint64_t total = 0;
+  for (uint64_t i = 0; i < n_samples * n_features; i++) {
+    if (dense->a[i] != 0.0f)
+      total++;
+  }
+  tk_ivec_t *offsets = tk_ivec_create(L, n_samples + 1, NULL, NULL);
+  tk_ivec_t *neighbors = tk_ivec_create(L, total, NULL, NULL);
+  tk_fvec_t *values = tk_fvec_create(L, total, NULL, NULL);
+  neighbors->n = total;
+  values->n = total;
+  offsets->a[0] = 0;
+  uint64_t pos = 0;
+  for (uint64_t s = 0; s < n_samples; s++) {
+    for (uint64_t f = 0; f < n_features; f++) {
+      float v = dense->a[s * n_features + f];
+      if (v != 0.0f) {
+        neighbors->a[pos] = (int64_t)f;
+        values->a[pos] = v;
+        pos++;
+      }
+    }
+    offsets->a[s + 1] = (int64_t)pos;
+  }
+  return 3;
+}
+
+static int tk_csr_to_fvec_lua (lua_State *L)
+{
+  tk_ivec_t *offsets = tk_ivec_peek(L, 1, "offsets");
+  tk_ivec_t *neighbors = tk_ivec_peek(L, 2, "neighbors");
+  tk_fvec_t *values = lua_isnil(L, 3) ? NULL : tk_fvec_peek(L, 3, "values");
+  uint64_t n_samples = tk_lua_checkunsigned(L, 4, "n_samples");
+  uint64_t n_features = tk_lua_checkunsigned(L, 5, "n_features");
+  uint64_t total = n_samples * n_features;
+  tk_fvec_t *out = tk_fvec_create(L, total, NULL, NULL);
+  memset(out->a, 0, total * sizeof(float));
+  for (uint64_t s = 0; s < n_samples; s++) {
+    int64_t lo = offsets->a[s], hi = offsets->a[s + 1];
+    for (int64_t j = lo; j < hi; j++) {
+      uint64_t f = (uint64_t)neighbors->a[j];
+      out->a[s * n_features + f] = values ? values->a[j] : 1.0f;
+    }
+  }
+  return 1;
+}
+
 static int tk_csr_extend_lua (lua_State *L)
 {
   tk_ivec_t *off1 = tk_ivec_peek(L, 1, "off1");
@@ -204,14 +256,30 @@ static int tk_csr_seq_select_lua (lua_State *L)
   tk_ivec_t *tokens = tk_ivec_peek(L, 1, "tokens");
   tk_ivec_t *offsets = tk_ivec_peek(L, 2, "offsets");
   tk_ivec_t *keep_ids = tk_ivec_peek(L, 3, "keep_ids");
-  tk_dvec_t *values = tk_dvec_peekopt(L, 4);
   tk_iumap_t *inverse = tk_iumap_from_ivec(L, keep_ids);
   if (!inverse)
     return luaL_error(L, "seq_select: allocation failed");
   uint64_t n_docs = offsets->n - 1;
   tk_ivec_t *new_tok = tk_ivec_create(L, tokens->n, NULL, NULL);
   tk_ivec_t *new_off = tk_ivec_create(L, n_docs + 1, NULL, NULL);
-  tk_dvec_t *new_val = values ? tk_dvec_create(L, tokens->n, NULL, NULL) : NULL;
+  bool has_values = false;
+  bool is_fvec = false;
+  tk_dvec_t *dvalues = NULL;
+  tk_fvec_t *fvalues = NULL;
+  tk_dvec_t *new_dval = NULL;
+  tk_fvec_t *new_fval = NULL;
+  if (tk_lua_testuserdata(L, 4, "tk_fvec_t")) {
+    fvalues = tk_fvec_peek(L, 4, "values");
+    new_fval = tk_fvec_create(L, tokens->n, NULL, NULL);
+    has_values = true;
+    is_fvec = true;
+  } else {
+    dvalues = tk_dvec_peekopt(L, 4);
+    if (dvalues) {
+      new_dval = tk_dvec_create(L, tokens->n, NULL, NULL);
+      has_values = true;
+    }
+  }
   new_off->a[0] = 0;
   uint64_t pos = 0;
   for (uint64_t d = 0; d < n_docs; d++) {
@@ -220,15 +288,17 @@ static int tk_csr_seq_select_lua (lua_State *L)
       int64_t new_id = tk_iumap_get_or(inverse, tokens->a[j], -1);
       if (new_id < 0) continue;
       new_tok->a[pos] = new_id;
-      if (new_val) new_val->a[pos] = values->a[j];
+      if (is_fvec) new_fval->a[pos] = fvalues->a[j];
+      else if (new_dval) new_dval->a[pos] = dvalues->a[j];
       pos++;
     }
     new_off->a[d + 1] = (int64_t)pos;
   }
   new_tok->n = pos;
-  if (new_val) new_val->n = pos;
+  if (new_fval) new_fval->n = pos;
+  if (new_dval) new_dval->n = pos;
   tk_iumap_destroy(inverse);
-  return values ? 3 : 2;
+  return has_values ? 3 : 2;
 }
 
 static int tk_csr_merge_lua (lua_State *L)
@@ -293,7 +363,18 @@ static int tk_csr_transpose_lua (lua_State *L)
   tk_ivec_t *tokens = tk_ivec_peek(L, 2, "tokens");
   uint64_t n_samples = tk_lua_checkunsigned(L, 3, "n_samples");
   uint64_t n_tokens = tk_lua_checkunsigned(L, 4, "n_tokens");
-  tk_dvec_t *values = tk_dvec_peekopt(L, 5);
+  bool has_values = false;
+  bool is_fvec = false;
+  tk_dvec_t *dvalues = NULL;
+  tk_fvec_t *fvalues = NULL;
+  if (tk_lua_testuserdata(L, 5, "tk_fvec_t")) {
+    fvalues = tk_fvec_peek(L, 5, "values");
+    has_values = true;
+    is_fvec = true;
+  } else {
+    dvalues = tk_dvec_peekopt(L, 5);
+    if (dvalues) has_values = true;
+  }
   uint64_t nnz = tokens->n;
   int64_t *counts = (int64_t *)calloc(n_tokens + 1, sizeof(int64_t));
   if (!counts)
@@ -307,18 +388,26 @@ static int tk_csr_transpose_lua (lua_State *L)
   memcpy(csc_off->a, counts, (n_tokens + 1) * sizeof(int64_t));
   tk_ivec_t *csc_rows = tk_ivec_create(L, nnz, NULL, NULL);
   csc_rows->n = nnz;
-  tk_dvec_t *csc_vals = values ? tk_dvec_create(L, nnz, NULL, NULL) : NULL;
-  if (csc_vals) csc_vals->n = nnz;
+  tk_fvec_t *csc_fvals = NULL;
+  tk_dvec_t *csc_dvals = NULL;
+  if (is_fvec) {
+    csc_fvals = tk_fvec_create(L, nnz, NULL, NULL);
+    csc_fvals->n = nnz;
+  } else if (dvalues) {
+    csc_dvals = tk_dvec_create(L, nnz, NULL, NULL);
+    csc_dvals->n = nnz;
+  }
   for (uint64_t s = 0; s < n_samples; s++) {
     for (int64_t j = offsets->a[s]; j < offsets->a[s + 1]; j++) {
       int64_t tok = tokens->a[j];
       int64_t pos = counts[tok]++;
       csc_rows->a[pos] = (int64_t)s;
-      if (csc_vals) csc_vals->a[pos] = values->a[j];
+      if (csc_fvals) csc_fvals->a[pos] = fvalues->a[j];
+      else if (csc_dvals) csc_dvals->a[pos] = dvalues->a[j];
     }
   }
   free(counts);
-  return values ? 3 : 2;
+  return has_values ? 3 : 2;
 }
 
 static int tk_csr_complement_lua (lua_State *L)
@@ -342,26 +431,48 @@ static int tk_csr_sort_desc_lua (lua_State *L)
 {
   tk_ivec_t *off = tk_ivec_peek(L, 1, "offsets");
   tk_ivec_t *nbr = tk_ivec_peek(L, 2, "neighbors");
-  tk_dvec_t *scores = tk_dvec_peek(L, 3, "scores");
   uint64_t n = off->n - 1;
   tk_ivec_t *out_n = tk_ivec_create(L, nbr->n, NULL, NULL);
-  tk_dvec_t *out_s = tk_dvec_create(L, scores->n, NULL, NULL);
   memcpy(out_n->a, nbr->a, nbr->n * sizeof(int64_t));
-  memcpy(out_s->a, scores->a, scores->n * sizeof(double));
-  #pragma omp parallel for schedule(dynamic, 64)
-  for (uint64_t i = 0; i < n; i++) {
-    int64_t s = off->a[i], e = off->a[i + 1];
-    for (int64_t j = s + 1; j < e; j++) {
-      double ks = out_s->a[j];
-      int64_t kn = out_n->a[j];
-      int64_t p = j - 1;
-      while (p >= s && out_s->a[p] < ks) {
-        out_s->a[p + 1] = out_s->a[p];
-        out_n->a[p + 1] = out_n->a[p];
-        p--;
+  if (tk_lua_testuserdata(L, 3, "tk_fvec_t")) {
+    tk_fvec_t *scores = tk_fvec_peek(L, 3, "scores");
+    tk_fvec_t *out_s = tk_fvec_create(L, scores->n, NULL, NULL);
+    memcpy(out_s->a, scores->a, scores->n * sizeof(float));
+    #pragma omp parallel for schedule(dynamic, 64)
+    for (uint64_t i = 0; i < n; i++) {
+      int64_t s = off->a[i], e = off->a[i + 1];
+      for (int64_t j = s + 1; j < e; j++) {
+        float ks = out_s->a[j];
+        int64_t kn = out_n->a[j];
+        int64_t p = j - 1;
+        while (p >= s && out_s->a[p] < ks) {
+          out_s->a[p + 1] = out_s->a[p];
+          out_n->a[p + 1] = out_n->a[p];
+          p--;
+        }
+        out_s->a[p + 1] = ks;
+        out_n->a[p + 1] = kn;
       }
-      out_s->a[p + 1] = ks;
-      out_n->a[p + 1] = kn;
+    }
+  } else {
+    tk_dvec_t *scores = tk_dvec_peek(L, 3, "scores");
+    tk_dvec_t *out_s = tk_dvec_create(L, scores->n, NULL, NULL);
+    memcpy(out_s->a, scores->a, scores->n * sizeof(double));
+    #pragma omp parallel for schedule(dynamic, 64)
+    for (uint64_t i = 0; i < n; i++) {
+      int64_t s = off->a[i], e = off->a[i + 1];
+      for (int64_t j = s + 1; j < e; j++) {
+        double ks = out_s->a[j];
+        int64_t kn = out_n->a[j];
+        int64_t p = j - 1;
+        while (p >= s && out_s->a[p] < ks) {
+          out_s->a[p + 1] = out_s->a[p];
+          out_n->a[p + 1] = out_n->a[p];
+          p--;
+        }
+        out_s->a[p + 1] = ks;
+        out_n->a[p + 1] = kn;
+      }
     }
   }
   return 2;
@@ -370,21 +481,36 @@ static int tk_csr_sort_desc_lua (lua_State *L)
 static int tk_csr_scatter_fixed_k_lua (lua_State *L)
 {
   tk_ivec_t *dst_nbr = tk_ivec_peek(L, 1, "dst_neighbors");
-  tk_dvec_t *dst_sco = tk_dvec_peek(L, 2, "dst_scores");
   tk_ivec_t *src_off = tk_ivec_peek(L, 3, "src_offsets");
   tk_ivec_t *src_nbr = tk_ivec_peek(L, 4, "src_neighbors");
-  tk_dvec_t *src_sco = tk_dvec_peek(L, 5, "src_scores");
   tk_ivec_t *val_ids = tk_ivec_peek(L, 6, "val_ids");
   uint64_t k = tk_lua_checkunsigned(L, 7, "k");
   uint64_t val_n = val_ids->n;
-  #pragma omp parallel for schedule(static)
-  for (uint64_t i = 0; i < val_n; i++) {
-    int64_t orig = val_ids->a[i];
-    int64_t dst = orig * (int64_t)k;
-    int64_t src = src_off->a[i];
-    for (uint64_t j = 0; j < k; j++) {
-      dst_nbr->a[dst + (int64_t)j] = src_nbr->a[src + (int64_t)j];
-      dst_sco->a[dst + (int64_t)j] = src_sco->a[src + (int64_t)j];
+  if (tk_lua_testuserdata(L, 2, "tk_fvec_t")) {
+    tk_fvec_t *dst_sco = tk_fvec_peek(L, 2, "dst_scores");
+    tk_fvec_t *src_sco = tk_fvec_peek(L, 5, "src_scores");
+    #pragma omp parallel for schedule(static)
+    for (uint64_t i = 0; i < val_n; i++) {
+      int64_t orig = val_ids->a[i];
+      int64_t dst = orig * (int64_t)k;
+      int64_t src = src_off->a[i];
+      for (uint64_t j = 0; j < k; j++) {
+        dst_nbr->a[dst + (int64_t)j] = src_nbr->a[src + (int64_t)j];
+        dst_sco->a[dst + (int64_t)j] = src_sco->a[src + (int64_t)j];
+      }
+    }
+  } else {
+    tk_dvec_t *dst_sco = tk_dvec_peek(L, 2, "dst_scores");
+    tk_dvec_t *src_sco = tk_dvec_peek(L, 5, "src_scores");
+    #pragma omp parallel for schedule(static)
+    for (uint64_t i = 0; i < val_n; i++) {
+      int64_t orig = val_ids->a[i];
+      int64_t dst = orig * (int64_t)k;
+      int64_t src = src_off->a[i];
+      for (uint64_t j = 0; j < k; j++) {
+        dst_nbr->a[dst + (int64_t)j] = src_nbr->a[src + (int64_t)j];
+        dst_sco->a[dst + (int64_t)j] = src_sco->a[src + (int64_t)j];
+      }
     }
   }
   return 0;
@@ -392,17 +518,29 @@ static int tk_csr_scatter_fixed_k_lua (lua_State *L)
 
 static int tk_csr_scatter_rows_lua (lua_State *L)
 {
-  tk_dvec_t *dst = tk_dvec_peek(L, 1, "dst");
-  tk_dvec_t *src = tk_dvec_peek(L, 2, "src");
   tk_ivec_t *val_ids = tk_ivec_peek(L, 3, "val_ids");
   uint64_t stride = tk_lua_checkunsigned(L, 4, "stride");
   uint64_t val_n = val_ids->n;
-  #pragma omp parallel for schedule(static)
-  for (uint64_t i = 0; i < val_n; i++) {
-    int64_t orig = val_ids->a[i];
-    memcpy(dst->a + orig * (int64_t)stride,
-           src->a + (int64_t)(i * stride),
-           stride * sizeof(double));
+  if (tk_lua_testuserdata(L, 1, "tk_fvec_t")) {
+    tk_fvec_t *dst = tk_fvec_peek(L, 1, "dst");
+    tk_fvec_t *src = tk_fvec_peek(L, 2, "src");
+    #pragma omp parallel for schedule(static)
+    for (uint64_t i = 0; i < val_n; i++) {
+      int64_t orig = val_ids->a[i];
+      memcpy(dst->a + orig * (int64_t)stride,
+             src->a + (int64_t)(i * stride),
+             stride * sizeof(float));
+    }
+  } else {
+    tk_dvec_t *dst = tk_dvec_peek(L, 1, "dst");
+    tk_dvec_t *src = tk_dvec_peek(L, 2, "src");
+    #pragma omp parallel for schedule(static)
+    for (uint64_t i = 0; i < val_n; i++) {
+      int64_t orig = val_ids->a[i];
+      memcpy(dst->a + orig * (int64_t)stride,
+             src->a + (int64_t)(i * stride),
+             stride * sizeof(double));
+    }
   }
   return 0;
 }
@@ -717,6 +855,8 @@ static luaL_Reg tk_csr_fns[] = {
   { "to_cvec", tk_csr_to_cvec_lua },
   { "from_dvec", tk_csr_from_dvec_lua },
   { "to_dvec", tk_csr_to_dvec_lua },
+  { "from_fvec", tk_csr_from_fvec_lua },
+  { "to_fvec", tk_csr_to_fvec_lua },
   { "extend", tk_csr_extend_lua },
   { "select", tk_csr_select_lua },
   { "seq_select", tk_csr_seq_select_lua },

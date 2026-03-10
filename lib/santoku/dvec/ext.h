@@ -768,6 +768,18 @@ static inline tk_ivec_t *tk_dvec_to_ivec (lua_State *L, tk_dvec_t *v) {
   return out;
 }
 
+static inline tk_fvec_t *tk_dvec_to_fvec (lua_State *L, tk_dvec_t *v, tk_fvec_t *out) {
+  if (out == NULL) {
+    out = tk_fvec_create(L, v->n, NULL, NULL);
+  } else {
+    tk_fvec_ensure(out, v->n);
+    out->n = v->n;
+  }
+  for (uint64_t i = 0; i < v->n; i++)
+    out->a[i] = (float)v->a[i];
+  return out;
+}
+
 static inline tk_dvec_t *tk_dvec_mtx_extend (
   tk_dvec_t *base,
   tk_dvec_t *ext,

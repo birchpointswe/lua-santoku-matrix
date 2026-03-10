@@ -1,5 +1,6 @@
 #include <santoku/iuset.h>
 #include <santoku/ivec.h>
+#include <santoku/fvec.h>
 #include <santoku/dvec.h>
 
 static inline int tk_dvec_center_lua (lua_State *L)
@@ -393,6 +394,15 @@ static inline int tk_dvec_to_ivec_lua (lua_State *L)
   return 1;
 }
 
+static inline int tk_dvec_to_fvec_lua (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_dvec_t *v = tk_dvec_peek(L, 1, "dvec");
+  tk_fvec_t *out = lua_isnil(L, 2) ? NULL : tk_fvec_peek(L, 2, "out");
+  tk_dvec_to_fvec(L, v, out);
+  return out == NULL ? 1 : 0;
+}
+
 static inline int tk_dvec_mtx_center_lua (lua_State *L)
 {
   lua_settop(L, 2);
@@ -476,6 +486,7 @@ static luaL_Reg tk_dvec_lua_mt_ext2_fns[] =
   { "floor", tk_dvec_floor_lua },
   { "ceil", tk_dvec_ceil_lua },
   { "to_ivec", tk_dvec_to_ivec_lua },
+  { "to_fvec", tk_dvec_to_fvec_lua },
   { "mtx_center", tk_dvec_mtx_center_lua },
   { "mtx_standardize", tk_dvec_mtx_standardize_lua },
   { "mtx_sign", tk_dvec_mtx_sign_lua },

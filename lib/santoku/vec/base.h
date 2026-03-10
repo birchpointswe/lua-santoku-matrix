@@ -3,6 +3,7 @@
 
 #include <santoku/ivec/base.h>
 #include <santoku/dvec/base.h>
+#include <santoku/fvec/base.h>
 #include <santoku/cvec/base.h>
 
 #include <santoku/rvec/base.h>
