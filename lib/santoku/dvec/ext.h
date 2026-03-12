@@ -601,31 +601,71 @@ static inline tk_dvec_t *tk_dvec_csums_override(lua_State *L, tk_dvec_t *m0, uin
 
 static inline void tk_dvec_mtx_center (
   lua_State *L,
-  tk_dvec_t *codes,
-  uint64_t n_dims,
-  tk_dvec_t **centered_out,
-  tk_dvec_t **means_out
+  tk_dvec_t *data,
+  uint64_t n_cols,
+  tk_dvec_t *mean_in,
+  tk_dvec_t **mean_out
 ) {
-  const uint64_t K = n_dims;
-  const size_t N = codes->n / K;
-  tk_dvec_t *means = tk_dvec_create(L, K, 0, 0);
-  means->n = K;
-  tk_dvec_t *centered = tk_dvec_create(L, N * K, 0, 0);
-  centered->n = N * K;
-  memcpy(centered->a, codes->a, N * K * sizeof(double));
-  #pragma omp parallel for
-  for (uint64_t d = 0; d < K; d++) {
-    double sum = 0.0;
-    for (uint64_t i = 0; i < N; i++)
-      sum += centered->a[i * K + d];
-    double mu = sum / (double)N;
-    means->a[d] = mu;
-    for (uint64_t i = 0; i < N; i++)
-      centered->a[i * K + d] -= mu;
+  uint64_t N = data->n / n_cols;
+  if (mean_in) {
+    #pragma omp parallel for
+    for (uint64_t d = 0; d < n_cols; d++) {
+      double mu = mean_in->a[d];
+      for (uint64_t s = 0; s < N; s++)
+        data->a[s * n_cols + d] -= mu;
+    }
+  } else {
+    tk_dvec_t *mu = tk_dvec_create(L, n_cols, 0, 0);
+    mu->n = n_cols;
+    #pragma omp parallel for
+    for (uint64_t d = 0; d < n_cols; d++) {
+      double sum = 0;
+      for (uint64_t s = 0; s < N; s++)
+        sum += data->a[s * n_cols + d];
+      double m = sum / (double)N;
+      mu->a[d] = m;
+      for (uint64_t s = 0; s < N; s++)
+        data->a[s * n_cols + d] -= m;
+    }
+    *mean_out = mu;
   }
-  *centered_out = centered;
-  if (means_out)
-    *means_out = means;
+}
+
+static inline void tk_dvec_mtx_zscore (
+  lua_State *L,
+  tk_dvec_t *data,
+  uint64_t n_cols,
+  tk_dvec_t *istd_in,
+  tk_dvec_t **istd_out
+) {
+  uint64_t N = data->n / n_cols;
+  if (istd_in) {
+    #pragma omp parallel for
+    for (uint64_t d = 0; d < n_cols; d++) {
+      double is = istd_in->a[d];
+      for (uint64_t s = 0; s < N; s++)
+        data->a[s * n_cols + d] *= is;
+    }
+  } else {
+    tk_dvec_t *is = tk_dvec_create(L, n_cols, 0, 0);
+    is->n = n_cols;
+    #pragma omp parallel for
+    for (uint64_t d = 0; d < n_cols; d++) {
+      double sum = 0, sum2 = 0;
+      for (uint64_t s = 0; s < N; s++) {
+        double v = data->a[s * n_cols + d];
+        sum += v;
+        sum2 += v * v;
+      }
+      double m = sum / (double)N;
+      double var = sum2 / (double)N - m * m;
+      double istd = var > 1e-24 ? 1.0 / sqrt(var) : 0.0;
+      is->a[d] = istd;
+      for (uint64_t s = 0; s < N; s++)
+        data->a[s * n_cols + d] *= istd;
+    }
+    *istd_out = is;
+  }
 }
 
 static inline void tk_dvec_mtx_sign_raw (
