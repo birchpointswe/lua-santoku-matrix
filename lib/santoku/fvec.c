@@ -402,13 +402,32 @@ static inline int tk_fvec_to_dvec_lua (lua_State *L)
 
 static inline int tk_fvec_mtx_center_lua (lua_State *L)
 {
-  lua_settop(L, 2);
-  tk_fvec_t *codes = tk_fvec_peek(L, 1, "codes");
-  uint64_t n_dims = tk_lua_checkunsigned(L, 2, "n_dims");
-  tk_fvec_t *centered = NULL;
-  tk_fvec_t *means = NULL;
-  tk_fvec_mtx_center(L, codes, n_dims, &centered, &means);
-  return 2;
+  tk_fvec_t *data = tk_fvec_peek(L, 1, "data");
+  uint64_t n_cols = tk_lua_checkunsigned(L, 2, "n_cols");
+  if (lua_gettop(L) >= 3 && !lua_isnil(L, 3)) {
+    tk_fvec_t *mean_in = tk_fvec_peek(L, 3, "mean");
+    tk_fvec_mtx_center(L, data, n_cols, mean_in, NULL);
+    return 0;
+  } else {
+    tk_fvec_t *mu = NULL;
+    tk_fvec_mtx_center(L, data, n_cols, NULL, &mu);
+    return 1;
+  }
+}
+
+static inline int tk_fvec_mtx_zscore_lua (lua_State *L)
+{
+  tk_fvec_t *data = tk_fvec_peek(L, 1, "data");
+  uint64_t n_cols = tk_lua_checkunsigned(L, 2, "n_cols");
+  if (lua_gettop(L) >= 3 && !lua_isnil(L, 3)) {
+    tk_fvec_t *istd_in = tk_fvec_peek(L, 3, "inv_std");
+    tk_fvec_mtx_zscore(L, data, n_cols, istd_in, NULL);
+    return 0;
+  } else {
+    tk_fvec_t *is = NULL;
+    tk_fvec_mtx_zscore(L, data, n_cols, NULL, &is);
+    return 1;
+  }
 }
 
 static inline int tk_fvec_mtx_sign_lua (lua_State *L)
@@ -486,6 +505,7 @@ static luaL_Reg tk_fvec_lua_mt_ext2_fns[] =
   { "to_dvec", tk_fvec_to_dvec_lua },
   { "mtx_center", tk_fvec_mtx_center_lua },
   { "mtx_standardize", tk_fvec_mtx_standardize_lua },
+  { "mtx_zscore", tk_fvec_mtx_zscore_lua },
   { "mtx_sign", tk_fvec_mtx_sign_lua },
   { "mtx_median", tk_fvec_mtx_median_lua },
   { NULL, NULL }
