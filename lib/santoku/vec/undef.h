@@ -1,5 +1,6 @@
 #undef tk_vec_abs
 #undef tk_vec_base
+#undef tk_vec_module
 #undef tk_vec_destroy_item
 #undef tk_vec_eq
 #undef tk_vec_err

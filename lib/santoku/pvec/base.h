@@ -12,6 +12,7 @@ typedef struct { int64_t i; int64_t p; } tk_pair_t;
 #define tk_vec_gtx(a,b)  ((a).i > (b).i || ((a).i == (b).i && (a).p > (b).p))
 #define tk_vec_eqx(a, b) ((a).i == (b).i && (a).p == (b).p)
 #define tk_vec_limited
+#define tk_vec_module "santoku.pvec"
 #include <santoku/vec/tpl.h>
 
 static inline void tk_pvec_hmax (tk_pvec_t *v, size_t k, tk_pair_t r)

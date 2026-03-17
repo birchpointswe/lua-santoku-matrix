@@ -13,6 +13,7 @@
 #define tk_vec_pushbase(...) lua_pushnumber(__VA_ARGS__)
 #define tk_vec_peekbase(...) ((float)luaL_checknumber(__VA_ARGS__))
 #define tk_vec_abs(...) fabsf(__VA_ARGS__)
+#define tk_vec_module "santoku.fvec"
 #include <santoku/vec/tpl.h>
 
 #endif

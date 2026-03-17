@@ -1388,6 +1388,33 @@ static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
 static inline void tk_vec_pfx(suppress_unused_lua_mt_fns) (void)
   { (void) tk_vec_pfx(lua_mt_fns); }
 
+#ifdef tk_vec_module
+static inline void tk_vec_pfx(ensure_init) (lua_State *L)
+{
+  lua_getmetatable(L, -1);
+  lua_getfield(L, -1, "__ext_init");
+  if (lua_isnil(L, -1)) {
+    lua_pop(L, 1);
+    lua_pushboolean(L, 1);
+    lua_setfield(L, -2, "__ext_init");
+    lua_pop(L, 1);
+    lua_getfield(L, LUA_REGISTRYINDEX, "_LOADED");
+    lua_getfield(L, -1, tk_vec_module);
+    if (lua_isnil(L, -1)) {
+      lua_pop(L, 2);
+      lua_getglobal(L, "require");
+      lua_pushstring(L, tk_vec_module);
+      lua_call(L, 1, 1);
+      lua_pop(L, 1);
+    } else {
+      lua_pop(L, 2);
+    }
+  } else {
+    lua_pop(L, 2);
+  }
+}
+#endif
+
 static inline tk_vec_pfx(t) *tk_vec_pfx(create) (lua_State *L, size_t n, tk_vec_base *data, tk_vec_pfx(t) *v)
 {
   tk_vec_pfx(t) v0;
@@ -1397,6 +1424,10 @@ static inline tk_vec_pfx(t) *tk_vec_pfx(create) (lua_State *L, size_t n, tk_vec_
       : tk_lua_newuserdata(L, tk_vec_pfx(t), tk_vec_mt, tk_vec_pfx(lua_mt_fns), tk_vec_pfx(gc_lua));
     if (v == NULL)
       return v;
+#ifdef tk_vec_module
+    if (L != NULL)
+      tk_vec_pfx(ensure_init)(L);
+#endif
     v0 = *v;
     bool lua_managed = L != NULL;
     kv_init(v0, lua_managed);
@@ -1424,6 +1455,9 @@ static inline tk_vec_pfx(t) *tk_vec_pfx(register) (lua_State *L, tk_vec_pfx(t) *
   tk_vec_pfx(t) *x = tk_lua_newuserdata(L, tk_vec_pfx(t), tk_vec_mt, tk_vec_pfx(lua_mt_fns), tk_vec_pfx(gc_lua));
   *x = *v;
   free(v);
+#ifdef tk_vec_module
+  tk_vec_pfx(ensure_init)(L);
+#endif
   return x;
 }
 
