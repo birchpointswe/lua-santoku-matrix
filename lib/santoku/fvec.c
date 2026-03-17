@@ -1,3 +1,4 @@
+#define TK_FVEC_INIT
 #include <santoku/iuset.h>
 #include <santoku/ivec.h>
 #include <santoku/dvec.h>
@@ -511,15 +512,17 @@ static luaL_Reg tk_fvec_lua_mt_ext2_fns[] =
   { NULL, NULL }
 };
 
+void tk_fvec_init_mt (lua_State *L)
+{
+  luaL_register(L, NULL, tk_fvec_lua_mt_ext_fns);
+  luaL_register(L, NULL, tk_fvec_lua_mt_ext2_fns);
+}
+
 int luaopen_santoku_fvec (lua_State *L)
 {
   lua_newtable(L);
   luaL_register(L, NULL, tk_fvec_lua_fns);
   tk_fvec_create(L, 0, 0, 0);
-  luaL_getmetafield(L, -1, "__index");
-  luaL_register(L, NULL, tk_fvec_lua_mt_fns);
-  luaL_register(L, NULL, tk_fvec_lua_mt_ext_fns);
-  luaL_register(L, NULL, tk_fvec_lua_mt_ext2_fns);
-  lua_pop(L, 2);
+  lua_pop(L, 1);
   return 1;
 }

@@ -12,6 +12,10 @@ typedef struct { int64_t u, v; double w; } tk_edge_t;
 #define tk_vec_gtx(a,b)  ((a).u > (b).u || ((a).u == (b).u && ((a).v > (b).v || ((a).v == (b).v && (a).w > (b).w))))
 #define tk_vec_eqx(a, b) ((a).u == (b).u && (a).v == (b).v && (a).w == (b).w)
 #define tk_vec_limited
+#ifdef TK_EVEC_INIT
+extern void tk_evec_init_mt(lua_State *L);
+#define tk_vec_init tk_evec_init_mt
+#endif
 #include <santoku/vec/tpl.h>
 
 static inline void tk_evec_hmax (tk_evec_t *v, size_t k, tk_edge_t r)

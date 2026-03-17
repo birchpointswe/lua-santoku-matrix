@@ -12,6 +12,10 @@ typedef struct { int64_t i; double d; } tk_rank_t;
 #define tk_vec_gtx(a,b)  ((a).i > (b).i || ((a).i == (b).i && (a).d > (b).d))
 #define tk_vec_eqx(a, b) ((a).i == (b).i && (a).d == (b).d)
 #define tk_vec_limited
+#ifdef TK_RVEC_INIT
+extern void tk_rvec_init_mt(lua_State *L);
+#define tk_vec_init tk_rvec_init_mt
+#endif
 #include <santoku/vec/tpl.h>
 
 static inline void tk_rvec_hmax (tk_rvec_t *v, size_t k, tk_rank_t r)

@@ -1,3 +1,4 @@
+#define TK_IVEC_INIT
 #include <santoku/iuset.h>
 #include <santoku/ivec.h>
 #include <santoku/cvec.h>
@@ -398,16 +399,18 @@ static luaL_Reg tk_ivec_lua_ext_fns[] =
   { NULL, NULL }
 };
 
+void tk_ivec_init_mt (lua_State *L)
+{
+  luaL_register(L, NULL, tk_ivec_lua_mt_ext_fns);
+  luaL_register(L, NULL, tk_ivec_lua_mt_ext2_fns);
+}
+
 int luaopen_santoku_ivec (lua_State *L)
 {
   lua_newtable(L);
   luaL_register(L, NULL, tk_ivec_lua_fns);
   luaL_register(L, NULL, tk_ivec_lua_ext_fns);
   tk_ivec_create(L, 0, 0, 0);
-  luaL_getmetafield(L, -1, "__index");
-  luaL_register(L, NULL, tk_ivec_lua_mt_fns);
-  luaL_register(L, NULL, tk_ivec_lua_mt_ext_fns);
-  luaL_register(L, NULL, tk_ivec_lua_mt_ext2_fns);
-  lua_pop(L, 2);
+  lua_pop(L, 1);
   return 1;
 }
