@@ -13,10 +13,6 @@
 #define tk_vec_pushbase(...) lua_pushnumber(__VA_ARGS__)
 #define tk_vec_peekbase(...) luaL_checknumber(__VA_ARGS__)
 #define tk_vec_abs(...) fabs(__VA_ARGS__)
-#ifdef TK_DVEC_INIT
-extern void tk_dvec_init_mt(lua_State *L);
-#define tk_vec_init tk_dvec_init_mt
-#endif
 #include <santoku/vec/tpl.h>
 
 #endif

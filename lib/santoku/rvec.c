@@ -1,4 +1,3 @@
-#define TK_RVEC_INIT
 #include <santoku/iuset.h>
 #include <santoku/rvec.h>
 #include <santoku/ivec/ext.h>
@@ -209,18 +208,16 @@ static luaL_Reg tk_rvec_lua_mt_ext2_fns[] =
   { NULL, NULL }
 };
 
-void tk_rvec_init_mt (lua_State *L)
-{
-  luaL_register(L, NULL, tk_rvec_lua_mt_ext_fns);
-  luaL_register(L, NULL, tk_rvec_lua_mt_ext2_fns);
-}
-
 int luaopen_santoku_rvec (lua_State *L)
 {
   lua_newtable(L);
   luaL_register(L, NULL, tk_rvec_lua_fns);
   luaL_register(L, NULL, tk_rvec_lua_ext_fns);
   tk_rvec_create(L, 0, 0, 0);
-  lua_pop(L, 1);
+  luaL_getmetafield(L, -1, "__index");
+  luaL_register(L, NULL, tk_rvec_lua_mt_fns);
+  luaL_register(L, NULL, tk_rvec_lua_mt_ext_fns);
+  luaL_register(L, NULL, tk_rvec_lua_mt_ext2_fns);
+  lua_pop(L, 2);
   return 1;
 }

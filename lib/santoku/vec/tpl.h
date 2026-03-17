@@ -1388,20 +1388,6 @@ static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
 static inline void tk_vec_pfx(suppress_unused_lua_mt_fns) (void)
   { (void) tk_vec_pfx(lua_mt_fns); }
 
-#ifdef tk_vec_init
-static inline void tk_vec_pfx(ensure_init) (lua_State *L)
-{
-  static bool inited = false;
-  if (!inited) {
-    lua_getmetatable(L, -1);
-    lua_getfield(L, -1, "__index");
-    tk_vec_init(L);
-    lua_pop(L, 2);
-    inited = true;
-  }
-}
-#endif
-
 static inline tk_vec_pfx(t) *tk_vec_pfx(create) (lua_State *L, size_t n, tk_vec_base *data, tk_vec_pfx(t) *v)
 {
   tk_vec_pfx(t) v0;
@@ -1411,10 +1397,6 @@ static inline tk_vec_pfx(t) *tk_vec_pfx(create) (lua_State *L, size_t n, tk_vec_
       : tk_lua_newuserdata(L, tk_vec_pfx(t), tk_vec_mt, tk_vec_pfx(lua_mt_fns), tk_vec_pfx(gc_lua));
     if (v == NULL)
       return v;
-#ifdef tk_vec_init
-    if (L != NULL)
-      tk_vec_pfx(ensure_init)(L);
-#endif
     v0 = *v;
     bool lua_managed = L != NULL;
     kv_init(v0, lua_managed);
@@ -1442,9 +1424,6 @@ static inline tk_vec_pfx(t) *tk_vec_pfx(register) (lua_State *L, tk_vec_pfx(t) *
   tk_vec_pfx(t) *x = tk_lua_newuserdata(L, tk_vec_pfx(t), tk_vec_mt, tk_vec_pfx(lua_mt_fns), tk_vec_pfx(gc_lua));
   *x = *v;
   free(v);
-#ifdef tk_vec_init
-  tk_vec_pfx(ensure_init)(L);
-#endif
   return x;
 }
 
