@@ -548,6 +548,20 @@ static inline int tk_vec_pfx(load_lua) (lua_State *L)
   return 1;
 }
 
+static inline int tk_vec_pfx(from_raw_lua) (lua_State *L)
+{
+  lua_settop(L, 1);
+  size_t len;
+  const char *data = luaL_checklstring(L, 1, &len);
+  size_t n = len / sizeof(tk_vec_base);
+  if (n * sizeof(tk_vec_base) != len)
+    return luaL_error(L, "from_raw: data length not a multiple of element size");
+  tk_vec_pfx(t) *v = tk_vec_pfx(create)(L, n, NULL, NULL);
+  memcpy(v->a, data, len);
+  v->n = n;
+  return 1;
+}
+
 static inline int tk_vec_pfx(create_lua) (lua_State *L)
 {
   lua_settop(L, 2);
@@ -1465,6 +1479,7 @@ static luaL_Reg tk_vec_pfx(lua_fns)[] =
 {
   { "create", tk_vec_pfx(create_lua) },
   { "load", tk_vec_pfx(load_lua) },
+  { "from_raw", tk_vec_pfx(from_raw_lua) },
   { NULL, NULL }
 };
 
