@@ -209,4 +209,76 @@ static inline tk_cvec_t *tk_cvec_bits_extend (
 #include <santoku/parallel/tpl.h>
 #include <santoku/cvec/ext_tpl.h>
 
+static inline void tk_cvec_bits_topk (
+  lua_State *L,
+  tk_cvec_t *queries,
+  tk_cvec_t *corpus,
+  uint64_t n_queries,
+  uint64_t n_corpus,
+  uint64_t n_bits,
+  uint64_t k
+) {
+  uint64_t bytes_per = TK_CVEC_BITS_BYTES(n_bits);
+  if (k == 0 || n_queries == 0 || n_corpus == 0 || n_bits == 0) {
+    tk_ivec_t *off = tk_ivec_create(L, n_queries + 1);
+    off->n = n_queries + 1;
+    memset(off->a, 0, (n_queries + 1) * sizeof(int64_t));
+    tk_ivec_create(L, 0);
+    tk_ivec_create(L, 0);
+    return;
+  }
+  if (k > n_corpus) k = n_corpus;
+  uint64_t total = n_queries * k;
+  tk_ivec_t *offsets = tk_ivec_create(L, n_queries + 1);
+  offsets->n = n_queries + 1;
+  for (uint64_t i = 0; i <= n_queries; i++) offsets->a[i] = (int64_t)(i * k);
+  tk_ivec_t *indices = tk_ivec_create(L, total);
+  indices->n = total;
+  tk_ivec_t *distances = tk_ivec_create(L, total);
+  distances->n = total;
+#if defined(_OPENMP) && !defined(__EMSCRIPTEN__)
+  #pragma omp parallel
+  {
+    tk_rvec_t *heap = tk_rvec_create(NULL, k);
+    #pragma omp for schedule(static)
+    for (uint64_t q = 0; q < n_queries; q++) {
+      tk_rvec_clear(heap);
+      const uint8_t *qvec = (const uint8_t *)queries->a + q * bytes_per;
+      for (uint64_t c = 0; c < n_corpus; c++) {
+        const uint8_t *cvec = (const uint8_t *)corpus->a + c * bytes_per;
+        uint64_t dist = tk_cvec_bits_hamming_serial(qvec, cvec, n_bits);
+        tk_rvec_hmax(heap, k, tk_rank((int64_t)c, (double)dist));
+      }
+      tk_rvec_asc(heap, 0, heap->n);
+      int64_t *idx_row = indices->a + q * k;
+      int64_t *dist_row = distances->a + q * k;
+      for (uint64_t h = 0; h < heap->n; h++) {
+        idx_row[h] = heap->a[h].i;
+        dist_row[h] = (int64_t)(heap->a[h].d);
+      }
+    }
+    tk_rvec_destroy(heap);
+  }
+#else
+  tk_rvec_t *heap = tk_rvec_create(NULL, k);
+  for (uint64_t q = 0; q < n_queries; q++) {
+    tk_rvec_clear(heap);
+    const uint8_t *qvec = (const uint8_t *)queries->a + q * bytes_per;
+    for (uint64_t c = 0; c < n_corpus; c++) {
+      const uint8_t *cvec = (const uint8_t *)corpus->a + c * bytes_per;
+      uint64_t dist = tk_cvec_bits_hamming_serial(qvec, cvec, n_bits);
+      tk_rvec_hmax(heap, k, tk_rank((int64_t)c, (double)dist));
+    }
+    tk_rvec_asc(heap, 0, heap->n);
+    int64_t *idx_row = indices->a + q * k;
+    int64_t *dist_row = distances->a + q * k;
+    for (uint64_t h = 0; h < heap->n; h++) {
+      idx_row[h] = heap->a[h].i;
+      dist_row[h] = (int64_t)(heap->a[h].d);
+    }
+  }
+  tk_rvec_destroy(heap);
+#endif
+}
+
 #endif

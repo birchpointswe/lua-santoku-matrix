@@ -442,8 +442,23 @@ static int tk_cvec_bits_to_csc_lua (lua_State *L)
   return 2;
 }
 
+static inline int tk_cvec_bits_topk_lua (lua_State *L)
+{
+  lua_settop(L, 4);
+  tk_cvec_t *queries = tk_cvec_peek(L, 1, "queries");
+  tk_cvec_t *corpus = tk_cvec_peek(L, 2, "corpus");
+  uint64_t n_bits = tk_lua_checkunsigned(L, 3, "n_bits");
+  uint64_t k = tk_lua_checkunsigned(L, 4, "k");
+  uint64_t bytes_per = TK_CVEC_BITS_BYTES(n_bits);
+  uint64_t n_queries = bytes_per > 0 ? queries->n / bytes_per : 0;
+  uint64_t n_corpus = bytes_per > 0 ? corpus->n / bytes_per : 0;
+  tk_cvec_bits_topk(L, queries, corpus, n_queries, n_corpus, n_bits, k);
+  return 3;
+}
+
 static luaL_Reg tk_cvec_lua_mt_ext2_fns[] =
 {
+  { "bits_topk", tk_cvec_bits_topk_lua },
   { "bits_to_csc", tk_cvec_bits_to_csc_lua },
   { "bits_flip_interleave", tk_cvec_bits_flip_interleave_lua },
   { "bits_to_ivec", tk_cvec_bits_to_ivec_lua },
