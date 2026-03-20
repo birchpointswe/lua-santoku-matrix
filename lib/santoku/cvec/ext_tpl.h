@@ -581,7 +581,7 @@ static inline tk_ivec_t *tk_parallel_sfx(tk_cvec_bits_to_ivec) (
     uint64_t offset = s * bytes_per_sample;
     total_bits += tk_cvec_bits_popcount_serial(data + offset, n_features);
   }
-  tk_ivec_t *out = tk_ivec_create(L, total_bits, 0, 0);
+  tk_ivec_t *out = tk_ivec_create(L, total_bits);
   uint64_t *sample_counts = (uint64_t *)calloc(n_samples, sizeof(uint64_t));
   if (!sample_counts) {
     tk_ivec_destroy(out);
@@ -632,7 +632,7 @@ static inline tk_cvec_t *tk_parallel_sfx(tk_cvec_bits_from_ivec) (
   uint64_t bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
   uint64_t total_bytes = n_samples * bytes_per_sample;
 
-  tk_cvec_t *out = tk_cvec_create(L, total_bytes, 0, 0);
+  tk_cvec_t *out = tk_cvec_create(L, total_bytes);
   uint8_t *data = (uint8_t *)out->a;
   memset(data, 0, total_bytes);
 
@@ -795,7 +795,7 @@ static inline void tk_parallel_sfx(tk_cvec_bits_to_ascii) (
   uint64_t end_bit
 ) {
   uint64_t n_bits = end_bit - start_bit;
-  tk_cvec_t *ascii = tk_cvec_create(L, n_bits + 1, 0, 0);
+  tk_cvec_t *ascii = tk_cvec_create(L, n_bits + 1);
   const uint8_t *data = (const uint8_t *)bitmap->a;
   char *out = ascii->a;
   TK_PARALLEL_FOR(schedule(static))

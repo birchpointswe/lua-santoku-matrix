@@ -515,7 +515,7 @@ int luaopen_santoku_fvec (lua_State *L)
 {
   lua_newtable(L);
   luaL_register(L, NULL, tk_fvec_lua_fns);
-  tk_fvec_create(L, 0, 0, 0);
+  tk_fvec_create(L, 0);
   luaL_getmetafield(L, -1, "__index");
   luaL_register(L, NULL, tk_fvec_lua_mt_fns);
   luaL_register(L, NULL, tk_fvec_lua_mt_ext_fns);

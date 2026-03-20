@@ -6,7 +6,7 @@
 
 static inline tk_pvec_t *tk_pumap_values (lua_State *L, tk_pumap_t *M)
 {
-  tk_pvec_t *out = tk_pvec_create(L, tk_pumap_size(M), 0, 0);
+  tk_pvec_t *out = tk_pvec_create(L, tk_pumap_size(M));
   tk_pair_t v;
   out->n = 0;
   tk_umap_foreach_values(M, v, ({
@@ -17,7 +17,7 @@ static inline tk_pvec_t *tk_pumap_values (lua_State *L, tk_pumap_t *M)
 
 static inline tk_ivec_t *tk_pumap_keys (lua_State *L, tk_pumap_t *M)
 {
-  tk_ivec_t *out = tk_ivec_create(L, tk_pumap_size(M), 0, 0);
+  tk_ivec_t *out = tk_ivec_create(L, tk_pumap_size(M));
   int64_t k;
   out->n = 0;
   tk_umap_foreach_keys(M, k, ({

@@ -17,7 +17,7 @@ static inline tk_rvec_t *tk_rvec_from_dvec (
   lua_State *L,
   tk_dvec_t *D
 ) {
-  tk_rvec_t *R = tk_rvec_create(L, D->n, 0, 0);
+  tk_rvec_t *R = tk_rvec_create(L, D->n);
   for (int64_t i = 0; i < (int64_t) D->n; i ++)
     R->a[i] = tk_rank(i, D->a[i]);
   return R;
@@ -50,7 +50,7 @@ static inline tk_ivec_t *tk_rvec_keys (
   tk_rvec_t *P,
   tk_ivec_t *out
 ) {
-  tk_ivec_t *result = out ? out : tk_ivec_create(L, P->n, 0, 0);
+  tk_ivec_t *result = out ? out : tk_ivec_create(L, P->n);
   if (out)
     tk_ivec_ensure(result, P->n);
   for (uint64_t i = 0; i < P->n; i ++)
@@ -65,7 +65,7 @@ static inline tk_dvec_t *tk_rvec_values (
   tk_rvec_t *P,
   tk_dvec_t *out
 ) {
-  tk_dvec_t *result = out ? out : tk_dvec_create(L, P->n, 0, 0);
+  tk_dvec_t *result = out ? out : tk_dvec_create(L, P->n);
   if (out)
     tk_dvec_ensure(result, P->n);
   for (uint64_t i = 0; i < P->n; i ++)

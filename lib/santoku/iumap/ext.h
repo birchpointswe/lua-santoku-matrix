@@ -23,7 +23,7 @@ static inline tk_iumap_t *tk_iumap_from_ivec (lua_State *L, tk_ivec_t *V)
 
 static inline tk_ivec_t *tk_iumap_values (lua_State *L, tk_iumap_t *M)
 {
-  tk_ivec_t *out = tk_ivec_create(L, tk_iumap_size(M), 0, 0);
+  tk_ivec_t *out = tk_ivec_create(L, tk_iumap_size(M));
   int64_t v;
   out->n = 0;
   tk_umap_foreach_values(M, v, ({
@@ -34,7 +34,7 @@ static inline tk_ivec_t *tk_iumap_values (lua_State *L, tk_iumap_t *M)
 
 static inline tk_ivec_t *tk_iumap_keys (lua_State *L, tk_iumap_t *M)
 {
-  tk_ivec_t *out = tk_ivec_create(L, tk_iumap_size(M), 0, 0);
+  tk_ivec_t *out = tk_ivec_create(L, tk_iumap_size(M));
   int64_t k;
   out->n = 0;
   tk_umap_foreach_keys(M, k, ({

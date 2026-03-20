@@ -51,11 +51,11 @@ static inline tk_ivec_t *tk_parallel_sfx(tk_vec_pfx(rasc)) (
   tk_vec_pfx(t) *m0,
   uint64_t cols
 ) {
-  tk_ivec_t *out = tk_ivec_create(L, m0->n, NULL, NULL);
+  tk_ivec_t *out = tk_ivec_create(L, m0->n);
   uint64_t rows = m0->n / cols;
   TK_PARALLEL
   {
-    tk_rvec_t *ranks = tk_rvec_create(NULL, cols, NULL, NULL);
+    tk_rvec_t *ranks = tk_rvec_create(NULL, cols);
     TK_FOR(schedule(static))
     for (uint64_t r = 0; r < rows; r ++) {
       for (size_t c = 0; c < cols; c ++) {
@@ -76,11 +76,11 @@ static inline tk_ivec_t *tk_parallel_sfx(tk_vec_pfx(rdesc)) (
   tk_vec_pfx(t) *m0,
   uint64_t cols
 ) {
-  tk_ivec_t *out = tk_ivec_create(L, m0->n, NULL, NULL);
+  tk_ivec_t *out = tk_ivec_create(L, m0->n);
   uint64_t rows = m0->n / cols;
   TK_PARALLEL
   {
-    tk_rvec_t *ranks = tk_rvec_create(NULL, cols, NULL, NULL);
+    tk_rvec_t *ranks = tk_rvec_create(NULL, cols);
     TK_FOR(schedule(static))
     for (uint64_t r = 0; r < rows; r ++) {
       for (size_t c = 0; c < cols; c ++) {
@@ -102,10 +102,10 @@ static inline tk_ivec_t *tk_parallel_sfx(tk_vec_pfx(casc)) (
   uint64_t cols
 ) {
   uint64_t rows = m0->n / cols;
-  tk_ivec_t *out = tk_ivec_create(L, m0->n, NULL, NULL);
+  tk_ivec_t *out = tk_ivec_create(L, m0->n);
   TK_PARALLEL
   {
-    tk_rvec_t *ranks = tk_rvec_create(0, rows, NULL, NULL);
+    tk_rvec_t *ranks = tk_rvec_create(0, rows);
     TK_FOR(schedule(static))
     for (size_t c = 0; c < cols; c ++) {
       for (uint64_t r = 0; r < rows ; r ++) {
@@ -127,10 +127,10 @@ static inline tk_ivec_t *tk_parallel_sfx(tk_vec_pfx(cdesc)) (
   uint64_t cols
 ) {
   uint64_t rows = m0->n / cols;
-  tk_ivec_t *out = tk_ivec_create(L, m0->n, NULL, NULL);
+  tk_ivec_t *out = tk_ivec_create(L, m0->n);
   TK_PARALLEL
   {
-    tk_rvec_t *ranks = tk_rvec_create(0, rows, NULL, NULL);
+    tk_rvec_t *ranks = tk_rvec_create(0, rows);
     TK_FOR(schedule(static))
     for (size_t c = 0; c < cols; c ++) {
       for (uint64_t r = 0; r < rows ; r ++) {
@@ -151,7 +151,7 @@ static inline tk_dvec_t *tk_parallel_sfx(tk_vec_pfx(cmagnitudes)) (
   tk_vec_pfx(t) *m0,
   uint64_t cols
 ) {
-  tk_dvec_t *out = tk_dvec_create(L, cols, NULL, NULL);
+  tk_dvec_t *out = tk_dvec_create(L, cols);
   uint64_t rows = m0->n / cols;
   TK_PARALLEL_FOR(schedule(static))
   for (uint64_t c = 0; c < cols; c ++) {
@@ -171,7 +171,7 @@ static inline tk_dvec_t *tk_parallel_sfx(tk_vec_pfx(rmagnitudes)) (
   uint64_t cols
 ) {
   uint64_t rows = m0->n / cols;
-  tk_dvec_t *out = tk_dvec_create(L, rows, NULL, NULL);
+  tk_dvec_t *out = tk_dvec_create(L, rows);
   TK_PARALLEL_FOR(schedule(static))
   for (uint64_t r = 0; r < rows; r ++) {
     tk_vec_base sum = 0.0;
@@ -189,7 +189,7 @@ static inline tk_ivec_t *tk_parallel_sfx(tk_vec_pfx(cmaxargs)) (
   tk_vec_pfx(t) *m0,
   uint64_t cols
 ) {
-  tk_ivec_t *out = tk_ivec_create(L, cols, NULL, NULL);
+  tk_ivec_t *out = tk_ivec_create(L, cols);
   uint64_t rows = m0->n / cols;
   TK_PARALLEL_FOR(schedule(static))
   for (uint64_t c = 0; c < cols; c ++) {
@@ -212,7 +212,7 @@ static inline tk_ivec_t *tk_parallel_sfx(tk_vec_pfx(rmaxargs)) (
   uint64_t cols
 ) {
   uint64_t rows = m0->n / cols;
-  tk_ivec_t *out = tk_ivec_create(L, rows, NULL, NULL);
+  tk_ivec_t *out = tk_ivec_create(L, rows);
   TK_PARALLEL_FOR(schedule(static))
   for (uint64_t r = 0; r < rows; r ++) {
     tk_vec_base sum = 0.0;
@@ -239,7 +239,7 @@ static inline tk_ivec_t *tk_parallel_sfx(tk_vec_pfx(cminargs)) (
   tk_vec_pfx(t) *m0,
   uint64_t cols
 ) {
-  tk_ivec_t *out = tk_ivec_create(L, cols, NULL, NULL);
+  tk_ivec_t *out = tk_ivec_create(L, cols);
   uint64_t rows = m0->n / cols;
   TK_PARALLEL_FOR(schedule(static))
   for (uint64_t c = 0; c < cols; c ++) {
@@ -262,7 +262,7 @@ static inline tk_ivec_t *tk_parallel_sfx(tk_vec_pfx(rminargs)) (
   uint64_t cols
 ) {
   uint64_t rows = m0->n / cols;
-  tk_ivec_t *out = tk_ivec_create(L, rows, NULL, NULL);
+  tk_ivec_t *out = tk_ivec_create(L, rows);
   TK_PARALLEL_FOR(schedule(static))
   for (uint64_t r = 0; r < rows; r ++) {
     tk_vec_base sum = 0.0;

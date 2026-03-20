@@ -137,7 +137,7 @@ int luaopen_santoku_evec (lua_State *L)
 {
   lua_newtable(L);
   luaL_register(L, NULL, tk_evec_lua_fns);
-  tk_evec_create(L, 0, 0, 0);
+  tk_evec_create(L, 0);
   luaL_getmetafield(L, -1, "__index");
   luaL_register(L, NULL, tk_evec_lua_mt_fns);
   luaL_register(L, NULL, tk_evec_lua_mt_ext_fns);

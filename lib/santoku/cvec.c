@@ -386,7 +386,7 @@ static inline int tk_cvec_bits_transpose_lua (lua_State *L)
   uint64_t in_bytes_per_row = TK_CVEC_BITS_BYTES(n_cols);
   uint64_t out_bytes_per_row = TK_CVEC_BITS_BYTES(n_rows);
   uint64_t out_size = n_cols * out_bytes_per_row;
-  tk_cvec_t *out = tk_cvec_create(L, out_size, NULL, NULL);
+  tk_cvec_t *out = tk_cvec_create(L, out_size);
   memset(out->a, 0, out_size);
   for (uint64_t row = 0; row < n_rows; row++) {
     for (uint64_t col = 0; col < n_cols; col++) {
@@ -420,13 +420,13 @@ static int tk_cvec_bits_to_csc_lua (lua_State *L)
         counts[f]++;
     }
   }
-  tk_ivec_t *off = tk_ivec_create(L, n_features + 1, 0, 0);
+  tk_ivec_t *off = tk_ivec_create(L, n_features + 1);
   off->n = n_features + 1;
   off->a[0] = 0;
   for (uint64_t f = 0; f < n_features; f++)
     off->a[f + 1] = off->a[f] + (int64_t)counts[f];
   uint64_t total = (uint64_t)off->a[n_features];
-  tk_ivec_t *idx = tk_ivec_create(L, total, 0, 0);
+  tk_ivec_t *idx = tk_ivec_create(L, total);
   idx->n = total;
   memset(counts, 0, n_features * sizeof(uint64_t));
   for (uint64_t s = 0; s < n_samples; s++) {
@@ -505,7 +505,7 @@ int luaopen_santoku_cvec (lua_State *L)
   lua_newtable(L);
   luaL_register(L, NULL, tk_cvec_lua_fns);
   luaL_register(L, NULL, tk_cvec_lua_ext_fns);
-  tk_cvec_create(L, 0, 0, 0);
+  tk_cvec_create(L, 0);
   luaL_getmetafield(L, -1, "__index");
   luaL_register(L, NULL, tk_cvec_lua_mt_fns);
   luaL_register(L, NULL, tk_cvec_lua_mt_ext_fns);

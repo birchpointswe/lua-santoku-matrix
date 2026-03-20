@@ -25,7 +25,7 @@ static inline tk_vec_pfx(t) *tk_parallel_sfx(tk_vec_pfx(csums)) (
   tk_vec_pfx(t) *m0,
   uint64_t cols
 ) {
-  tk_vec_pfx(t) *out = tk_vec_pfx(create)(L, cols, NULL, NULL);
+  tk_vec_pfx(t) *out = tk_vec_pfx(create)(L, cols);
   TK_PARALLEL_FOR(schedule(static))
   for (uint64_t c = 0; c < cols; c ++) {
     tk_vec_base sum = 0;
@@ -43,7 +43,7 @@ static inline tk_vec_pfx(t) *tk_parallel_sfx(tk_vec_pfx(rsums)) (
   tk_vec_pfx(t) *m0,
   uint64_t cols
 ) {
-  tk_vec_pfx(t) *out = tk_vec_pfx(create)(L, m0->n / cols, NULL, NULL);
+  tk_vec_pfx(t) *out = tk_vec_pfx(create)(L, m0->n / cols);
 TK_PARALLEL_FOR(schedule(static))
   for (uint64_t r = 0; r < m0->n / cols; r ++) {
     tk_vec_base sum = 0.0;
@@ -61,7 +61,7 @@ static inline tk_vec_pfx(t) *tk_parallel_sfx(tk_vec_pfx(cmaxs)) (
   tk_vec_pfx(t) *m0,
   uint64_t cols
 ) {
-  tk_vec_pfx(t) *out = tk_vec_pfx(create)(L, cols, NULL, NULL);
+  tk_vec_pfx(t) *out = tk_vec_pfx(create)(L, cols);
 TK_PARALLEL_FOR(schedule(static))
   for (uint64_t c = 0; c < cols; c ++) {
     tk_vec_base maxv = m0->a[0 * cols + c];
@@ -80,7 +80,7 @@ static inline tk_vec_pfx(t) *tk_parallel_sfx(tk_vec_pfx(rmaxs)) (
   tk_vec_pfx(t) *m0,
   uint64_t cols
 ) {
-  tk_vec_pfx(t) *out = tk_vec_pfx(create)(L, m0->n / cols, NULL, NULL);
+  tk_vec_pfx(t) *out = tk_vec_pfx(create)(L, m0->n / cols);
   TK_PARALLEL_FOR(schedule(static))
   for (uint64_t r = 0; r < m0->n / cols; r ++) {
     tk_vec_base sum = 0.0;
@@ -99,7 +99,7 @@ static inline tk_vec_pfx(t) *tk_parallel_sfx(tk_vec_pfx(cmins)) (
   tk_vec_pfx(t) *m0,
   uint64_t cols
 ) {
-  tk_vec_pfx(t) *out = tk_vec_pfx(create)(L, cols, NULL, NULL);
+  tk_vec_pfx(t) *out = tk_vec_pfx(create)(L, cols);
   TK_PARALLEL_FOR(schedule(static))
   for (uint64_t c = 0; c < cols; c ++) {
     tk_vec_base minv = m0->a[0 * cols + c];
@@ -118,7 +118,7 @@ static inline tk_vec_pfx(t) *tk_parallel_sfx(tk_vec_pfx(rmins)) (
   tk_vec_pfx(t) *m0,
   uint64_t cols
 ) {
-  tk_vec_pfx(t) *out = tk_vec_pfx(create)(L, m0->n / cols, NULL, NULL);
+  tk_vec_pfx(t) *out = tk_vec_pfx(create)(L, m0->n / cols);
   TK_PARALLEL_FOR(schedule(static))
   for (uint64_t r = 0; r < m0->n / cols; r ++) {
     tk_vec_base minv = m0->a[r * cols + 0];

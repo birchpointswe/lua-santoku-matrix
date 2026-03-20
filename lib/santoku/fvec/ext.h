@@ -396,7 +396,7 @@ static inline void tk_fvec_scale_overridev(tk_fvec_t *a, tk_fvec_t *b, uint64_t 
 
 static inline tk_fvec_t *tk_fvec_rmags_override(lua_State *L, tk_fvec_t *m0, uint64_t cols) {
   uint64_t rows = m0->n / cols;
-  tk_fvec_t *out = tk_fvec_create(L, rows, 0, 0);
+  tk_fvec_t *out = tk_fvec_create(L, rows);
   for (uint64_t r = 0; r < rows; r++)
     out->a[r] = cblas_snrm2(cols, m0->a + r * cols, 1);
   out->n = rows;
@@ -405,7 +405,7 @@ static inline tk_fvec_t *tk_fvec_rmags_override(lua_State *L, tk_fvec_t *m0, uin
 
 static inline tk_fvec_t *tk_fvec_cmags_override(lua_State *L, tk_fvec_t *m0, uint64_t cols) {
   uint64_t rows = m0->n / cols;
-  tk_fvec_t *out = tk_fvec_create(L, cols, 0, 0);
+  tk_fvec_t *out = tk_fvec_create(L, cols);
   for (uint64_t c = 0; c < cols; c++)
     out->a[c] = cblas_snrm2(rows, m0->a + c, cols);
   out->n = cols;
@@ -414,8 +414,8 @@ static inline tk_fvec_t *tk_fvec_cmags_override(lua_State *L, tk_fvec_t *m0, uin
 
 static inline tk_fvec_t *tk_fvec_rsums_override(lua_State *L, tk_fvec_t *m0, uint64_t cols) {
   uint64_t rows = m0->n / cols;
-  tk_fvec_t *out = tk_fvec_create(L, rows, 0, 0);
-  tk_fvec_t *ones = tk_fvec_create(NULL, cols, 0, 0);
+  tk_fvec_t *out = tk_fvec_create(L, rows);
+  tk_fvec_t *ones = tk_fvec_create(NULL, cols);
   for (uint64_t i = 0; i < cols; i++) ones->a[i] = 1.0f;
   ones->n = cols;
   cblas_sgemv(CblasRowMajor, CblasNoTrans, rows, cols, 1.0f, m0->a, cols, ones->a, 1, 0.0f, out->a, 1);
@@ -426,8 +426,8 @@ static inline tk_fvec_t *tk_fvec_rsums_override(lua_State *L, tk_fvec_t *m0, uin
 
 static inline tk_fvec_t *tk_fvec_csums_override(lua_State *L, tk_fvec_t *m0, uint64_t cols) {
   uint64_t rows = m0->n / cols;
-  tk_fvec_t *out = tk_fvec_create(L, cols, 0, 0);
-  tk_fvec_t *ones = tk_fvec_create(NULL, rows, 0, 0);
+  tk_fvec_t *out = tk_fvec_create(L, cols);
+  tk_fvec_t *ones = tk_fvec_create(NULL, rows);
   for (uint64_t i = 0; i < rows; i++) ones->a[i] = 1.0f;
   ones->n = rows;
   cblas_sgemv(CblasRowMajor, CblasTrans, rows, cols, 1.0f, m0->a, cols, ones->a, 1, 0.0f, out->a, 1);
@@ -454,7 +454,7 @@ static inline void tk_fvec_mtx_center (
         data->a[s * n_cols + d] -= mu;
     }
   } else {
-    tk_fvec_t *mu = tk_fvec_create(L, n_cols, 0, 0);
+    tk_fvec_t *mu = tk_fvec_create(L, n_cols);
     mu->n = n_cols;
     #pragma omp parallel for
     for (uint64_t d = 0; d < n_cols; d++) {
@@ -483,7 +483,7 @@ static inline void tk_fvec_mtx_zscore (
         data->a[s * n_cols + d] *= is;
     }
   } else {
-    tk_fvec_t *is = tk_fvec_create(L, n_cols, 0, 0);
+    tk_fvec_t *is = tk_fvec_create(L, n_cols);
     is->n = n_cols;
     #pragma omp parallel for
     for (uint64_t d = 0; d < n_cols; d++) {
@@ -532,7 +532,7 @@ static inline tk_cvec_t *tk_fvec_mtx_sign (
   lua_State *L, tk_fvec_t *codes, uint64_t n_dims, uint64_t n_trunc
 ) {
   const size_t N = codes->n / n_dims;
-  tk_cvec_t *binary = tk_cvec_create(L, N * TK_CVEC_BITS_BYTES(n_trunc), 0, 0);
+  tk_cvec_t *binary = tk_cvec_create(L, N * TK_CVEC_BITS_BYTES(n_trunc));
   binary->n = N * TK_CVEC_BITS_BYTES(n_trunc);
   tk_cvec_zero(binary);
   tk_fvec_mtx_sign_raw(binary->a, codes->a, N, n_dims, n_trunc);
@@ -575,7 +575,7 @@ static inline tk_cvec_t *tk_fvec_mtx_median (
 ) {
   const uint64_t K = n_dims;
   const size_t N = codes->n / K;
-  tk_cvec_t *binary = tk_cvec_create(L, N * TK_CVEC_BITS_BYTES(K), 0, 0);
+  tk_cvec_t *binary = tk_cvec_create(L, N * TK_CVEC_BITS_BYTES(K));
   binary->n = N * TK_CVEC_BITS_BYTES(K);
   tk_cvec_zero(binary);
   float *medians = malloc(K * sizeof(float));
@@ -588,7 +588,7 @@ static inline tk_cvec_t *tk_fvec_mtx_median (
   free(col_buf);
   tk_fvec_mtx_threshold_raw(binary->a, codes->a, medians, N, K);
   if (medians_out) {
-    tk_fvec_t *med_vec = tk_fvec_create(L, K, 0, 0);
+    tk_fvec_t *med_vec = tk_fvec_create(L, K);
     med_vec->n = K;
     memcpy(med_vec->a, medians, K * sizeof(float));
     *medians_out = med_vec;
@@ -618,14 +618,14 @@ static inline void tk_fvec_ceil (tk_fvec_t *v, uint64_t start, uint64_t end) {
 }
 
 static inline tk_ivec_t *tk_fvec_to_ivec (lua_State *L, tk_fvec_t *v) {
-  tk_ivec_t *out = tk_ivec_create(L, v->n, NULL, NULL);
+  tk_ivec_t *out = tk_ivec_create(L, v->n);
   for (uint64_t i = 0; i < v->n; i++) out->a[i] = (int64_t)v->a[i];
   return out;
 }
 
 static inline tk_dvec_t *tk_fvec_to_dvec (lua_State *L, tk_fvec_t *v, tk_dvec_t *out) {
   if (out == NULL) {
-    out = tk_dvec_create(L, v->n, NULL, NULL);
+    out = tk_dvec_create(L, v->n);
   } else {
     tk_dvec_ensure(out, v->n);
     out->n = v->n;
@@ -797,7 +797,7 @@ static inline tk_ivec_t *tk_fvec_mtx_top_variance (
 ) {
   if (matrix == NULL || n_samples == 0 || n_features == 0) return NULL;
   float *data = matrix->a;
-  tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+  tk_rvec_t *top_heap = tk_rvec_create(0, 0);
   #pragma omp parallel for
   for (uint64_t f = 0; f < n_features; f++) {
     double sum = 0.0;
@@ -811,8 +811,8 @@ static inline tk_ivec_t *tk_fvec_mtx_top_variance (
     tk_rvec_hmin(top_heap, top_k, r);
   }
   tk_rvec_desc(top_heap, 0, top_heap->n);
-  tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
-  tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+  tk_ivec_t *out = tk_ivec_create(L, 0);
+  tk_dvec_t *weights = tk_dvec_create(L, 0);
   tk_rvec_keys(L, top_heap, out);
   tk_rvec_values(L, top_heap, weights);
   tk_rvec_destroy(top_heap);
@@ -824,7 +824,7 @@ static inline tk_ivec_t *tk_fvec_mtx_top_skewness (
 ) {
   if (matrix == NULL || n_samples == 0 || n_features == 0) return NULL;
   float *data = matrix->a;
-  tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+  tk_rvec_t *top_heap = tk_rvec_create(0, 0);
   #pragma omp parallel for
   for (uint64_t f = 0; f < n_features; f++) {
     double sum = 0.0;
@@ -845,8 +845,8 @@ static inline tk_ivec_t *tk_fvec_mtx_top_skewness (
     tk_rvec_hmin(top_heap, top_k, r);
   }
   tk_rvec_desc(top_heap, 0, top_heap->n);
-  tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
-  tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+  tk_ivec_t *out = tk_ivec_create(L, 0);
+  tk_dvec_t *weights = tk_dvec_create(L, 0);
   tk_rvec_keys(L, top_heap, out);
   tk_rvec_values(L, top_heap, weights);
   tk_rvec_destroy(top_heap);
@@ -859,7 +859,7 @@ static inline tk_ivec_t *tk_fvec_mtx_top_entropy (
   if (matrix == NULL || n_samples == 0 || n_features == 0) return NULL;
   if (n_bins == 0) n_bins = 32;
   float *data = matrix->a;
-  tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+  tk_rvec_t *top_heap = tk_rvec_create(0, 0);
   #pragma omp parallel
   {
     uint64_t *bin_counts = (uint64_t *)calloc(n_bins, sizeof(uint64_t));
@@ -897,8 +897,8 @@ static inline tk_ivec_t *tk_fvec_mtx_top_entropy (
     free(bin_counts);
   }
   tk_rvec_desc(top_heap, 0, top_heap->n);
-  tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
-  tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+  tk_ivec_t *out = tk_ivec_create(L, 0);
+  tk_dvec_t *weights = tk_dvec_create(L, 0);
   tk_rvec_keys(L, top_heap, out);
   tk_rvec_values(L, top_heap, weights);
   tk_rvec_destroy(top_heap);
@@ -910,7 +910,7 @@ static inline tk_ivec_t *tk_fvec_mtx_top_bimodality (
 ) {
   if (matrix == NULL || n_samples == 0 || n_features == 0) return NULL;
   float *data = matrix->a;
-  tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+  tk_rvec_t *top_heap = tk_rvec_create(0, 0);
   #pragma omp parallel for
   for (uint64_t f = 0; f < n_features; f++) {
     double sum = 0.0;
@@ -940,8 +940,8 @@ static inline tk_ivec_t *tk_fvec_mtx_top_bimodality (
     tk_rvec_hmin(top_heap, top_k, r);
   }
   tk_rvec_desc(top_heap, 0, top_heap->n);
-  tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
-  tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+  tk_ivec_t *out = tk_ivec_create(L, 0);
+  tk_dvec_t *weights = tk_dvec_create(L, 0);
   tk_rvec_keys(L, top_heap, out);
   tk_rvec_values(L, top_heap, weights);
   tk_rvec_destroy(top_heap);
@@ -953,7 +953,7 @@ static inline tk_ivec_t *tk_fvec_mtx_top_dip (
 ) {
   if (matrix == NULL || n_samples == 0 || n_features == 0 || n_samples < 5) return NULL;
   float *data = matrix->a;
-  tk_rvec_t *top_heap = tk_rvec_create(0, 0, 0, 0);
+  tk_rvec_t *top_heap = tk_rvec_create(0, 0);
   uint64_t n_bins = n_samples < 100 ? 16 : 32;
   #pragma omp parallel
   {
@@ -1009,8 +1009,8 @@ static inline tk_ivec_t *tk_fvec_mtx_top_dip (
     free(smoothed);
   }
   tk_rvec_desc(top_heap, 0, top_heap->n);
-  tk_ivec_t *out = tk_ivec_create(L, 0, 0, 0);
-  tk_dvec_t *weights = tk_dvec_create(L, 0, 0, 0);
+  tk_ivec_t *out = tk_ivec_create(L, 0);
+  tk_dvec_t *weights = tk_dvec_create(L, 0);
   tk_rvec_keys(L, top_heap, out);
   tk_rvec_values(L, top_heap, weights);
   tk_rvec_destroy(top_heap);
@@ -1023,21 +1023,21 @@ static inline void tk_fvec_mtx_topk (
   uint64_t n_queries, uint64_t n_corpus, uint64_t d, uint64_t k
 ) {
   if (k == 0 || n_queries == 0 || n_corpus == 0 || d == 0) {
-    tk_ivec_t *off = tk_ivec_create(L, n_queries + 1, 0, 0);
+    tk_ivec_t *off = tk_ivec_create(L, n_queries + 1);
     off->n = n_queries + 1;
     memset(off->a, 0, (n_queries + 1) * sizeof(int64_t));
-    tk_ivec_create(L, 0, 0, 0);
-    tk_dvec_create(L, 0, 0, 0);
+    tk_ivec_create(L, 0);
+    tk_dvec_create(L, 0);
     return;
   }
   if (k > n_corpus) k = n_corpus;
   uint64_t total = n_queries * k;
-  tk_ivec_t *offsets = tk_ivec_create(L, n_queries + 1, 0, 0);
+  tk_ivec_t *offsets = tk_ivec_create(L, n_queries + 1);
   offsets->n = n_queries + 1;
   for (uint64_t i = 0; i <= n_queries; i++) offsets->a[i] = (int64_t)(i * k);
-  tk_ivec_t *indices = tk_ivec_create(L, total, 0, 0);
+  tk_ivec_t *indices = tk_ivec_create(L, total);
   indices->n = total;
-  tk_dvec_t *out_scores = tk_dvec_create(L, total, 0, 0);
+  tk_dvec_t *out_scores = tk_dvec_create(L, total);
   out_scores->n = total;
   uint64_t max_buf = 128ULL * 1024 * 1024 / sizeof(float);
   uint64_t tile = n_corpus > 0 ? max_buf / n_corpus : n_queries;
@@ -1054,7 +1054,7 @@ static inline void tk_fvec_mtx_topk (
       0.0f, sbuf, (int)n_corpus);
     #pragma omp parallel
     {
-      tk_rvec_t *heap = tk_rvec_create(NULL, k, 0, 0);
+      tk_rvec_t *heap = tk_rvec_create(NULL, k);
       #pragma omp for schedule(static)
       for (uint64_t i = 0; i < blk; i++) {
         tk_rvec_clear(heap);
@@ -1092,9 +1092,9 @@ static inline void tk_fvec_mtx_standardize (
         data->a[s * n_cols + d] = (data->a[s * n_cols + d] - mu) * is;
     }
   } else {
-    tk_fvec_t *mu = tk_fvec_create(L, n_cols, 0, 0);
+    tk_fvec_t *mu = tk_fvec_create(L, n_cols);
     mu->n = n_cols;
-    tk_fvec_t *is = tk_fvec_create(L, n_cols, 0, 0);
+    tk_fvec_t *is = tk_fvec_create(L, n_cols);
     is->n = n_cols;
     #pragma omp parallel for
     for (uint64_t d = 0; d < n_cols; d++) {

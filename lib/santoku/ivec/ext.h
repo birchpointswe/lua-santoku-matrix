@@ -75,14 +75,14 @@ static inline void tk_ivec_copy_rvalues (tk_ivec_t *m0, tk_rvec_t *m1, int64_t s
 }
 
 static inline tk_ivec_t *tk_ivec_from_rvec (lua_State *L, tk_rvec_t *R) {
-  tk_ivec_t *result = tk_ivec_create(L, R->n, 0, 0);
+  tk_ivec_t *result = tk_ivec_create(L, R->n);
   for (int64_t i = 0; i < (int64_t) R->n; i ++)
     result->a[i] = R->a[i].i;
   return result;
 }
 
 static inline tk_dvec_t *tk_ivec_to_dvec (lua_State *L, tk_ivec_t *v) {
-  tk_dvec_t *out = tk_dvec_create(L, v->n, NULL, NULL);
+  tk_dvec_t *out = tk_dvec_create(L, v->n);
   for (uint64_t i = 0; i < v->n; i++)
     out->a[i] = (double)v->a[i];
   return out;
@@ -100,7 +100,7 @@ static inline void tk_ivec_lookup (tk_ivec_t *indices, tk_ivec_t *source) {
 }
 
 static inline tk_rvec_t *tk_rvec_rankings (lua_State *L, tk_dvec_t *scores, uint64_t n_visible, uint64_t n_hidden) {
-  tk_rvec_t *rankings = tk_rvec_create(L, n_hidden * n_visible, NULL, NULL);
+  tk_rvec_t *rankings = tk_rvec_create(L, n_hidden * n_visible);
   for (uint64_t h = 0; h < n_hidden; h ++)
     for (uint64_t v = 0; v < n_visible; v ++)
       rankings->a[h * n_visible + v] = tk_rank((int64_t) v, scores->a[h * n_visible + v]);
@@ -361,7 +361,7 @@ static inline void tk_ivec_set_insert (tk_ivec_t *vec, int64_t pos, int64_t valu
 static inline tk_ivec_t *tk_ivec_set_intersect (lua_State *L, tk_ivec_t *a, tk_ivec_t *b, tk_ivec_t *out) {
   if (out == NULL) {
     size_t min_size = a->n < b->n ? a->n : b->n;
-    out = tk_ivec_create(L, min_size, 0, 0);
+    out = tk_ivec_create(L, min_size);
   } else {
     tk_ivec_clear(out);
     size_t min_size = a->n < b->n ? a->n : b->n;
@@ -386,7 +386,7 @@ static inline tk_ivec_t *tk_ivec_set_intersect (lua_State *L, tk_ivec_t *a, tk_i
 
 static inline tk_ivec_t *tk_ivec_set_union (lua_State *L, tk_ivec_t *a, tk_ivec_t *b, tk_ivec_t *out) {
   if (out == NULL) {
-    out = tk_ivec_create(L, a->n + b->n, 0, 0);
+    out = tk_ivec_create(L, a->n + b->n);
   } else {
     tk_ivec_clear(out);
     tk_ivec_ensure(out, a->n + b->n);

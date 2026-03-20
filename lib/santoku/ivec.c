@@ -209,7 +209,7 @@ static inline int tk_ivec_set_weights_by_rank_lua (lua_State *L)
   tk_dvec_t *weights = (nargs >= 2 && !lua_isnil(L, 2)) ? tk_dvec_peek(L, 2, "weights") : NULL;
   tk_ivec_t *ranks = (nargs >= 3 && !lua_isnil(L, 3)) ? tk_ivec_peek(L, 3, "ranks") : NULL;
   uint64_t n_ranks = (nargs >= 4) ? tk_lua_checkunsigned(L, 4, "n_ranks") : 1;
-  tk_dvec_t *weights_by_rank = tk_dvec_create(L, n_ranks, 0, 0);
+  tk_dvec_t *weights_by_rank = tk_dvec_create(L, n_ranks);
   tk_ivec_set_weights_by_rank(features->a, features->n, weights, ranks, n_ranks, weights_by_rank->a);
   weights_by_rank->n = n_ranks;
   return 1;
@@ -403,7 +403,7 @@ int luaopen_santoku_ivec (lua_State *L)
   lua_newtable(L);
   luaL_register(L, NULL, tk_ivec_lua_fns);
   luaL_register(L, NULL, tk_ivec_lua_ext_fns);
-  tk_ivec_create(L, 0, 0, 0);
+  tk_ivec_create(L, 0);
   luaL_getmetafield(L, -1, "__index");
   luaL_register(L, NULL, tk_ivec_lua_mt_fns);
   luaL_register(L, NULL, tk_ivec_lua_mt_ext_fns);

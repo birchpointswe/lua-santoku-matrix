@@ -109,7 +109,7 @@ static inline bool tk_vec_pfx(gt) (tk_vec_base a, tk_vec_base b)
   return tk_vec_gt(a, b);
 }
 
-static inline tk_vec_pfx(t) *tk_vec_pfx(create) (lua_State *, size_t, tk_vec_base *, tk_vec_pfx(t) *);
+static inline tk_vec_pfx(t) *tk_vec_pfx(create) (lua_State *, size_t);
 
 static inline int tk_vec_pfx(resize) (
   tk_vec_pfx(t) *m0,
@@ -531,7 +531,7 @@ static inline tk_vec_pfx(t) *tk_vec_pfx(load) (lua_State *L, FILE *fh)
   uint64_t n64;
   tk_lua_fread(L, &n64, sizeof(uint64_t), 1, fh);
   size_t n = (size_t) n64;
-  tk_vec_pfx(t) *v = tk_vec_pfx(create)(L, n, 0, 0);
+  tk_vec_pfx(t) *v = tk_vec_pfx(create)(L, n);
   tk_lua_fread(L, v->a, sizeof(tk_vec_base), n, fh);
   return v;
 }
@@ -556,7 +556,7 @@ static inline int tk_vec_pfx(from_raw_lua) (lua_State *L)
   size_t n = len / sizeof(tk_vec_base);
   if (n * sizeof(tk_vec_base) != len)
     return luaL_error(L, "from_raw: data length not a multiple of element size");
-  tk_vec_pfx(t) *v = tk_vec_pfx(create)(L, n, NULL, NULL);
+  tk_vec_pfx(t) *v = tk_vec_pfx(create)(L, n);
   memcpy(v->a, data, len);
   v->n = n;
   return 1;
@@ -568,12 +568,12 @@ static inline int tk_vec_pfx(create_lua) (lua_State *L)
   tk_vec_pfx(t) *m0 = tk_vec_pfx(peekopt)(L, 1);
   uint64_t m = tk_lua_optunsigned(L, 2, "size", 0);
   if (m0 != NULL) {
-    tk_vec_pfx(t) *m1 = tk_vec_pfx(create)(L, m > 0 ? m : m0->n, NULL, NULL);
+    tk_vec_pfx(t) *m1 = tk_vec_pfx(create)(L, m > 0 ? m : m0->n);
     tk_vec_pfx(copy)(m1, m0, 0, (int64_t) m0->n, 0);
     return 1;
 #ifndef tk_vec_limited
   } else if (lua_type(L, 1) == LUA_TTABLE) {
-    tk_vec_pfx(t) *m0 = tk_vec_pfx(create)(L, m, NULL, NULL);
+    tk_vec_pfx(t) *m0 = tk_vec_pfx(create)(L, m);
     uint64_t l = lua_objlen(L, 1);
     tk_vec_pfx(ensure)(m0, l);
     m0->n = l;
@@ -587,7 +587,7 @@ static inline int tk_vec_pfx(create_lua) (lua_State *L)
 #endif
   } else if (lua_type(L, 1) == LUA_TNUMBER || lua_type(L, 1) == LUA_TNIL) {
     uint64_t m = tk_lua_optunsigned(L, 1, "size", 0);
-    tk_vec_pfx(create)(L, m, NULL, NULL);
+    tk_vec_pfx(create)(L, m);
     return 1;
   } else {
     tk_vec_err(L, create, 1, "expected either nil, a table, or a number");
@@ -1429,38 +1429,29 @@ static inline void tk_vec_pfx(ensure_init) (lua_State *L)
 }
 #endif
 
-static inline tk_vec_pfx(t) *tk_vec_pfx(create) (lua_State *L, size_t n, tk_vec_base *data, tk_vec_pfx(t) *v)
+static inline tk_vec_pfx(t) *tk_vec_pfx(create) (lua_State *L, size_t n)
 {
-  tk_vec_pfx(t) v0;
-  if (v == NULL) {
-    v = L == NULL
-      ? malloc(sizeof(tk_vec_pfx(t)))
-      : tk_lua_newuserdata(L, tk_vec_pfx(t), tk_vec_mt, tk_vec_pfx(lua_mt_fns), tk_vec_pfx(gc_lua));
-    if (v == NULL)
-      return v;
-#ifdef tk_vec_module
-    if (L != NULL)
-      tk_vec_pfx(ensure_init)(L);
-#endif
-    v0 = *v;
-    bool lua_managed = L != NULL;
-    kv_init(v0, lua_managed);
-    if (kv_resize(tk_vec_base, v0, n) != 0) {
-      if (L)
-        tk_error(L, "vec_create resize", ENOMEM);
-      else if (!lua_managed)
-        free(v);
-      return NULL;
-    }
-    v0.n = n;
-    *v = v0;
+  tk_vec_pfx(t) *v = L == NULL
+    ? malloc(sizeof(tk_vec_pfx(t)))
+    : tk_lua_newuserdata(L, tk_vec_pfx(t), tk_vec_mt, tk_vec_pfx(lua_mt_fns), tk_vec_pfx(gc_lua));
+  if (v == NULL)
     return v;
-  } else if (v->a && v->a != data) {
-    free(v->a);
+#ifdef tk_vec_module
+  if (L != NULL)
+    tk_vec_pfx(ensure_init)(L);
+#endif
+  tk_vec_pfx(t) v0 = *v;
+  bool lua_managed = L != NULL;
+  kv_init(v0, lua_managed);
+  if (kv_resize(tk_vec_base, v0, n) != 0) {
+    if (L)
+      tk_error(L, "vec_create resize", ENOMEM);
+    else if (!lua_managed)
+      free(v);
+    return NULL;
   }
-  v->n = n;
-  v->m = n;
-  v->a = data;
+  v0.n = n;
+  *v = v0;
   return v;
 }
 

@@ -154,7 +154,9 @@ static inline int tk_vec_pfx(persist_lua) (lua_State *L)
     size_t len;
     char *data = tk_lua_fslurp(L, fh, &len);
     if (data) {
-      tk_cvec_create(L, len, data, 0);
+      tk_cvec_t *cv = tk_cvec_create(L, len);
+      memcpy(cv->a, data, len);
+      free(data);
       return 1;
     } else {
       tk_lua_fclose(L, fh);
