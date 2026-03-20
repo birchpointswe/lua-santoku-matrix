@@ -11,6 +11,7 @@
 #define tk_umap_key tk_edge_t
 #define tk_umap_eq(a, b) tk_edge_eq(a, b)
 #define tk_umap_hash(a) tk_edge_hash(a)
+#define tk_umap_module "santoku.euset"
 #include <santoku/umap/tpl.h>
 
 #endif

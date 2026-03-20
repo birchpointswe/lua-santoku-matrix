@@ -543,6 +543,33 @@ static luaL_Reg tk_umap_pfx(lua_mt_fns)[] =
   { NULL, NULL }
 };
 
+#ifdef tk_umap_module
+static inline void tk_umap_pfx(ensure_init) (lua_State *L)
+{
+  lua_getmetatable(L, -1);
+  lua_getfield(L, -1, "__ext_init");
+  if (lua_isnil(L, -1)) {
+    lua_pop(L, 1);
+    lua_pushboolean(L, 1);
+    lua_setfield(L, -2, "__ext_init");
+    lua_pop(L, 1);
+    lua_getfield(L, LUA_REGISTRYINDEX, "_LOADED");
+    lua_getfield(L, -1, tk_umap_module);
+    if (lua_isnil(L, -1)) {
+      lua_pop(L, 2);
+      lua_getglobal(L, "require");
+      lua_pushstring(L, tk_umap_module);
+      lua_call(L, 1, 1);
+      lua_pop(L, 1);
+    } else {
+      lua_pop(L, 2);
+    }
+  } else {
+    lua_pop(L, 2);
+  }
+}
+#endif
+
 static inline tk_umap_pfx(t) *tk_umap_pfx(create) (lua_State *L, uint32_t n)
 {
   tk_umap_pfx(t) *h = L == NULL
@@ -550,6 +577,10 @@ static inline tk_umap_pfx(t) *tk_umap_pfx(create) (lua_State *L, uint32_t n)
     : tk_lua_newuserdata(L, tk_umap_pfx(t), tk_umap_mt, tk_umap_pfx(lua_mt_fns), tk_umap_pfx(gc_lua));
   if (h == NULL)
     return h;
+#ifdef tk_umap_module
+  if (L != NULL)
+    tk_umap_pfx(ensure_init)(L);
+#endif
   bool lua_managed = L != NULL;
   tk_umap_init(tk_umap_name, h, lua_managed);
   if (n) {
@@ -570,6 +601,9 @@ static inline tk_umap_pfx(t) *tk_umap_pfx(register) (lua_State *L, tk_umap_pfx(t
   tk_umap_pfx(t) *h1 = tk_lua_newuserdata(L, tk_umap_pfx(t), tk_umap_mt, tk_umap_pfx(lua_mt_fns), tk_umap_pfx(gc_lua));
   memcpy(h1, h0, sizeof(tk_umap_pfx(t)));
   tk_umap_pfx(destroy)(h0);
+#ifdef tk_umap_module
+  tk_umap_pfx(ensure_init)(L);
+#endif
   return h1;
 }
 

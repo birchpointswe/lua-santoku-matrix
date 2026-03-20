@@ -20,6 +20,7 @@
 #undef tk_umap_t
 #undef tk_umap_type
 #undef tk_umap_value
+#undef tk_umap_module
 #undef tk_umap_pushkey
 #undef tk_umap_pushvalue
 #undef tk_umap_peekkey

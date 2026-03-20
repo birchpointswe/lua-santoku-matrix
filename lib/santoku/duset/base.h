@@ -10,6 +10,7 @@
 #define tk_umap_pushkey(...) lua_pushnumber(__VA_ARGS__)
 #define tk_umap_eq(a, b) ((a) == (b))
 #define tk_umap_hash(a) (tk_hash_double(a))
+#define tk_umap_module "santoku.duset"
 #include <santoku/umap/tpl.h>
 
 #endif

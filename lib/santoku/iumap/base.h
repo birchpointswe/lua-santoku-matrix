@@ -13,6 +13,7 @@
 #define tk_umap_pushvalue(...) lua_pushinteger(__VA_ARGS__)
 #define tk_umap_eq(a, b) ((a) == (b))
 #define tk_umap_hash(a) (kh_int64_hash_func((uint64_t) a))
+#define tk_umap_module "santoku.iumap"
 #include <santoku/umap/tpl.h>
 
 #endif
