@@ -3,6 +3,13 @@
 #if defined(_OPENMP) && !defined(__EMSCRIPTEN__)
 #include <omp.h>
 #endif
+#if !defined(__EMSCRIPTEN__)
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <errno.h>
+#endif
 
 #ifndef tk_vec_lt
 #define tk_vec_lt(a, b) ((a) < (b))
@@ -94,6 +101,15 @@ static inline void tk_vec_pfx(destroy) (tk_vec_pfx(t) *r)
     tk_vec_destroy_item(r->a[i]);
 #endif
   bool lua_managed = r->lua_managed;
+#if !defined(__EMSCRIPTEN__)
+  if (r->lua_managed == 2) {
+    if (r->a) munmap(r->a, r->m * sizeof(tk_vec_base));
+    r->a = NULL;
+    r->n = r->m = 0;
+    r->lua_managed = -1;
+    return;
+  }
+#endif
   kv_destroy(*r);
   if (!lua_managed)
     free(r);
@@ -116,6 +132,8 @@ static inline int tk_vec_pfx(resize) (
   size_t m,
   bool setn
 ) {
+  if (m0->lua_managed == 2)
+    return -1;
   tk_vec_pfx(t) v = *m0;
   if (m == 0) {
     free(v.a);
@@ -237,6 +255,8 @@ static inline int64_t tk_vec_pfx(find) (tk_vec_pfx(t) *v, tk_vec_base x) {
   return -1;
 }
 static inline int tk_vec_pfx(push) (tk_vec_pfx(t) *v, tk_vec_base x) {
+  if (v->lua_managed == 2)
+    return -1;
   tk_vec_pfx(t) v0 = *v;
   int rc = kv_push(tk_vec_base, v0, x);
   *v = v0;
@@ -1324,6 +1344,19 @@ static inline int tk_vec_pfx(raw_lua) (lua_State *L)
   return 1;
 }
 
+#if !defined(__EMSCRIPTEN__)
+static inline int tk_vec_pfx(mmap_sync_lua) (lua_State *L)
+{
+  lua_settop(L, 1);
+  tk_vec_pfx(t) *v = tk_vec_pfx(peek)(L, 1, "vector");
+  if (v->lua_managed == 2 && v->a) {
+    if (msync(v->a, v->m * sizeof(tk_vec_base), MS_SYNC) != 0)
+      return tk_vec_err(L, mmap_sync, 1, strerror(errno));
+  }
+  return 0;
+}
+#endif
+
 static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
 {
   { "copy", tk_vec_pfx(copy_lua) },
@@ -1339,6 +1372,9 @@ static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
   { "zero", tk_vec_pfx(zero_lua) },
   { "transpose", tk_vec_pfx(transpose_lua) },
   { "raw", tk_vec_pfx(raw_lua) },
+#if !defined(__EMSCRIPTEN__)
+  { "mmap_sync", tk_vec_pfx(mmap_sync_lua) },
+#endif
 
 #ifdef tk_vec_peekbase
   { "get", tk_vec_pfx(get_lua) },
@@ -1466,11 +1502,99 @@ static inline tk_vec_pfx(t) *tk_vec_pfx(register) (lua_State *L, tk_vec_pfx(t) *
   return x;
 }
 
+#if !defined(__EMSCRIPTEN__)
+
+static inline tk_vec_pfx(t) *tk_vec_pfx(mmap_create) (lua_State *L, const char *path, size_t n)
+{
+  size_t map_len = n * sizeof(tk_vec_base);
+  int fd = open(path, O_RDWR | O_CREAT | O_TRUNC, 0666);
+  if (fd < 0)
+    return (tk_vec_pfx(t) *)(intptr_t) tk_vec_err(L, mmap_create, 1, strerror(errno));
+  if (map_len > 0 && ftruncate(fd, (off_t) map_len) != 0) {
+    close(fd);
+    return (tk_vec_pfx(t) *)(intptr_t) tk_vec_err(L, mmap_create, 1, strerror(errno));
+  }
+  tk_vec_pfx(t) *v = tk_lua_newuserdata(L, tk_vec_pfx(t), tk_vec_mt, tk_vec_pfx(lua_mt_fns), tk_vec_pfx(gc_lua));
+#ifdef tk_vec_module
+  tk_vec_pfx(ensure_init)(L);
+#endif
+  v->lua_managed = 2;
+  if (map_len > 0) {
+    v->a = (tk_vec_base *) mmap(NULL, map_len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (v->a == MAP_FAILED) {
+      close(fd);
+      return (tk_vec_pfx(t) *)(intptr_t) tk_vec_err(L, mmap_create, 1, strerror(errno));
+    }
+    memset(v->a, 0, map_len);
+  } else {
+    v->a = NULL;
+  }
+  close(fd);
+  v->n = n;
+  v->m = n;
+  return v;
+}
+
+static inline tk_vec_pfx(t) *tk_vec_pfx(mmap_open) (lua_State *L, const char *path)
+{
+  int fd = open(path, O_RDWR);
+  if (fd < 0)
+    return (tk_vec_pfx(t) *)(intptr_t) tk_vec_err(L, mmap_open, 1, strerror(errno));
+  struct stat st;
+  if (fstat(fd, &st) != 0) {
+    close(fd);
+    return (tk_vec_pfx(t) *)(intptr_t) tk_vec_err(L, mmap_open, 1, strerror(errno));
+  }
+  size_t map_len = (size_t) st.st_size;
+  size_t n = map_len / sizeof(tk_vec_base);
+  tk_vec_pfx(t) *v = tk_lua_newuserdata(L, tk_vec_pfx(t), tk_vec_mt, tk_vec_pfx(lua_mt_fns), tk_vec_pfx(gc_lua));
+#ifdef tk_vec_module
+  tk_vec_pfx(ensure_init)(L);
+#endif
+  v->lua_managed = 2;
+  if (map_len > 0) {
+    v->a = (tk_vec_base *) mmap(NULL, map_len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (v->a == MAP_FAILED) {
+      close(fd);
+      return (tk_vec_pfx(t) *)(intptr_t) tk_vec_err(L, mmap_open, 1, strerror(errno));
+    }
+  } else {
+    v->a = NULL;
+  }
+  close(fd);
+  v->n = n;
+  v->m = n;
+  return v;
+}
+
+static inline int tk_vec_pfx(mmap_create_lua) (lua_State *L)
+{
+  lua_settop(L, 2);
+  const char *path = luaL_checkstring(L, 1);
+  uint64_t n = tk_lua_checkunsigned(L, 2, "size");
+  tk_vec_pfx(mmap_create)(L, path, n);
+  return 1;
+}
+
+static inline int tk_vec_pfx(mmap_open_lua) (lua_State *L)
+{
+  lua_settop(L, 1);
+  const char *path = luaL_checkstring(L, 1);
+  tk_vec_pfx(mmap_open)(L, path);
+  return 1;
+}
+
+#endif
+
 static luaL_Reg tk_vec_pfx(lua_fns)[] =
 {
   { "create", tk_vec_pfx(create_lua) },
   { "load", tk_vec_pfx(load_lua) },
   { "from_raw", tk_vec_pfx(from_raw_lua) },
+#if !defined(__EMSCRIPTEN__)
+  { "mmap_create", tk_vec_pfx(mmap_create_lua) },
+  { "mmap_open", tk_vec_pfx(mmap_open_lua) },
+#endif
   { NULL, NULL }
 };
 
