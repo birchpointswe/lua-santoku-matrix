@@ -642,12 +642,14 @@ test("dvec: mtx_top_variance", function ()
 end)
 
 test("ivec/dvec: persist and load", function ()
+  local tmp = os.tmpname() .. ".vec_test.bin"
   for _, vec in ipairs({ ivec, dvec }) do
     local v = vec.create({ 1, 2, 3, 4 })
-    v:persist("/data/data/com.termux/files/home/.vec_test.bin")
-    local loaded = vec.load("/data/data/com.termux/files/home/.vec_test.bin")
+    v:persist(tmp)
+    local loaded = vec.load(tmp)
     assert(teq(v:table(), loaded:table()))
   end
+  os.remove(tmp)
 end)
 
 test("ivec/dvec: raw", function ()
