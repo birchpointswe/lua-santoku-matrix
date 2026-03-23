@@ -16,6 +16,9 @@ results.mk:
 	  else \
 	    ldflags="-lopenblas"; \
 	  fi; \
+	  case "$$(uname -s)" in \
+	    Linux*) ldflags="$$ldflags -Wl,-z,nodelete" ;; \
+	  esac; \
 	  echo "MATHLIBS_CFLAGS = $$cflags"; \
 	  echo "MATHLIBS_LDFLAGS = $$ldflags"; \
 	} > $@
