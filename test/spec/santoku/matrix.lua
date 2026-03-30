@@ -3,14 +3,15 @@ local err = require("santoku.error")
 local assert = err.assert
 local dvec = require("santoku.dvec")
 local ivec = require("santoku.ivec")
+local svec = require("santoku.svec")
 local csr = require("santoku.csr")
 local rvec = require("santoku.rvec")
 local pvec = require("santoku.pvec")
 local tbl = require("santoku.table")
 local teq = tbl.equals
 
-test("ivec/dvec: create and basic operations", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: create and basic operations", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create(10)
     assert(v:size() == 10)
     assert(v:capacity() >= 10)
@@ -25,8 +26,8 @@ test("ivec/dvec: create and basic operations", function ()
   end
 end)
 
-test("ivec/dvec: create from table", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: create from table", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 1, 2, 3, 4, 5 })
     assert(v:size() == 5)
     assert(v:get(0) == 1)
@@ -35,8 +36,8 @@ test("ivec/dvec: create from table", function ()
   end
 end)
 
-test("ivec/dvec: resize and setn", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: resize and setn", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 1, 2, 3 })
     v:resize(10)
     assert(v:size() == 10)
@@ -47,8 +48,8 @@ test("ivec/dvec: resize and setn", function ()
   end
 end)
 
-test("ivec/dvec: push", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: push", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create()
     v:push(10)
     v:push(20)
@@ -60,16 +61,16 @@ test("ivec/dvec: push", function ()
   end
 end)
 
-test("ivec/dvec: insert", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: insert", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 1, 3, 4 })
     v:insert(1, 2)
     assert(teq(v:table(), { 1, 2, 3, 4 }))
   end
 end)
 
-test("ivec/dvec: copy", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: copy", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local src = vec.create({ 1, 2, 3, 4, 5 })
     local dst = vec.create()
     dst:copy(src)
@@ -85,8 +86,8 @@ test("ivec/dvec: copy", function ()
   end
 end)
 
-test("ivec/dvec: reverse", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: reverse", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 1, 2, 3, 4, 5 })
     v:reverse()
     assert(teq(v:table(), { 5, 4, 3, 2, 1 }))
@@ -97,8 +98,8 @@ test("ivec/dvec: reverse", function ()
   end
 end)
 
-test("ivec/dvec: shuffle (whole)", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: shuffle (whole)", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 })
     v:shuffle()
     local shuffled = v:table()
@@ -110,8 +111,8 @@ test("ivec/dvec: shuffle (whole)", function ()
   end
 end)
 
-test("ivec/dvec: shuffle with range", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: shuffle with range", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 1, 2, 3, 4, 5, 6 })
     v:shuffle(2, 5)
     assert(v:get(0) == 1)
@@ -123,8 +124,8 @@ test("ivec/dvec: shuffle with range", function ()
   end
 end)
 
-test("ivec/dvec: clear with range", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: clear with range", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 1, 2, 3, 4, 5 })
     v:clear(1, 4)
     assert(v:get(0) == 1)
@@ -135,8 +136,8 @@ test("ivec/dvec: clear with range", function ()
   end
 end)
 
-test("ivec/dvec: zero", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: zero", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 1, 2, 3, 4, 5 })
     v:zero()
     for i = 0, 4 do
@@ -145,8 +146,8 @@ test("ivec/dvec: zero", function ()
   end
 end)
 
-test("ivec/dvec: fill", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: fill", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create(5)
     v:fill(42)
     for i = 0, 4 do
@@ -162,24 +163,24 @@ test("ivec/dvec: fill", function ()
   end
 end)
 
-test("ivec/dvec: asc sort", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: asc sort", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 5, 2, 8, 1, 9 })
     v:asc()
     assert(teq(v:table(), { 1, 2, 5, 8, 9 }))
   end
 end)
 
-test("ivec/dvec: desc sort", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: desc sort", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 5, 2, 8, 1, 9 })
     v:desc()
     assert(teq(v:table(), { 9, 8, 5, 2, 1 }))
   end
 end)
 
-test("ivec/dvec: asc with range", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: asc with range", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 1, 5, 2, 8, 9 })
     v:asc(1, 4)
     assert(v:get(0) == 1)
@@ -190,8 +191,8 @@ test("ivec/dvec: asc with range", function ()
   end
 end)
 
-test("ivec/dvec: uasc (unique ascending)", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: uasc (unique ascending)", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 3, 1, 2, 1, 3, 2 })
     local new_end = v:uasc()
     v:setn(new_end)
@@ -199,8 +200,8 @@ test("ivec/dvec: uasc (unique ascending)", function ()
   end
 end)
 
-test("ivec/dvec: kasc (partial sort)", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: kasc (partial sort)", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 9, 5, 2, 8, 1, 7 })
     v:kasc(3)
     assert(v:get(0) <= v:get(1))
@@ -208,16 +209,16 @@ test("ivec/dvec: kasc (partial sort)", function ()
   end
 end)
 
-test("ivec/dvec: table conversion", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: table conversion", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 1, 2, 3, 4, 5, 6 })
     assert(teq(v:table(), { 1, 2, 3, 4, 5, 6 }))
     assert(teq(v:table(0, 3), { 1, 2, 3 }))
   end
 end)
 
-test("ivec/dvec: rtable (row-major)", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: rtable (row-major)", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 1, 2, 3, 4, 5, 6 })
     assert(teq(v:rtable(3), {
       { 1, 2, 3 },
@@ -226,8 +227,8 @@ test("ivec/dvec: rtable (row-major)", function ()
   end
 end)
 
-test("ivec/dvec: ctable (column-major)", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: ctable (column-major)", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 1, 2, 3, 4, 5, 6 })
     assert(teq(v:ctable(3), {
       { 1, 4 },
@@ -237,32 +238,32 @@ test("ivec/dvec: ctable (column-major)", function ()
   end
 end)
 
-test("ivec/dvec: add scalar", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: add scalar", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 1, 2, 3, 4, 5 })
     v:add(10)
     assert(teq(v:table(), { 11, 12, 13, 14, 15 }))
   end
 end)
 
-test("ivec/dvec: add scalar with range", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: add scalar with range", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 1, 2, 3, 4, 5 })
     v:add(10, 1, 4)
     assert(teq(v:table(), { 1, 12, 13, 14, 5 }))
   end
 end)
 
-test("ivec/dvec: scale", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: scale", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 1, 2, 3, 4, 5 })
     v:scale(2)
     assert(teq(v:table(), { 2, 4, 6, 8, 10 }))
   end
 end)
 
-test("ivec/dvec: scalev", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: scalev", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v1 = vec.create({ 1, 2, 3 })
     local v2 = vec.create({ 2, 3, 4 })
     v1:scalev(v2)
@@ -270,8 +271,8 @@ test("ivec/dvec: scalev", function ()
   end
 end)
 
-test("ivec/dvec: addv", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: addv", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v1 = vec.create({ 1, 2, 3 })
     local v2 = vec.create({ 10, 20, 30 })
     v1:addv(v2)
@@ -279,15 +280,15 @@ test("ivec/dvec: addv", function ()
   end
 end)
 
-test("ivec/dvec: sum", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: sum", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 1, 2, 3, 4, 5 })
     assert(v:sum() == 15)
   end
 end)
 
-test("ivec/dvec: max", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: max", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 3, 7, 2, 9, 1 })
     local val, idx = v:max()
     assert(val == 9)
@@ -295,8 +296,8 @@ test("ivec/dvec: max", function ()
   end
 end)
 
-test("ivec/dvec: min", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: min", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 3, 7, 2, 9, 1 })
     local val, idx = v:min()
     assert(val == 1)
@@ -304,23 +305,23 @@ test("ivec/dvec: min", function ()
   end
 end)
 
-test("ivec/dvec: dot product", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: dot product", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v1 = vec.create({ 1, 2, 3 })
     local v2 = vec.create({ 4, 5, 6 })
     assert(v1:dot(v2) == 32)
   end
 end)
 
-test("ivec/dvec: magnitude", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: magnitude", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 3, 4 })
     assert(math.abs(v:magnitude() - 5) < 1e-10)
   end
 end)
 
-test("ivec/dvec: each iterator", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: each iterator", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 1, 2, 3, 4 })
     local sum = 0
     for val in v:each() do
@@ -330,8 +331,8 @@ test("ivec/dvec: each iterator", function ()
   end
 end)
 
-test("ivec/dvec: ieach iterator", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: ieach iterator", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 10, 20, 30 })
     local indices = {}
     local values = {}
@@ -344,16 +345,16 @@ test("ivec/dvec: ieach iterator", function ()
   end
 end)
 
-test("ivec/dvec: find", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: find", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 10, 20, 30, 40 })
     assert(v:find(30) == 2)
     assert(v:find(99) == nil)
   end
 end)
 
-test("ivec/dvec: transpose", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: transpose", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local src = vec.create({ 1, 2, 3, 4, 5, 6 })
     local dst = vec.create(6)
     dst:transpose(src, 3)
@@ -361,32 +362,32 @@ test("ivec/dvec: transpose", function ()
   end
 end)
 
-test("ivec/dvec: rsums (row sums)", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: rsums (row sums)", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 1, 2, 3, 4, 5, 6 })
     local sums = v:rsums(3)
     assert(teq(sums:table(), { 6, 15 }))
   end
 end)
 
-test("ivec/dvec: csums (column sums)", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: csums (column sums)", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 1, 2, 3, 4, 5, 6 })
     local sums = v:csums(3)
     assert(teq(sums:table(), { 5, 7, 9 }))
   end
 end)
 
-test("ivec/dvec: rmaxs", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: rmaxs", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 3, 1, 2, 4, 6, 5 })
     local maxs = v:rmaxs(3)
     assert(maxs:size() > 0)
   end
 end)
 
-test("ivec/dvec: rmins", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: rmins", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 3, 1, 2, 4, 6, 5 })
     local mins = v:rmins(3)
     assert(mins:size() > 0)
@@ -641,9 +642,9 @@ test("dvec: mtx_top_variance", function ()
   assert(scores:size() == 2)
 end)
 
-test("ivec/dvec: persist and load", function ()
+test("ivec/dvec/svec: persist and load", function ()
   local tmp = os.tmpname() .. ".vec_test.bin"
-  for _, vec in ipairs({ ivec, dvec }) do
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 1, 2, 3, 4 })
     v:persist(tmp)
     local loaded = vec.load(tmp)
@@ -652,8 +653,8 @@ test("ivec/dvec: persist and load", function ()
   os.remove(tmp)
 end)
 
-test("ivec/dvec: raw", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: raw", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 1, 2, 3 })
     local raw = v:raw()
     assert(type(raw) == "string")
@@ -661,8 +662,8 @@ test("ivec/dvec: raw", function ()
   end
 end)
 
-test("ivec/dvec: shrink", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: shrink", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create(100)
     v:setn(10)
     v:shrink()
@@ -670,8 +671,8 @@ test("ivec/dvec: shrink", function ()
   end
 end)
 
-test("ivec/dvec: ensure", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: ensure", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create()
     v:ensure(100)
     assert(v:capacity() >= 100)
@@ -853,8 +854,8 @@ test("ivec: set_insert (sorted insert)", function ()
   assert(teq(v:table(), { 10, 20, 30, 40, 50 }))
 end)
 
-test("ivec/dvec: copy_indexed", function ()
-  for _, vec in ipairs({ ivec, dvec }) do
+test("ivec/dvec/svec: copy_indexed", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
     local src = vec.create({ 100, 200, 300, 400, 500 })
     local dst = vec.create(3)
     local indices = ivec.create({ 4, 0, 2 })
@@ -904,6 +905,124 @@ test("ivec: from_rvec", function ()
   assert(keys:get(2) == 30)
 end)
 
+
+test("svec: set operations (jaccard)", function ()
+  local v0 = svec.create({ 1, 2, 3, 4 })
+  local v1 = svec.create({ 3, 4, 5, 6 })
+  local j = v0:set_jaccard(v1)
+  assert(math.abs(j - 1/3) < 1e-10)
+end)
+
+test("svec: set operations (overlap)", function ()
+  local v0 = svec.create({ 1, 2, 3, 4 })
+  local v1 = svec.create({ 3, 4, 5, 6 })
+  assert(v0:set_overlap(v1) == 0.5)
+end)
+
+test("svec: set operations (dice)", function ()
+  local v0 = svec.create({ 1, 2, 3, 4 })
+  local v1 = svec.create({ 3, 4, 5, 6 })
+  assert(v0:set_dice(v1) == 0.5)
+end)
+
+test("svec: set operations (tversky)", function ()
+  local v0 = svec.create({ 1, 2, 3, 4 })
+  local v1 = svec.create({ 3, 4, 5, 6 })
+  assert(v0:set_tversky(v1, 1, 0) == 0.5)
+  assert(v0:set_tversky(v1, 0, 1) == 0.5)
+end)
+
+test("svec: set operations (union)", function ()
+  local v0 = svec.create({ 1, 2, 3, 4 })
+  local v1 = svec.create({ 3, 4, 5, 6 })
+  local u = v0:set_union(v1)
+  assert(teq({ 1, 2, 3, 4, 5, 6 }, u:table()))
+end)
+
+test("svec: set operations (intersect)", function ()
+  local v0 = svec.create({ 1, 2, 3, 4 })
+  local v1 = svec.create({ 3, 4, 5, 6 })
+  local i = v0:set_intersect(v1)
+  assert(teq({ 3, 4 }, i:table()))
+end)
+
+test("svec: lookup", function ()
+  local indices = svec.create({ 2, 0, 1, 2 })
+  local source = svec.create({ 100, 200, 300 })
+  indices:lookup(source)
+  assert(teq(indices:table(), { 300, 100, 200, 300 }))
+end)
+
+test("svec: scores_elbow", function ()
+  local v = svec.create({ 100, 80, 50, 30, 25, 24, 23, 22 })
+  local _, idx = v:scores_elbow("max_gap")
+  assert(idx >= 1 and idx <= 8)
+  _, idx = v:scores_elbow("max_curvature")
+  assert(idx >= 1 and idx <= 8)
+end)
+
+test("svec: set_find (binary search)", function ()
+  local v = svec.create({ 10, 20, 30, 40, 50 })
+  assert(v:set_find(30) == 2)
+  assert(v:set_find(25) == -3)
+  assert(v:set_find(10) == 0)
+  assert(v:set_find(50) == 4)
+  assert(v:set_find(5) == -1)
+  assert(v:set_find(55) == -6)
+end)
+
+test("svec: set_insert (sorted insert)", function ()
+  local v = svec.create({ 10, 30, 50 })
+  v:set_insert(1, 20)
+  assert(teq(v:table(), { 10, 20, 30, 50 }))
+  v:set_insert(3, 40)
+  assert(teq(v:table(), { 10, 20, 30, 40, 50 }))
+end)
+
+test("svec: to_ivec", function ()
+  local s = svec.create({ 1, 2, 3, -4 })
+  local i = s:to_ivec()
+  assert(i:get(0) == 1)
+  assert(i:get(1) == 2)
+  assert(i:get(2) == 3)
+  assert(i:get(3) == -4)
+end)
+
+test("svec: to_dvec", function ()
+  local s = svec.create({ 1, 2, 3, -4 })
+  local d = s:to_dvec()
+  assert(d:get(0) == 1.0)
+  assert(d:get(1) == 2.0)
+  assert(d:get(2) == 3.0)
+  assert(d:get(3) == -4.0)
+end)
+
+test("ivec: to_svec", function ()
+  local i = ivec.create({ 1, 2, 3, -4 })
+  local s = i:to_svec()
+  assert(s:get(0) == 1)
+  assert(s:get(1) == 2)
+  assert(s:get(2) == 3)
+  assert(s:get(3) == -4)
+end)
+
+test("svec: fill_indices", function ()
+  local v = svec.create(5)
+  v:fill_indices()
+  assert(teq(v:table(), { 0, 1, 2, 3, 4 }))
+end)
+
+test("svec: rdesc (row descending argsort)", function ()
+  local v = svec.create({ 10, 2, 3, 4, 5, 6 })
+  local result = v:rdesc(3)
+  assert(result ~= nil)
+end)
+
+test("svec: casc (column ascending argsort)", function ()
+  local v = svec.create({ 10, 2, 3, 4, 5, 6 })
+  local result = v:casc(3)
+  assert(result ~= nil)
+end)
 
 test("cvec: bits_transpose", function ()
   require("santoku.cvec")

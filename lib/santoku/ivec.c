@@ -1,5 +1,6 @@
 #include <santoku/iuset.h>
 #include <santoku/ivec.h>
+#include <santoku/svec.h>
 #include <santoku/cvec.h>
 #include <string.h>
 
@@ -360,6 +361,13 @@ static inline int tk_ivec_to_dvec_lua (lua_State *L) {
   return 1;
 }
 
+static inline int tk_ivec_to_svec_lua (lua_State *L) {
+  lua_settop(L, 1);
+  tk_ivec_t *v = tk_ivec_peek(L, 1, "ivec");
+  tk_ivec_to_svec(L, v);
+  return 1;
+}
+
 static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
 {
   { "copy_pkeys", tk_ivec_copy_pkeys_lua },
@@ -382,6 +390,7 @@ static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
   { "index", tk_ivec_index_lua },
   { "scores_elbow", tk_ivec_scores_elbow_lua },
   { "to_dvec", tk_ivec_to_dvec_lua },
+  { "to_svec", tk_ivec_to_svec_lua },
   { NULL, NULL }
 };
 

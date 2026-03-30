@@ -1,5 +1,5 @@
-#ifndef TK_IVEC_EXT_H
-#define TK_IVEC_EXT_H
+#ifndef TK_SVEC_EXT_H
+#define TK_SVEC_EXT_H
 
 #if defined(_OPENMP) && !defined(__EMSCRIPTEN__)
 #include <omp.h>
@@ -18,132 +18,115 @@
 #define TK_CVEC_BITS_BYTES(n) (((n) + CHAR_BIT - 1) / CHAR_BIT)
 #endif
 
-static inline void tk_ivec_copy_pkeys (tk_ivec_t *m0, tk_pvec_t *m1, int64_t start, int64_t end, int64_t dest) {
+static inline void tk_svec_copy_pkeys (tk_svec_t *m0, tk_pvec_t *m1, int64_t start, int64_t end, int64_t dest) {
   if (start < 0 || start >= end || start >= (int64_t) m1->n)
     return;
   if (end >= (int64_t) m1->n)
     end = (int64_t) m1->n;
   uint64_t m = (uint64_t) dest + (uint64_t) (end - start);
-  tk_ivec_ensure(m0, m);
+  tk_svec_ensure(m0, m);
   uint64_t write = m0->n;
   for (int64_t i = start; i < end; i ++)
-    m0->a[write ++] = m1->a[i].i;
+    m0->a[write ++] = (int32_t) m1->a[i].i;
   if (m0->n < m)
     m0->n = m;
 }
 
-static inline void tk_ivec_copy_pvalues (tk_ivec_t *m0, tk_pvec_t *m1, int64_t start, int64_t end, int64_t dest) {
+static inline void tk_svec_copy_pvalues (tk_svec_t *m0, tk_pvec_t *m1, int64_t start, int64_t end, int64_t dest) {
   if (start < 0 || start >= end || start >= (int64_t) m1->n)
     return;
   if (end >= (int64_t) m1->n)
     end = (int64_t) m1->n;
   uint64_t m = (uint64_t) dest + (uint64_t) (end - start);
-  tk_ivec_ensure(m0, m);
+  tk_svec_ensure(m0, m);
   uint64_t write = m0->n;
   for (int64_t i = start; i < end; i ++)
-    m0->a[write ++] = m1->a[i].p;
+    m0->a[write ++] = (int32_t) m1->a[i].p;
   if (m0->n < m)
     m0->n = m;
 }
 
-static inline void tk_ivec_copy_rkeys (tk_ivec_t *m0, tk_rvec_t *m1, int64_t start, int64_t end, int64_t dest) {
+static inline void tk_svec_copy_rkeys (tk_svec_t *m0, tk_rvec_t *m1, int64_t start, int64_t end, int64_t dest) {
   if (start < 0 || start >= end || start >= (int64_t) m1->n)
     return;
   if (end >= (int64_t) m1->n)
     end = (int64_t) m1->n;
   uint64_t m = (uint64_t) dest + (uint64_t) (end - start);
-  tk_ivec_ensure(m0, m);
+  tk_svec_ensure(m0, m);
   uint64_t write = m0->n;
   for (int64_t i = start; i < end; i ++)
-    m0->a[write ++] = m1->a[i].i;
+    m0->a[write ++] = (int32_t) m1->a[i].i;
   if (m0->n < m)
     m0->n = m;
 }
 
-static inline void tk_ivec_copy_rvalues (tk_ivec_t *m0, tk_rvec_t *m1, int64_t start, int64_t end, int64_t dest) {
+static inline void tk_svec_copy_rvalues (tk_svec_t *m0, tk_rvec_t *m1, int64_t start, int64_t end, int64_t dest) {
   if (start < 0 || start >= end || start >= (int64_t) m1->n)
     return;
   if (end >= (int64_t) m1->n)
     end = (int64_t) m1->n;
   uint64_t m = (uint64_t) dest + (uint64_t) (end - start);
-  tk_ivec_ensure(m0, m);
+  tk_svec_ensure(m0, m);
   uint64_t write = m0->n;
   for (int64_t i = start; i < end; i ++)
-    m0->a[write ++] = m1->a[i].d;
+    m0->a[write ++] = (int32_t) m1->a[i].d;
   if (m0->n < m)
     m0->n = m;
 }
 
-static inline tk_ivec_t *tk_ivec_from_rvec (lua_State *L, tk_rvec_t *R) {
-  tk_ivec_t *result = tk_ivec_create(L, R->n);
-  for (int64_t i = 0; i < (int64_t) R->n; i ++)
-    result->a[i] = R->a[i].i;
-  return result;
+static inline tk_ivec_t *tk_svec_to_ivec (lua_State *L, tk_svec_t *v) {
+  tk_ivec_t *out = tk_ivec_create(L, v->n);
+  for (uint64_t i = 0; i < v->n; i++)
+    out->a[i] = (int64_t)v->a[i];
+  return out;
 }
 
-static inline tk_dvec_t *tk_ivec_to_dvec (lua_State *L, tk_ivec_t *v) {
+static inline tk_dvec_t *tk_svec_to_dvec (lua_State *L, tk_svec_t *v) {
   tk_dvec_t *out = tk_dvec_create(L, v->n);
   for (uint64_t i = 0; i < v->n; i++)
     out->a[i] = (double)v->a[i];
   return out;
 }
 
-static inline tk_svec_t *tk_ivec_to_svec (lua_State *L, tk_ivec_t *v) {
-  tk_svec_t *out = tk_svec_create(L, v->n);
-  for (uint64_t i = 0; i < v->n; i++)
-    out->a[i] = (int32_t)v->a[i];
-  return out;
-}
-
-static inline void tk_ivec_lookup (tk_ivec_t *indices, tk_ivec_t *source) {
-  int64_t write_pos = 0;
+static inline void tk_svec_lookup (tk_svec_t *indices, tk_svec_t *source) {
+  int32_t write_pos = 0;
   for (uint64_t i = 0; i < indices->n; i++) {
-    int64_t idx = indices->a[i];
-    if (idx >= 0 && idx < (int64_t) source->n) {
+    int32_t idx = indices->a[i];
+    if (idx >= 0 && idx < (int32_t) source->n) {
       indices->a[write_pos++] = source->a[idx];
     }
   }
   indices->n = (uint64_t) write_pos;
 }
 
-static inline tk_rvec_t *tk_rvec_rankings (lua_State *L, tk_dvec_t *scores, uint64_t n_visible, uint64_t n_hidden) {
-  tk_rvec_t *rankings = tk_rvec_create(L, n_hidden * n_visible);
-  for (uint64_t h = 0; h < n_hidden; h ++)
-    for (uint64_t v = 0; v < n_visible; v ++)
-      rankings->a[h * n_visible + v] = tk_rank((int64_t) v, scores->a[h * n_visible + v]);
-  for (uint64_t j = 0; j < n_hidden; j ++)
-    tk_rvec_desc(rankings, j * n_visible, (j + 1) * n_visible);
-  return rankings;
-}
-
 typedef enum {
-  TK_IVEC_JACCARD,
-  TK_IVEC_OVERLAP,
-  TK_IVEC_DICE,
-  TK_IVEC_TVERSKY,
-  TK_IVEC_COSINE,
-  TK_IVEC_MIN_KERNEL
-} tk_ivec_sim_type_t;
+  TK_SVEC_JACCARD,
+  TK_SVEC_OVERLAP,
+  TK_SVEC_DICE,
+  TK_SVEC_TVERSKY,
+  TK_SVEC_COSINE,
+  TK_SVEC_MIN_KERNEL
+} tk_svec_sim_type_t;
 
-static inline double tk_ivec_set_jaccard (double inter_w, double sum_a, double sum_b)
+static inline double tk_svec_set_jaccard (double inter_w, double sum_a, double sum_b)
 {
   double union_w = sum_a + sum_b - inter_w;
   return (union_w == 0.0) ? 0.0 : inter_w / union_w;
 }
 
-static inline double tk_ivec_set_overlap (double inter_w, double sum_a, double sum_b)
+static inline double tk_svec_set_overlap (double inter_w, double sum_a, double sum_b)
 {
   double min_w = (sum_a < sum_b) ? sum_a : sum_b;
   return (min_w == 0.0) ? 0.0 : inter_w / min_w;
 }
 
-static inline double tk_ivec_set_dice (double inter_w, double sum_a, double sum_b)
+static inline double tk_svec_set_dice (double inter_w, double sum_a, double sum_b)
 {
   double denom = sum_a + sum_b;
   return (denom == 0.0) ? 0.0 : (2.0 * inter_w) / denom;
 }
 
-static inline double tk_ivec_set_tversky (double inter_w, double sum_a, double sum_b, double alpha, double beta)
+static inline double tk_svec_set_tversky (double inter_w, double sum_a, double sum_b, double alpha, double beta)
 {
   double a_only = sum_a - inter_w;
   double b_only = sum_b - inter_w;
@@ -155,9 +138,9 @@ static inline double tk_ivec_set_tversky (double inter_w, double sum_a, double s
   return (denom == 0.0) ? 0.0 : inter_w / denom;
 }
 
-static inline void tk_ivec_set_stats (
-  int64_t *a, size_t alen,
-  int64_t *b, size_t blen,
+static inline void tk_svec_set_stats (
+  int32_t *a, size_t alen,
+  int32_t *b, size_t blen,
   tk_dvec_t *weights,
   double *inter_w,
   double *sum_a,
@@ -166,32 +149,32 @@ static inline void tk_ivec_set_stats (
   size_t i = 0, j = 0;
   double inter = 0.0, sa = 0.0, sb = 0.0;
   while (i < alen && j < blen) {
-    int64_t ai = a[i], bj = b[j];
+    int32_t ai = a[i], bj = b[j];
     if (ai == bj) {
-      double w = (weights && ai >= 0 && ai < (int64_t)weights->n) ? weights->a[ai] : 1.0;
+      double w = (weights && ai >= 0 && ai < (int32_t)weights->n) ? weights->a[ai] : 1.0;
       inter += w;
       sa += w;
       sb += w;
       i++;
       j++;
     } else if (ai < bj) {
-      double w = (weights && ai >= 0 && ai < (int64_t)weights->n) ? weights->a[ai] : 1.0;
+      double w = (weights && ai >= 0 && ai < (int32_t)weights->n) ? weights->a[ai] : 1.0;
       sa += w;
       i++;
     } else {
-      double w = (weights && bj >= 0 && bj < (int64_t)weights->n) ? weights->a[bj] : 1.0;
+      double w = (weights && bj >= 0 && bj < (int32_t)weights->n) ? weights->a[bj] : 1.0;
       sb += w;
       j++;
     }
   }
   while (i < alen) {
-    int64_t ai = a[i++];
-    double w = (weights && ai >= 0 && ai < (int64_t)weights->n) ? weights->a[ai] : 1.0;
+    int32_t ai = a[i++];
+    double w = (weights && ai >= 0 && ai < (int32_t)weights->n) ? weights->a[ai] : 1.0;
     sa += w;
   }
   while (j < blen) {
-    int64_t bj = b[j++];
-    double w = (weights && bj >= 0 && bj < (int64_t)weights->n) ? weights->a[bj] : 1.0;
+    int32_t bj = b[j++];
+    double w = (weights && bj >= 0 && bj < (int32_t)weights->n) ? weights->a[bj] : 1.0;
     sb += w;
   }
   *inter_w = inter;
@@ -199,48 +182,48 @@ static inline void tk_ivec_set_stats (
   *sum_b = sb;
 }
 
-static inline double tk_ivec_set_similarity (
-  int64_t *a, size_t alen,
-  int64_t *b, size_t blen,
+static inline double tk_svec_set_similarity (
+  int32_t *a, size_t alen,
+  int32_t *b, size_t blen,
   tk_dvec_t *weights,
-  tk_ivec_sim_type_t type,
+  tk_svec_sim_type_t type,
   double tversky_alpha,
   double tversky_beta
 ) {
   double inter_w = 0.0, sum_a = 0.0, sum_b = 0.0;
-  tk_ivec_set_stats(a, alen, b, blen, weights, &inter_w, &sum_a, &sum_b);
+  tk_svec_set_stats(a, alen, b, blen, weights, &inter_w, &sum_a, &sum_b);
   switch (type) {
-    case TK_IVEC_JACCARD:
-      return tk_ivec_set_jaccard(inter_w, sum_a, sum_b);
-    case TK_IVEC_OVERLAP:
-      return tk_ivec_set_overlap(inter_w, sum_a, sum_b);
-    case TK_IVEC_DICE:
-      return tk_ivec_set_dice(inter_w, sum_a, sum_b);
-    case TK_IVEC_TVERSKY:
-      return tk_ivec_set_tversky(inter_w, sum_a, sum_b, tversky_alpha, tversky_beta);
+    case TK_SVEC_JACCARD:
+      return tk_svec_set_jaccard(inter_w, sum_a, sum_b);
+    case TK_SVEC_OVERLAP:
+      return tk_svec_set_overlap(inter_w, sum_a, sum_b);
+    case TK_SVEC_DICE:
+      return tk_svec_set_dice(inter_w, sum_a, sum_b);
+    case TK_SVEC_TVERSKY:
+      return tk_svec_set_tversky(inter_w, sum_a, sum_b, tversky_alpha, tversky_beta);
     default:
-      return tk_ivec_set_jaccard(inter_w, sum_a, sum_b);
+      return tk_svec_set_jaccard(inter_w, sum_a, sum_b);
   }
 }
 
-static inline double tk_ivec_set_similarity_from_partial (
+static inline double tk_svec_set_similarity_from_partial (
   double inter_w,
   double q_w,
   double e_w,
-  tk_ivec_sim_type_t type,
+  tk_svec_sim_type_t type,
   double tversky_alpha,
   double tversky_beta
 ) {
   switch (type) {
-    case TK_IVEC_JACCARD: {
+    case TK_SVEC_JACCARD: {
       double uni_w = q_w + e_w - inter_w;
       return (uni_w == 0.0) ? 0.0 : inter_w / uni_w;
     }
-    case TK_IVEC_OVERLAP: {
+    case TK_SVEC_OVERLAP: {
       double min_w = (q_w < e_w) ? q_w : e_w;
       return (min_w == 0.0) ? 0.0 : inter_w / min_w;
     }
-    case TK_IVEC_TVERSKY: {
+    case TK_SVEC_TVERSKY: {
       double a_only = q_w - inter_w;
       double b_only = e_w - inter_w;
       if (a_only < 0.0) a_only = 0.0;
@@ -248,15 +231,15 @@ static inline double tk_ivec_set_similarity_from_partial (
       double denom = inter_w + tversky_alpha * a_only + tversky_beta * b_only;
       return (denom == 0.0) ? 0.0 : inter_w / denom;
     }
-    case TK_IVEC_DICE: {
+    case TK_SVEC_DICE: {
       double denom = q_w + e_w;
       return (denom == 0.0) ? 0.0 : (2.0 * inter_w) / denom;
     }
-    case TK_IVEC_COSINE: {
+    case TK_SVEC_COSINE: {
       double denom = sqrt(q_w * e_w);
       return (denom == 0.0) ? 0.0 : inter_w / denom;
     }
-    case TK_IVEC_MIN_KERNEL: {
+    case TK_SVEC_MIN_KERNEL: {
       return inter_w;
     }
     default: {
@@ -266,29 +249,29 @@ static inline double tk_ivec_set_similarity_from_partial (
   }
 }
 
-static inline void tk_ivec_set_weights_by_rank (
-  int64_t *features,
+static inline void tk_svec_set_weights_by_rank (
+  int32_t *features,
   size_t n_features,
   tk_dvec_t *weights,
-  tk_ivec_t *ranks,
+  tk_svec_t *ranks,
   uint64_t n_ranks,
   double *weights_by_rank
 ) {
   for (uint64_t r = 0; r < n_ranks; r ++)
     weights_by_rank[r] = 0.0;
   for (size_t i = 0; i < n_features; i ++) {
-    int64_t fid = features[i];
+    int32_t fid = features[i];
     if (fid >= 0) {
-      double w = (weights && fid < (int64_t)weights->n) ? weights->a[fid] : 1.0;
-      int64_t rank = (ranks && fid < (int64_t)ranks->n) ? ranks->a[fid] : 0;
-      if (rank >= 0 && rank < (int64_t)n_ranks) {
+      double w = (weights && fid < (int32_t)weights->n) ? weights->a[fid] : 1.0;
+      int32_t rank = (ranks && fid < (int32_t)ranks->n) ? ranks->a[fid] : 0;
+      if (rank >= 0 && rank < (int32_t)n_ranks) {
         weights_by_rank[rank] += w;
       }
     }
   }
 }
 
-static inline double tk_ivec_set_similarity_by_rank (
+static inline double tk_svec_set_similarity_by_rank (
   tk_dvec_t *wacc,
   int64_t vsid,
   double *q_weights_by_rank,
@@ -297,7 +280,7 @@ static inline double tk_ivec_set_similarity_by_rank (
   int64_t rank_decay_window,
   double rank_decay_sigma,
   double rank_decay_floor,
-  tk_ivec_sim_type_t type,
+  tk_svec_sim_type_t type,
   double tversky_alpha,
   double tversky_beta
 ) {
@@ -329,7 +312,7 @@ static inline double tk_ivec_set_similarity_by_rank (
     double e_w = e_weights_by_rank[rank];
     double rank_sim;
     if (q_w > 0.0 || e_w > 0.0) {
-      rank_sim = tk_ivec_set_similarity_from_partial(inter_w, q_w, e_w, type, tversky_alpha, tversky_beta);
+      rank_sim = tk_svec_set_similarity_from_partial(inter_w, q_w, e_w, type, tversky_alpha, tversky_beta);
     } else {
       rank_sim = 0.0;
     }
@@ -339,11 +322,11 @@ static inline double tk_ivec_set_similarity_by_rank (
   return (total_rank_weight > 0.0) ? total_weighted_sim / total_rank_weight : 0.0;
 }
 
-static inline int64_t tk_ivec_set_find (int64_t *arr, int64_t start, int64_t end, int64_t value) {
-  int64_t left = start;
-  int64_t right = end - 1;
+static inline int32_t tk_svec_set_find (int32_t *arr, int32_t start, int32_t end, int32_t value) {
+  int32_t left = start;
+  int32_t right = end - 1;
   while (left <= right) {
-    int64_t mid = left + (right - left) / 2;
+    int32_t mid = left + (right - left) / 2;
     if (arr[mid] == value)
       return mid;
     if (arr[mid] < value)
@@ -353,26 +336,27 @@ static inline int64_t tk_ivec_set_find (int64_t *arr, int64_t start, int64_t end
   }
   return -(left + 1);
 }
-static inline void tk_ivec_set_insert (tk_ivec_t *vec, int64_t pos, int64_t value) {
+
+static inline void tk_svec_set_insert (tk_svec_t *vec, int32_t pos, int32_t value) {
   if (pos < 0) pos = -(pos + 1);
   if (pos < 0) pos = 0;
-  if (pos > (int64_t)vec->n) pos = (int64_t)vec->n;
-  tk_ivec_ensure(vec, vec->n + 1);
-  if (pos < (int64_t)vec->n) {
-    memmove(vec->a + pos + 1, vec->a + pos, (vec->n - (size_t) pos) * sizeof(int64_t));
+  if (pos > (int32_t)vec->n) pos = (int32_t)vec->n;
+  tk_svec_ensure(vec, vec->n + 1);
+  if (pos < (int32_t)vec->n) {
+    memmove(vec->a + pos + 1, vec->a + pos, (vec->n - (size_t) pos) * sizeof(int32_t));
   }
   vec->a[pos] = value;
   vec->n++;
 }
 
-static inline tk_ivec_t *tk_ivec_set_intersect (lua_State *L, tk_ivec_t *a, tk_ivec_t *b, tk_ivec_t *out) {
+static inline tk_svec_t *tk_svec_set_intersect (lua_State *L, tk_svec_t *a, tk_svec_t *b, tk_svec_t *out) {
   if (out == NULL) {
     size_t min_size = a->n < b->n ? a->n : b->n;
-    out = tk_ivec_create(L, min_size);
+    out = tk_svec_create(L, min_size);
   } else {
-    tk_ivec_clear(out);
+    tk_svec_clear(out);
     size_t min_size = a->n < b->n ? a->n : b->n;
-    tk_ivec_ensure(out, min_size);
+    tk_svec_ensure(out, min_size);
   }
   size_t i = 0, j = 0;
   out->n = 0;
@@ -387,16 +371,16 @@ static inline tk_ivec_t *tk_ivec_set_intersect (lua_State *L, tk_ivec_t *a, tk_i
       j ++;
     }
   }
-  tk_ivec_shrink(out);
+  tk_svec_shrink(out);
   return out;
 }
 
-static inline tk_ivec_t *tk_ivec_set_union (lua_State *L, tk_ivec_t *a, tk_ivec_t *b, tk_ivec_t *out) {
+static inline tk_svec_t *tk_svec_set_union (lua_State *L, tk_svec_t *a, tk_svec_t *b, tk_svec_t *out) {
   if (out == NULL) {
-    out = tk_ivec_create(L, a->n + b->n);
+    out = tk_svec_create(L, a->n + b->n);
   } else {
-    tk_ivec_clear(out);
-    tk_ivec_ensure(out, a->n + b->n);
+    tk_svec_clear(out);
+    tk_svec_ensure(out, a->n + b->n);
   }
   size_t i = 0, j = 0;
   out->n = 0;
@@ -421,32 +405,28 @@ static inline tk_ivec_t *tk_ivec_set_union (lua_State *L, tk_ivec_t *a, tk_ivec_
     out->a[out->n ++] = b->a[j];
     j ++;
   }
-  tk_ivec_shrink(out);
+  tk_svec_shrink(out);
   return out;
 }
 
-
-
-
-static inline size_t tk_ivec_scores_max_curvature (
-  tk_ivec_t *v,
-  int64_t *out_val
+static inline size_t tk_svec_scores_max_curvature (
+  tk_svec_t *v,
+  int32_t *out_val
 ) {
   size_t n = v->n;
   if (n < 3) {
     if (out_val) *out_val = (n > 0) ? v->a[0] : 0;
     return n > 0 ? n - 1 : 0;
   }
-  int64_t max_curv = 0;
+  int32_t max_curv = 0;
   size_t max_idx = 1;
   for (size_t i = 1; i < n - 1; i++) {
-    int64_t curv = llabs(v->a[i-1] - 2 * v->a[i] + v->a[i+1]);
+    int32_t curv = abs(v->a[i-1] - 2 * v->a[i] + v->a[i+1]);
     if (curv > max_curv) {
       max_curv = curv;
       max_idx = i;
     }
   }
-
   if (max_curv == 0) {
     if (out_val) *out_val = v->a[n - 1];
     return n - 1;
@@ -455,17 +435,16 @@ static inline size_t tk_ivec_scores_max_curvature (
   return max_idx;
 }
 
-static inline size_t tk_ivec_scores_lmethod (
-  tk_ivec_t *v,
-  int64_t *out_val
+static inline size_t tk_svec_scores_lmethod (
+  tk_svec_t *v,
+  int32_t *out_val
 ) {
   size_t n = v->n;
   if (n < 3) {
     if (out_val) *out_val = (n > 0) ? v->a[0] : 0;
     return n > 0 ? n - 1 : 0;
   }
-
-  int64_t min_val = v->a[0], max_val = v->a[0];
+  int32_t min_val = v->a[0], max_val = v->a[0];
   for (size_t i = 1; i < n; i++) {
     if (v->a[i] < min_val) min_val = v->a[i];
     if (v->a[i] > max_val) max_val = v->a[i];
@@ -526,25 +505,24 @@ static inline size_t tk_ivec_scores_lmethod (
   return best_k;
 }
 
-static inline size_t tk_ivec_scores_max_gap (
-  tk_ivec_t *v,
-  int64_t *out_val
+static inline size_t tk_svec_scores_max_gap (
+  tk_svec_t *v,
+  int32_t *out_val
 ) {
   size_t n = v->n;
   if (n < 2) {
     if (out_val) *out_val = (n > 0) ? v->a[0] : 0;
     return n > 0 ? n - 1 : 0;
   }
-  int64_t max_gap = 0;
+  int32_t max_gap = 0;
   size_t max_idx = 0;
   for (size_t i = 0; i < n - 1; i++) {
-    int64_t gap = llabs(v->a[i + 1] - v->a[i]);
+    int32_t gap = abs(v->a[i + 1] - v->a[i]);
     if (gap > max_gap) {
       max_gap = gap;
       max_idx = i;
     }
   }
-
   if (max_gap == 0) {
     if (out_val) *out_val = v->a[n - 1];
     return n - 1;
@@ -553,10 +531,10 @@ static inline size_t tk_ivec_scores_max_gap (
   return max_idx;
 }
 
-static inline size_t tk_ivec_scores_plateau (
-  tk_ivec_t *v,
+static inline size_t tk_svec_scores_plateau (
+  tk_svec_t *v,
   double tolerance,
-  int64_t *out_val
+  int32_t *out_val
 ) {
   size_t n = v->n;
   if (n == 0) {
@@ -569,22 +547,22 @@ static inline size_t tk_ivec_scores_plateau (
   }
   if (tolerance <= 0.0) tolerance = 0.01;
 
-  int64_t min_score = v->a[0], max_score = v->a[0];
+  int32_t min_score = v->a[0], max_score = v->a[0];
   for (size_t i = 1; i < n; i++) {
     if (v->a[i] < min_score) min_score = v->a[i];
     if (v->a[i] > max_score) max_score = v->a[i];
   }
-  int64_t range = max_score - min_score;
+  int32_t range = max_score - min_score;
   if (range <= 0) {
     if (out_val) *out_val = v->a[n - 1];
     return n - 1;
   }
 
-  int64_t abs_tolerance = (int64_t)(tolerance * range);
-  int64_t base = v->a[0];
+  int32_t abs_tolerance = (int32_t)(tolerance * range);
+  int32_t base = v->a[0];
   size_t end_idx = 0;
   for (size_t i = 1; i < n; i++) {
-    if (llabs(v->a[i] - base) <= abs_tolerance) {
+    if (abs(v->a[i] - base) <= abs_tolerance) {
       end_idx = i;
     } else {
       break;
@@ -594,10 +572,10 @@ static inline size_t tk_ivec_scores_plateau (
   return end_idx;
 }
 
-static inline size_t tk_ivec_scores_kneedle (
-  tk_ivec_t *v,
+static inline size_t tk_svec_scores_kneedle (
+  tk_svec_t *v,
   double sensitivity,
-  int64_t *out_val
+  int32_t *out_val
 ) {
   size_t n = v->n;
   if (n < 3) {
@@ -606,8 +584,8 @@ static inline size_t tk_ivec_scores_kneedle (
   }
   if (sensitivity <= 0.0)
     sensitivity = 1.0;
-  int64_t min_score = v->a[0];
-  int64_t max_score = v->a[0];
+  int32_t min_score = v->a[0];
+  int32_t max_score = v->a[0];
   for (size_t i = 1; i < n; i++) {
     if (v->a[i] < min_score) min_score = v->a[i];
     if (v->a[i] > max_score) max_score = v->a[i];
@@ -662,12 +640,10 @@ static inline size_t tk_ivec_scores_kneedle (
   return final_knee;
 }
 
-
-
-static inline size_t tk_ivec_scores_first_gap (
-  tk_ivec_t *v,
+static inline size_t tk_svec_scores_first_gap (
+  tk_svec_t *v,
   double alpha,
-  int64_t *out_val
+  int32_t *out_val
 ) {
   size_t n = v->n;
   if (n < 2) {
@@ -677,18 +653,18 @@ static inline size_t tk_ivec_scores_first_gap (
   if (alpha <= 0.0) alpha = 3.0;
 
   size_t n_gaps = n - 1;
-  int64_t *gaps = (int64_t *)malloc(n_gaps * sizeof(int64_t));
+  int32_t *gaps = (int32_t *)malloc(n_gaps * sizeof(int32_t));
   if (!gaps) {
     if (out_val) *out_val = v->a[n - 1];
     return n - 1;
   }
 
   for (size_t i = 0; i < n_gaps; i++) {
-    gaps[i] = llabs(v->a[i + 1] - v->a[i]);
+    gaps[i] = abs(v->a[i + 1] - v->a[i]);
   }
 
   for (size_t i = 1; i < n_gaps; i++) {
-    int64_t key = gaps[i];
+    int32_t key = gaps[i];
     size_t j = i;
     while (j > 0 && gaps[j - 1] > key) {
       gaps[j] = gaps[j - 1];
@@ -697,7 +673,7 @@ static inline size_t tk_ivec_scores_first_gap (
     gaps[j] = key;
   }
 
-  int64_t median_gap;
+  int32_t median_gap;
   if (n_gaps % 2 == 1) {
     median_gap = gaps[n_gaps / 2];
   } else {
@@ -706,10 +682,10 @@ static inline size_t tk_ivec_scores_first_gap (
   free(gaps);
 
   if (median_gap == 0) {
-    int64_t max_gap = 0;
+    int32_t max_gap = 0;
     size_t max_idx = n - 1;
     for (size_t i = 0; i < n - 1; i++) {
-      int64_t gap = llabs(v->a[i + 1] - v->a[i]);
+      int32_t gap = abs(v->a[i + 1] - v->a[i]);
       if (gap > max_gap) {
         max_gap = gap;
         max_idx = i;
@@ -719,11 +695,11 @@ static inline size_t tk_ivec_scores_first_gap (
     return max_idx;
   }
 
-  int64_t threshold = (int64_t)(alpha * (double)median_gap);
+  int32_t threshold = (int32_t)(alpha * (double)median_gap);
   if (threshold < 1) threshold = 1;
 
   for (size_t i = 0; i < n - 1; i++) {
-    int64_t gap = llabs(v->a[i + 1] - v->a[i]);
+    int32_t gap = abs(v->a[i + 1] - v->a[i]);
     if (gap > threshold) {
       if (out_val) *out_val = v->a[i];
       return i;
@@ -734,11 +710,9 @@ static inline size_t tk_ivec_scores_first_gap (
   return n - 1;
 }
 
-
-
-static inline size_t tk_ivec_scores_otsu (
-  tk_ivec_t *v,
-  int64_t *out_val
+static inline size_t tk_svec_scores_otsu (
+  tk_svec_t *v,
+  int32_t *out_val
 ) {
   size_t n = v->n;
   if (n < 2) {
@@ -746,8 +720,7 @@ static inline size_t tk_ivec_scores_otsu (
     return n > 0 ? n - 1 : 0;
   }
 
-
-  int64_t min_val = v->a[0], max_val = v->a[0];
+  int32_t min_val = v->a[0], max_val = v->a[0];
   for (size_t i = 1; i < n; i++) {
     if (v->a[i] < min_val) min_val = v->a[i];
     if (v->a[i] > max_val) max_val = v->a[i];
@@ -757,12 +730,10 @@ static inline size_t tk_ivec_scores_otsu (
     return n - 1;
   }
 
-
   double total_sum = 0.0;
   for (size_t i = 0; i < n; i++) {
     total_sum += (double)v->a[i];
   }
-
 
   double best_variance = -1.0;
   size_t best_k = 0;
@@ -780,7 +751,6 @@ static inline size_t tk_ivec_scores_otsu (
 
     double mean0 = sum0 / (double)n0;
     double mean1 = sum1 / (double)n1;
-
 
     double variance = w0 * w1 * (mean0 - mean1) * (mean0 - mean1);
 
