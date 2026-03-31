@@ -1571,7 +1571,7 @@ static inline int tk_vec_pfx(mmap_create_lua) (lua_State *L)
 {
   lua_settop(L, 2);
   const char *path = luaL_checkstring(L, 1);
-  uint64_t n = tk_lua_checkunsigned(L, 2, "size");
+  uint64_t n = (uint64_t)luaL_checkinteger(L, 2);
   tk_vec_pfx(mmap_create)(L, path, n);
   return 1;
 }
