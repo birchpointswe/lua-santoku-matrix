@@ -7,6 +7,8 @@ local fvec = require("santoku.fvec")
 local tbl = require("santoku.table")
 local teq = tbl.equals
 
+if not ivec.mmap_create then return end
+
 local tmp = os.getenv("PREFIX") and (os.getenv("PREFIX") .. "/tmp") or "/tmp"
 
 test("ivec/dvec/fvec: mmap_create and basic access", function ()

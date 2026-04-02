@@ -643,7 +643,7 @@ test("dvec: mtx_top_variance", function ()
 end)
 
 test("ivec/dvec/svec: persist and load", function ()
-  local tmp = os.tmpname() .. ".vec_test.bin"
+  local tmp = ".vec_test.bin"
   for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 1, 2, 3, 4 })
     v:persist(tmp)

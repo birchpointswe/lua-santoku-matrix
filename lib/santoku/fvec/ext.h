@@ -352,21 +352,76 @@ static inline float tk_fvec_blas_nrm2(float *x, uint64_t n) {
   return cblas_snrm2(n, x, 1);
 }
 
+#else
+
+static inline void tk_fvec_gemv(
+  bool transpose, uint64_t rows, uint64_t cols,
+  float alpha, float *A, float *x, float beta, float *y
+) {
+  uint64_t out_len = transpose ? cols : rows;
+  for (uint64_t i = 0; i < out_len; i++) y[i] *= beta;
+  if (!transpose) {
+    for (uint64_t r = 0; r < rows; r++)
+      for (uint64_t c = 0; c < cols; c++)
+        y[r] += alpha * A[r * cols + c] * x[c];
+  } else {
+    for (uint64_t r = 0; r < rows; r++)
+      for (uint64_t c = 0; c < cols; c++)
+        y[c] += alpha * A[r * cols + c] * x[r];
+  }
+}
+
+static inline void tk_fvec_gemm(
+  bool transpose_a, bool transpose_b,
+  uint64_t m, uint64_t n, uint64_t k,
+  float alpha, float *A, float *B, float beta, float *C
+) {
+  for (uint64_t i = 0; i < m * n; i++) C[i] *= beta;
+  for (uint64_t i = 0; i < m; i++)
+    for (uint64_t j = 0; j < n; j++)
+      for (uint64_t l = 0; l < k; l++)
+        C[i * n + j] += alpha *
+          (transpose_a ? A[l * m + i] : A[i * k + l]) *
+          (transpose_b ? B[j * k + l] : B[l * n + j]);
+}
+
+static inline float tk_fvec_blas_dot(float *x, float *y, uint64_t n) {
+  float s = 0; for (uint64_t i = 0; i < n; i++) s += x[i] * y[i]; return s;
+}
+
+static inline void tk_fvec_blas_scal(float alpha, float *x, uint64_t n) {
+  for (uint64_t i = 0; i < n; i++) x[i] *= alpha;
+}
+
+static inline void tk_fvec_blas_axpy(float alpha, float *x, float *y, uint64_t n) {
+  for (uint64_t i = 0; i < n; i++) y[i] += alpha * x[i];
+}
+
+static inline void tk_fvec_blas_copy(float *x, float *y, uint64_t n) {
+  memcpy(y, x, n * sizeof(float));
+}
+
+static inline float tk_fvec_blas_nrm2(float *x, uint64_t n) {
+  float s = 0; for (uint64_t i = 0; i < n; i++) s += x[i] * x[i]; return sqrtf(s);
+}
+
+#endif
+
 static inline float tk_fvec_dot_override(tk_fvec_t *a, tk_fvec_t *b) {
   uint64_t n = a->n < b->n ? a->n : b->n;
-  return cblas_sdot(n, a->a, 1, b->a, 1);
+  return tk_fvec_blas_dot(a->a, b->a, n);
 }
 
 static inline void tk_fvec_scale_override(tk_fvec_t *v, float scale, uint64_t start, uint64_t end) {
   if (end > v->n) { tk_fvec_ensure(v, end); v->n = end; }
   if (end <= start) return;
-  cblas_sscal(end - start, scale, v->a + start, 1);
+  tk_fvec_blas_scal(scale, v->a + start, end - start);
 }
 
 static inline void tk_fvec_addv_override(tk_fvec_t *a, tk_fvec_t *b, uint64_t start, uint64_t end) {
   if (end > a->n) { tk_fvec_ensure(a, end); a->n = end; }
   if (end > b->n || end <= start) return;
-  cblas_saxpy(end - start, 1.0f, b->a + start, 1, a->a + start, 1);
+  tk_fvec_blas_axpy(1.0f, b->a + start, a->a + start, end - start);
 }
 
 static inline void tk_fvec_multiply_override(tk_fvec_t *a, tk_fvec_t *b, tk_fvec_t *c, uint64_t k, bool transpose_a, bool transpose_b) {
@@ -374,16 +429,8 @@ static inline void tk_fvec_multiply_override(tk_fvec_t *a, tk_fvec_t *b, tk_fvec
   size_t n = transpose_b ? k : b->n / k;
   tk_fvec_ensure(c, m * n);
   c->n = m * n;
-  cblas_sgemm(CblasRowMajor,
-              transpose_a ? CblasTrans : CblasNoTrans,
-              transpose_b ? CblasTrans : CblasNoTrans,
-              m, n, k,
-              1.0f, a->a, transpose_a ? m : k,
-              b->a, transpose_b ? k : n,
-              0.0f, c->a, n);
+  tk_fvec_gemm(transpose_a, transpose_b, m, n, k, 1.0f, a->a, b->a, 0.0f, c->a);
 }
-
-#endif
 
 static inline void tk_fvec_scale_overridev(tk_fvec_t *a, tk_fvec_t *b, uint64_t start, uint64_t end) {
   if (end > a->n) { tk_fvec_ensure(a, end); a->n = end; }
@@ -392,13 +439,11 @@ static inline void tk_fvec_scale_overridev(tk_fvec_t *a, tk_fvec_t *b, uint64_t 
     a->a[i] *= b->a[i];
 }
 
-#if !defined(__EMSCRIPTEN__)
-
 static inline tk_fvec_t *tk_fvec_rmags_override(lua_State *L, tk_fvec_t *m0, uint64_t cols) {
   uint64_t rows = m0->n / cols;
   tk_fvec_t *out = tk_fvec_create(L, rows);
   for (uint64_t r = 0; r < rows; r++)
-    out->a[r] = cblas_snrm2(cols, m0->a + r * cols, 1);
+    out->a[r] = tk_fvec_blas_nrm2(m0->a + r * cols, cols);
   out->n = rows;
   return out;
 }
@@ -406,8 +451,14 @@ static inline tk_fvec_t *tk_fvec_rmags_override(lua_State *L, tk_fvec_t *m0, uin
 static inline tk_fvec_t *tk_fvec_cmags_override(lua_State *L, tk_fvec_t *m0, uint64_t cols) {
   uint64_t rows = m0->n / cols;
   tk_fvec_t *out = tk_fvec_create(L, cols);
-  for (uint64_t c = 0; c < cols; c++)
-    out->a[c] = cblas_snrm2(rows, m0->a + c, cols);
+  for (uint64_t c = 0; c < cols; c++) {
+    float s = 0;
+    for (uint64_t r = 0; r < rows; r++) {
+      float v = m0->a[r * cols + c];
+      s += v * v;
+    }
+    out->a[c] = sqrtf(s);
+  }
   out->n = cols;
   return out;
 }
@@ -415,28 +466,25 @@ static inline tk_fvec_t *tk_fvec_cmags_override(lua_State *L, tk_fvec_t *m0, uin
 static inline tk_fvec_t *tk_fvec_rsums_override(lua_State *L, tk_fvec_t *m0, uint64_t cols) {
   uint64_t rows = m0->n / cols;
   tk_fvec_t *out = tk_fvec_create(L, rows);
-  tk_fvec_t *ones = tk_fvec_create(NULL, cols);
-  for (uint64_t i = 0; i < cols; i++) ones->a[i] = 1.0f;
-  ones->n = cols;
-  cblas_sgemv(CblasRowMajor, CblasNoTrans, rows, cols, 1.0f, m0->a, cols, ones->a, 1, 0.0f, out->a, 1);
+  for (uint64_t r = 0; r < rows; r++) {
+    float s = 0;
+    for (uint64_t c = 0; c < cols; c++) s += m0->a[r * cols + c];
+    out->a[r] = s;
+  }
   out->n = rows;
-  tk_fvec_destroy(ones);
   return out;
 }
 
 static inline tk_fvec_t *tk_fvec_csums_override(lua_State *L, tk_fvec_t *m0, uint64_t cols) {
   uint64_t rows = m0->n / cols;
   tk_fvec_t *out = tk_fvec_create(L, cols);
-  tk_fvec_t *ones = tk_fvec_create(NULL, rows);
-  for (uint64_t i = 0; i < rows; i++) ones->a[i] = 1.0f;
-  ones->n = rows;
-  cblas_sgemv(CblasRowMajor, CblasTrans, rows, cols, 1.0f, m0->a, cols, ones->a, 1, 0.0f, out->a, 1);
+  memset(out->a, 0, cols * sizeof(float));
+  for (uint64_t r = 0; r < rows; r++)
+    for (uint64_t c = 0; c < cols; c++)
+      out->a[c] += m0->a[r * cols + c];
   out->n = cols;
-  tk_fvec_destroy(ones);
   return out;
 }
-
-#endif
 
 #include <santoku/iumap.h>
 #include <santoku/cvec/ext.h>
@@ -1017,7 +1065,6 @@ static inline tk_ivec_t *tk_fvec_mtx_top_dip (
   return out;
 }
 
-#if !defined(__EMSCRIPTEN__)
 static inline void tk_fvec_mtx_topk (
   lua_State *L, tk_fvec_t *queries, tk_fvec_t *corpus,
   uint64_t n_queries, uint64_t n_corpus, uint64_t d, uint64_t k
@@ -1047,11 +1094,22 @@ static inline void tk_fvec_mtx_topk (
   if (!sbuf) { luaL_error(L, "mtx_topk: out of memory"); return; }
   for (uint64_t base = 0; base < n_queries; base += tile) {
     uint64_t blk = (base + tile <= n_queries) ? tile : n_queries - base;
+#if !defined(__EMSCRIPTEN__)
     cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
       (int)blk, (int)n_corpus, (int)d,
       1.0f, queries->a + base * d, (int)d,
       corpus->a, (int)d,
       0.0f, sbuf, (int)n_corpus);
+#else
+    for (uint64_t i = 0; i < blk; i++)
+      for (uint64_t j = 0; j < n_corpus; j++) {
+        float s = 0.0f;
+        const float *q = queries->a + (base + i) * d;
+        const float *c = corpus->a + j * d;
+        for (uint64_t l = 0; l < d; l++) s += q[l] * c[l];
+        sbuf[i * n_corpus + j] = s;
+      }
+#endif
     #pragma omp parallel
     {
       tk_rvec_t *heap = tk_rvec_create(NULL, k);
@@ -1075,7 +1133,6 @@ static inline void tk_fvec_mtx_topk (
   }
   free(sbuf);
 }
-#endif
 
 static inline void tk_fvec_mtx_standardize (
   lua_State *L, tk_fvec_t *data, uint64_t n_cols,

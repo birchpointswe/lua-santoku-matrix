@@ -1,6 +1,6 @@
 local env = {
   name = "santoku-matrix",
-  version = "0.0.304-1",
+  version = "0.0.305-1",
   variable_prefix = "TK_MATRIX",
   license = "MIT",
   public = true,
@@ -20,6 +20,20 @@ local env = {
     ldflags = {
       "-fopenmp",
       "$(MATHLIBS_LDFLAGS)",
+    },
+  },
+  build = {
+    wasm = {
+      ldflags = {
+        "-sWASM_BIGINT",
+      },
+    },
+  },
+  test = {
+    wasm = {
+      ldflags = {
+        "-sWASM_BIGINT",
+      },
     },
   },
   dependencies = {

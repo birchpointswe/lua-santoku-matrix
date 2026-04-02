@@ -1454,7 +1454,7 @@ static inline void tk_vec_pfx(ensure_init) (lua_State *L)
       lua_pop(L, 2);
       lua_getglobal(L, "require");
       lua_pushstring(L, tk_vec_module);
-      lua_call(L, 1, 1);
+      lua_pcall(L, 1, 1, 0);
       lua_pop(L, 1);
     } else {
       lua_pop(L, 2);
