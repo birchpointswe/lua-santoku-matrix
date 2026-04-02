@@ -3,6 +3,9 @@
 
 #if defined(_OPENMP) && !defined(__EMSCRIPTEN__)
 #include <omp.h>
+#else
+#define omp_get_num_threads() 1
+#define omp_get_thread_num() 0
 #endif
 #include <santoku/klib.h>
 #include <santoku/ivec.h>
