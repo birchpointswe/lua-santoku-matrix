@@ -140,29 +140,10 @@ static inline int tk_vec_pfx(persist_lua) (lua_State *L)
 {
   lua_settop(L, 2);
   tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
-  bool tostr = lua_type(L, 2) == LUA_TNIL;
-  FILE *fh;
-  if (tostr)
-    fh = tk_lua_tmpfile(L);
-  else
-    fh = tk_lua_fopen(L, luaL_checkstring(L, 2), "w");
+  FILE *fh = tk_lua_fopen(L, luaL_checkstring(L, 2), "w");
   tk_vec_pfx(persist)(L, m0, fh);
-  if (!tostr) {
-    tk_lua_fclose(L, fh);
-    return 0;
-  } else {
-    size_t len;
-    char *data = tk_lua_fslurp(L, fh, &len);
-    if (data) {
-      tk_cvec_t *cv = tk_cvec_create(L, len);
-      memcpy(cv->a, data, len);
-      free(data);
-      return 1;
-    } else {
-      tk_lua_fclose(L, fh);
-      return 0;
-    }
-  }
+  tk_lua_fclose(L, fh);
+  return 0;
 }
 
 static luaL_Reg tk_vec_pfx(lua_mt_ext_fns)[] =

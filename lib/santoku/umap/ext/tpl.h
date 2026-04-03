@@ -26,29 +26,10 @@ static inline int tk_umap_pfx(persist_lua) (lua_State *L)
 {
   lua_settop(L, 2);
   tk_umap_pfx(t) *h = tk_umap_pfx(peek)(L, 1, "umap");
-  bool tostr = lua_type(L, 2) == LUA_TNIL;
-  FILE *fh;
-  if (tostr)
-    fh = tk_lua_tmpfile(L);
-  else
-    fh = tk_lua_fopen(L, luaL_checkstring(L, 2), "w");
+  FILE *fh = tk_lua_fopen(L, luaL_checkstring(L, 2), "w");
   tk_umap_pfx(persist)(L, h, fh);
-  if (!tostr) {
-    tk_lua_fclose(L, fh);
-    return 0;
-  } else {
-    size_t len;
-    char *data = tk_lua_fslurp(L, fh, &len);
-    if (data) {
-      tk_cvec_t *cv = tk_cvec_create(L, len);
-      memcpy(cv->a, data, len);
-      free(data);
-      return 1;
-    } else {
-      tk_lua_fclose(L, fh);
-      return 0;
-    }
-  }
+  tk_lua_fclose(L, fh);
+  return 0;
 }
 #endif
 

@@ -558,11 +558,9 @@ static inline tk_vec_pfx(t) *tk_vec_pfx(load) (lua_State *L, FILE *fh)
 
 static inline int tk_vec_pfx(load_lua) (lua_State *L)
 {
-  lua_settop(L, 2);
-  size_t len;
-  const char *data = luaL_checklstring(L, 1, &len);
-  bool isstr = lua_type(L, 2) == LUA_TBOOLEAN && lua_toboolean(L, 2);
-  FILE *fh = isstr ? tk_lua_fmemopen(L, (char *) data, len, "r") : tk_lua_fopen(L, data, "r");
+  lua_settop(L, 1);
+  const char *data = luaL_checkstring(L, 1);
+  FILE *fh = tk_lua_fopen(L, data, "r");
   tk_vec_pfx(load)(L, fh);
   tk_lua_fclose(L, fh);
   return 1;
