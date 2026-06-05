@@ -321,6 +321,17 @@ static inline int tk_ivec_index_lua (lua_State *L)
   return 1;
 }
 
+static inline int tk_ivec_bucket_lua (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_ivec_t *keys = tk_ivec_peek(L, 1, "keys");
+  int64_t k = tk_lua_checkinteger(L, 2, "k");
+  if (k < 0)
+    return luaL_error(L, "bucket: k must be >= 0");
+  tk_ivec_bucket(L, keys, k);
+  return 2;
+}
+
 static inline int tk_ivec_scores_elbow_lua (lua_State *L)
 {
   lua_settop(L, 3);
@@ -388,6 +399,7 @@ static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
   { "set_union", tk_ivec_set_union_lua },
   { "lookup", tk_ivec_lookup_lua },
   { "index", tk_ivec_index_lua },
+  { "bucket", tk_ivec_bucket_lua },
   { "scores_elbow", tk_ivec_scores_elbow_lua },
   { "to_dvec", tk_ivec_to_dvec_lua },
   { "to_svec", tk_ivec_to_svec_lua },

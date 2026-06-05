@@ -627,6 +627,13 @@ test("ivec: lookup", function ()
 end)
 
 
+test("ivec: bucket (counting sort by key)", function ()
+  local keys = ivec.create({ 2, 0, 1, 0, 2 })
+  local order, offsets = keys:bucket(3)
+  assert(teq(offsets:table(), { 0, 2, 3, 5 }))
+  assert(teq(order:table(), { 1, 3, 2, 0, 4 }))
+end)
+
 test("ivec: scores_elbow", function ()
   local v = ivec.create({ 100, 80, 50, 30, 25, 24, 23, 22 })
   local _, idx = v:scores_elbow("max_gap")

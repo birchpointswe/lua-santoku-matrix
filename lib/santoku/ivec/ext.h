@@ -106,6 +106,41 @@ static inline void tk_ivec_lookup (tk_ivec_t *indices, tk_ivec_t *source) {
   indices->n = (uint64_t) write_pos;
 }
 
+
+
+
+
+static inline void tk_ivec_bucket (lua_State *L, tk_ivec_t *keys, int64_t k) {
+  uint64_t n = keys->n;
+  tk_ivec_t *order = tk_ivec_create(L, n);
+  tk_ivec_t *offsets = tk_ivec_create(L, (uint64_t) (k + 1));
+  for (int64_t b = 0; b <= k; b ++)
+    offsets->a[b] = 0;
+  for (uint64_t i = 0; i < n; i ++) {
+    int64_t b = keys->a[i];
+    if (b < 0 || b >= k) {
+      luaL_error(L, "bucket: key %lld out of range [0,%lld)", (long long) b, (long long) k);
+      return;
+    }
+    offsets->a[b + 1] ++;
+  }
+  for (int64_t b = 0; b < k; b ++)
+    offsets->a[b + 1] += offsets->a[b];
+  int64_t *cursor = NULL;
+  if (k > 0) {
+    cursor = (int64_t *) malloc((size_t) k * sizeof(int64_t));
+    if (cursor == NULL) {
+      luaL_error(L, "bucket: allocation failed");
+      return;
+    }
+    for (int64_t b = 0; b < k; b ++)
+      cursor[b] = offsets->a[b];
+  }
+  for (uint64_t i = 0; i < n; i ++)
+    order->a[cursor[keys->a[i]] ++] = (int64_t) i;
+  free(cursor);
+}
+
 static inline tk_rvec_t *tk_rvec_rankings (lua_State *L, tk_dvec_t *scores, uint64_t n_visible, uint64_t n_hidden) {
   tk_rvec_t *rankings = tk_rvec_create(L, n_hidden * n_visible);
   for (uint64_t h = 0; h < n_hidden; h ++)
