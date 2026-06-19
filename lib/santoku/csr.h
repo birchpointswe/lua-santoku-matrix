@@ -12,9 +12,10 @@
 
 typedef struct {
   tk_tag_t tag;
+  tk_tag_t ntag;
   uint64_t n_cols;
   tk_ivec_t *offsets;
-  tk_ivec_t *neighbors;
+  void *neighbors;
   void *values;
 } tk_csr_t;
 
@@ -44,9 +45,48 @@ static inline uint64_t tk_csr_rows (tk_csr_t *X)
   return X->offsets->n > 0 ? X->offsets->n - 1 : 0;
 }
 
+
+
+
+static inline int64_t tk_nbr_get (void *nv, tk_tag_t ntag, uint64_t i) {
+  return ntag == TK_TAG_I32 ? (int64_t) ((tk_svec_t *) nv)->a[i] : ((tk_ivec_t *) nv)->a[i];
+}
+static inline void tk_nbr_set (void *nv, tk_tag_t ntag, uint64_t i, int64_t v) {
+  if (ntag == TK_TAG_I32) ((tk_svec_t *) nv)->a[i] = (int32_t) v;
+  else ((tk_ivec_t *) nv)->a[i] = v;
+}
+static inline uint64_t tk_nbr_n (void *nv, tk_tag_t ntag) {
+  return ntag == TK_TAG_I32 ? ((tk_svec_t *) nv)->n : ((tk_ivec_t *) nv)->n;
+}
+static inline void tk_nbr_setn (void *nv, tk_tag_t ntag, uint64_t n) {
+  if (ntag == TK_TAG_I32) ((tk_svec_t *) nv)->n = n; else ((tk_ivec_t *) nv)->n = n;
+}
+static inline void *tk_nbr_aptr (void *nv, tk_tag_t ntag) {
+  return ntag == TK_TAG_I32 ? (void *) ((tk_svec_t *) nv)->a : (void *) ((tk_ivec_t *) nv)->a;
+}
+static inline size_t tk_nbr_esz (tk_tag_t ntag) {
+  return ntag == TK_TAG_I32 ? sizeof(int32_t) : sizeof(int64_t);
+}
+static inline int tk_nbr_ensure (void *nv, tk_tag_t ntag, uint64_t n) {
+  return ntag == TK_TAG_I32 ? tk_svec_ensure((tk_svec_t *) nv, n) : tk_ivec_ensure((tk_ivec_t *) nv, n);
+}
+static inline void *tk_csr_new_nbr (lua_State *L, tk_tag_t ntag, uint64_t n) {
+  return ntag == TK_TAG_I32 ? (void *) tk_svec_create(L, n) : (void *) tk_ivec_create(L, n);
+}
+static inline int64_t tk_csr_nbr (tk_csr_t *X, uint64_t i) { return tk_nbr_get(X->neighbors, X->ntag, i); }
+static inline void tk_csr_setnbr (tk_csr_t *X, uint64_t i, int64_t v) { tk_nbr_set(X->neighbors, X->ntag, i, v); }
+static inline uint64_t tk_csr_nbr_n (tk_csr_t *X) { return tk_nbr_n(X->neighbors, X->ntag); }
+static inline void tk_csr_nbr_setn (tk_csr_t *X, uint64_t n) { tk_nbr_setn(X->neighbors, X->ntag, n); }
+static inline void *tk_csr_nbr_ptr (tk_csr_t *X) { return tk_nbr_aptr(X->neighbors, X->ntag); }
+static inline int tk_csr_nbr_ensure (tk_csr_t *X, uint64_t n) { return tk_nbr_ensure(X->neighbors, X->ntag, n); }
+static inline void tk_csr_nbr_push (tk_csr_t *X, int64_t v) {
+  if (X->ntag == TK_TAG_I32) tk_svec_push((tk_svec_t *) X->neighbors, (int32_t) v);
+  else tk_ivec_push((tk_ivec_t *) X->neighbors, v);
+}
+
 static inline uint64_t tk_csr_nnz (tk_csr_t *X)
 {
-  return X->neighbors->n;
+  return tk_csr_nbr_n(X);
 }
 
 static inline void *tk_csr_val_ptr (tk_csr_t *X)
@@ -99,11 +139,13 @@ static inline uint64_t tk_csr_val_len (tk_csr_t *X)
 
 
 
-static inline tk_csr_t *tk_csr_push (lua_State *L, tk_tag_t tag, uint64_t n_cols,
-  int io, tk_ivec_t *offsets, int in_, tk_ivec_t *neighbors, int iv, void *values)
+
+static inline tk_csr_t *tk_csr_push (lua_State *L, tk_tag_t tag, tk_tag_t ntag, uint64_t n_cols,
+  int io, tk_ivec_t *offsets, int in_, void *neighbors, int iv, void *values)
 {
   tk_csr_t *X = (tk_csr_t *) lua_newuserdata(L, sizeof(tk_csr_t));
   X->tag = tag;
+  X->ntag = ntag;
   X->n_cols = n_cols;
   X->offsets = offsets;
   X->neighbors = neighbors;

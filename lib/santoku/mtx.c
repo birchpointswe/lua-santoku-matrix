@@ -820,7 +820,7 @@ static int tk_mtx_topk_lua (lua_State *L)
   else if ((vals = tk_fvec_peekopt(L, iv)) != NULL) vtag = TK_TAG_F32;
   else if ((vals = tk_ivec_peekopt(L, iv)) != NULL) vtag = TK_TAG_I64;
   else return tk_lua_verror(L, 2, "mtx", "topk: unexpected score vector type");
-  tk_csr_push(L, vtag, M->n_rows, io, off, in_, ids, iv, vals);
+  tk_csr_push(L, vtag, TK_TAG_I64, M->n_rows, io, off, in_, ids, iv, vals);
   return 1;
 }
 
@@ -841,11 +841,13 @@ static int tk_mtx_to_sparse_lua (lua_State *L)
   if (outx != NULL) {
     if (outx->tag != M->tag)
       return tk_lua_verror(L, 2, "mtx", "to_sparse: out type mismatch");
+    if (outx->ntag != TK_TAG_I64)
+      return tk_lua_verror(L, 2, "mtx", "to_sparse: out must have i64 neighbors");
     if (tk_ivec_ensure(outx->offsets, M->n_rows + 1) != 0
-      || tk_ivec_ensure(outx->neighbors, total) != 0)
+      || tk_csr_nbr_ensure(outx, total) != 0)
       return tk_lua_verror(L, 2, "mtx", "allocation failed");
     outx->offsets->n = M->n_rows + 1;
-    outx->neighbors->n = total;
+    tk_csr_nbr_setn(outx, total);
     int rc;
     switch (outx->tag) {
       case TK_TAG_I32: rc = tk_svec_ensure((tk_svec_t *) outx->values, total); if (rc == 0) ((tk_svec_t *) outx->values)->n = total; break;
@@ -858,7 +860,7 @@ static int tk_mtx_to_sparse_lua (lua_State *L)
       return tk_lua_verror(L, 2, "mtx", "allocation failed");
     outx->n_cols = M->n_cols;
     tk_ivec_t *off = outx->offsets;
-    tk_ivec_t *nbr = outx->neighbors;
+    tk_ivec_t *nbr = (tk_ivec_t *) outx->neighbors;
     void *vals = outx->values;
     off->a[0] = 0;
     uint64_t pos = 0;
@@ -908,7 +910,7 @@ static int tk_mtx_to_sparse_lua (lua_State *L)
     }
     off->a[r + 1] = (int64_t) pos;
   }
-  tk_csr_push(L, M->tag, M->n_cols, io, off, in_, nbr, iv, vals);
+  tk_csr_push(L, M->tag, TK_TAG_I64, M->n_cols, io, off, in_, nbr, iv, vals);
   return 1;
 }
 

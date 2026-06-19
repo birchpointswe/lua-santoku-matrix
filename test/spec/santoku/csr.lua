@@ -6,6 +6,7 @@ local mtx = require("santoku.mtx")
 local ivec = require("santoku.ivec")
 local dvec = require("santoku.dvec")
 local fvec = require("santoku.fvec")
+local svec = require("santoku.svec")
 require("santoku.cvec")
 local tbl = require("santoku.table")
 local teq = tbl.equals
@@ -49,6 +50,56 @@ test("csr.from_mask", function ()
   assert(r == 5 and c == 1)
   assert(teq(X:offsets():table(), { 0, 1, 1, 2, 3, 3 }))
   assert(teq(X:neighbors():table(), { 0, 0, 0 }))
+end)
+
+test("csr: i32 neighbors (svec) wrap + persist roundtrip", function ()
+  local X = csr.create({
+    offsets = ivec.create({ 0, 2, 3, 5 }),
+    neighbors = svec.create({ 0, 2, 1, 0, 3 }),
+    n_cols = 4,
+  })
+  local r, c = X:shape()
+  assert(r == 3 and c == 4)
+  assert(X:nnz() == 5)
+  assert(teq(X:neighbors():table(), { 0, 2, 1, 0, 3 }))
+  local tmp = ".csr_i32_test.bin"
+  X:persist(tmp)
+  local Y = csr.load(tmp)
+  os.remove(tmp)
+  assert(X:eq(Y))
+  assert(teq(Y:neighbors():table(), { 0, 2, 1, 0, 3 }))
+end)
+
+test("csr: i32 neighbors standardize + hcat", function ()
+  local A = csr.create({
+    offsets = ivec.create({ 0, 2, 4 }),
+    neighbors = svec.create({ 0, 1, 0, 1 }),
+    values = fvec.create({ 2, 10, 4, 10 }),
+    n_cols = 2,
+  })
+  local w = A:standardize()
+  assert(math.abs(w:get(0) - 1) < 1e-5)
+  assert(math.abs(w:get(1) - 0) < 1e-5)
+  assert(teq(A:values():table(), { 2, 0, 4, 0 }))
+  local B = csr.create({
+    offsets = ivec.create({ 0, 1, 2 }),
+    neighbors = svec.create({ 0, 1 }),
+    values = fvec.create({ 5, 6 }),
+    n_cols = 2,
+  })
+  assert(A:hcat(B) == A)
+  local _, c = A:shape()
+  assert(c == 4)
+  assert(teq(A:neighbors():table(), { 0, 1, 2, 0, 1, 3 }))
+end)
+
+test("csr: i32 neighbors builder", function ()
+  local X = csr.create({ n_cols = 4, neighbors = "i32", values = "f32" })
+  X:push(0, 1.5):push(2, 2.5):row()
+  X:push(3):row()
+  assert(teq(X:offsets():table(), { 0, 2, 3 }))
+  assert(teq(X:neighbors():table(), { 0, 2, 3 }))
+  assert(math.abs(X:values():get(1) - 2.5) < 1e-6)
 end)
 
 test("csr: to_bits/from_bits roundtrip", function ()
