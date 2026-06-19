@@ -16,13 +16,10 @@
 #include <santoku/ivec.h>
 #include <santoku/rvec/base.h>
 
+KSORT_INIT_GENERIC(double)
+
 static inline tk_ivec_t *tk_rvec_keys (lua_State *L, tk_rvec_t *P, tk_ivec_t *out);
 static inline tk_dvec_t *tk_rvec_values (lua_State *L, tk_rvec_t *P, tk_dvec_t *out);
-static inline tk_ivec_t *tk_dvec_mtx_top_variance (lua_State *L, tk_dvec_t *matrix, uint64_t n_samples, uint64_t n_features, uint64_t top_k);
-static inline tk_ivec_t *tk_dvec_mtx_top_skewness (lua_State *L, tk_dvec_t *matrix, uint64_t n_samples, uint64_t n_features, uint64_t top_k);
-static inline tk_ivec_t *tk_dvec_mtx_top_entropy (lua_State *L, tk_dvec_t *matrix, uint64_t n_samples, uint64_t n_features, uint64_t top_k, uint64_t n_bins);
-static inline tk_ivec_t *tk_dvec_mtx_top_bimodality (lua_State *L, tk_dvec_t *matrix, uint64_t n_samples, uint64_t n_features, uint64_t top_k);
-static inline tk_ivec_t *tk_dvec_mtx_top_dip (lua_State *L, tk_dvec_t *matrix, uint64_t n_samples, uint64_t n_features, uint64_t top_k);
 static inline void tk_dvec_mtx_topk (lua_State *L, tk_dvec_t *queries, tk_dvec_t *corpus, uint64_t n_queries, uint64_t n_corpus, uint64_t d, uint64_t k);
 
 #define TK_GENERATE_SINGLE
@@ -33,424 +30,7 @@ static inline void tk_dvec_mtx_topk (lua_State *L, tk_dvec_t *queries, tk_dvec_t
 #include <santoku/parallel/tpl.h>
 #include <santoku/dvec/ext_tpl.h>
 
-static inline size_t tk_dvec_scores_max_curvature (
-  double *scores,
-  size_t n,
-  double *out_val
-) {
-  if (n < 3) {
-    if (out_val) *out_val = (n > 0) ? scores[0] : 0.0;
-    return n > 0 ? n - 1 : 0;
-  }
-  double max_curv = 0.0;
-  size_t max_idx = 1;
-  for (size_t i = 1; i < n - 1; i++) {
-    double curv = fabs(scores[i-1] - 2.0 * scores[i] + scores[i+1]);
-    if (curv > max_curv) {
-      max_curv = curv;
-      max_idx = i;
-    }
-  }
-
-  if (max_curv < 1e-10) {
-    if (out_val) *out_val = scores[n - 1];
-    return n - 1;
-  }
-  if (out_val) *out_val = scores[max_idx];
-  return max_idx;
-}
-
-static inline size_t tk_dvec_scores_lmethod (
-  double *scores,
-  size_t n,
-  double *out_val
-) {
-  if (n < 3) {
-    if (out_val) *out_val = (n > 0) ? scores[0] : 0.0;
-    return n > 0 ? n - 1 : 0;
-  }
-
-  double min_val = scores[0], max_val = scores[0];
-  for (size_t i = 1; i < n; i++) {
-    if (scores[i] < min_val) min_val = scores[i];
-    if (scores[i] > max_val) max_val = scores[i];
-  }
-  if (max_val - min_val < 1e-10) {
-    if (out_val) *out_val = scores[n - 1];
-    return n - 1;
-  }
-  double best_rmse = DBL_MAX;
-  size_t best_k = 1;
-  for (size_t k = 1; k < n - 1; k++) {
-    double sum_x1 = 0.0, sum_y1 = 0.0, sum_xy1 = 0.0, sum_xx1 = 0.0;
-    for (size_t i = 0; i <= k; i++) {
-      double x = (double)i;
-      double y = scores[i];
-      sum_x1 += x;
-      sum_y1 += y;
-      sum_xy1 += x * y;
-      sum_xx1 += x * x;
-    }
-    size_t n1 = k + 1;
-    double mean_x1 = sum_x1 / (double)n1;
-    double mean_y1 = sum_y1 / (double)n1;
-    double slope1 = (sum_xy1 - (double)n1 * mean_x1 * mean_y1) / (sum_xx1 - (double)n1 * mean_x1 * mean_x1 + 1e-10);
-    double intercept1 = mean_y1 - slope1 * mean_x1;
-    double sum_x2 = 0.0, sum_y2 = 0.0, sum_xy2 = 0.0, sum_xx2 = 0.0;
-    for (size_t i = k + 1; i < n; i++) {
-      double x = (double)i;
-      double y = scores[i];
-      sum_x2 += x;
-      sum_y2 += y;
-      sum_xy2 += x * y;
-      sum_xx2 += x * x;
-    }
-    size_t n2 = n - k - 1;
-    double mean_x2 = sum_x2 / (double)n2;
-    double mean_y2 = sum_y2 / (double)n2;
-    double slope2 = (sum_xy2 - (double)n2 * mean_x2 * mean_y2) / (sum_xx2 - (double)n2 * mean_x2 * mean_x2 + 1e-10);
-    double intercept2 = mean_y2 - slope2 * mean_x2;
-    double sse = 0.0;
-    for (size_t i = 0; i <= k; i++) {
-      double pred = slope1 * (double)i + intercept1;
-      double err = scores[i] - pred;
-      sse += err * err;
-    }
-    for (size_t i = k + 1; i < n; i++) {
-      double pred = slope2 * (double)i + intercept2;
-      double err = scores[i] - pred;
-      sse += err * err;
-    }
-    double rmse = sqrt(sse / (double)n);
-    if (rmse < best_rmse) {
-      best_rmse = rmse;
-      best_k = k;
-    }
-  }
-  if (out_val) *out_val = scores[best_k];
-  return best_k;
-}
-
-static inline size_t tk_dvec_scores_max_gap (
-  double *scores,
-  size_t n,
-  double *out_val
-) {
-  if (n < 2) {
-    if (out_val) *out_val = (n > 0) ? scores[0] : 0.0;
-    return n > 0 ? n - 1 : 0;
-  }
-  double max_gap = 0.0;
-  size_t max_idx = 0;
-  for (size_t i = 0; i < n - 1; i++) {
-    double gap = fabs(scores[i + 1] - scores[i]);
-    if (gap > max_gap) {
-      max_gap = gap;
-      max_idx = i;
-    }
-  }
-
-  if (max_gap < 1e-10) {
-    if (out_val) *out_val = scores[n - 1];
-    return n - 1;
-  }
-  if (out_val) *out_val = scores[max_idx];
-  return max_idx;
-}
-
-
-
-static inline size_t tk_dvec_scores_plateau (
-  double *scores,
-  size_t n,
-  double tolerance,
-  double *out_val
-) {
-  if (n == 0) {
-    if (out_val) *out_val = 0.0;
-    return 0;
-  }
-  if (n == 1) {
-    if (out_val) *out_val = scores[0];
-    return 0;
-  }
-  if (tolerance <= 0.0) tolerance = 0.01;
-
-  double min_score = scores[0], max_score = scores[0];
-  for (size_t i = 1; i < n; i++) {
-    if (scores[i] < min_score) min_score = scores[i];
-    if (scores[i] > max_score) max_score = scores[i];
-  }
-  double range = max_score - min_score;
-  if (range <= 0.0) {
-    if (out_val) *out_val = scores[n - 1];
-    return n - 1;
-  }
-
-  double abs_tolerance = tolerance * range;
-  double base = scores[0];
-  size_t end_idx = 0;
-  for (size_t i = 1; i < n; i++) {
-    if (fabs(scores[i] - base) <= abs_tolerance) {
-      end_idx = i;
-    } else {
-      break;
-    }
-  }
-  if (out_val) *out_val = scores[end_idx];
-  return end_idx;
-}
-
-static inline size_t tk_dvec_scores_kneedle (
-  double *scores,
-  size_t n,
-  double sensitivity,
-  double *out_val
-) {
-  if (n < 3) {
-    if (out_val) *out_val = (n > 0) ? scores[0] : 0.0;
-    return 0;
-  }
-  if (sensitivity <= 0.0)
-    sensitivity = 1.0;
-  double min_score = scores[0];
-  double max_score = scores[0];
-  for (size_t i = 1; i < n; i++) {
-    if (scores[i] < min_score) min_score = scores[i];
-    if (scores[i] > max_score) max_score = scores[i];
-  }
-  double score_range = max_score - min_score;
-  if (score_range < 1e-10) {
-    if (out_val) *out_val = scores[0];
-    return 0;
-  }
-  double *normalized = (double *)malloc(n * sizeof(double));
-  if (!normalized) {
-    if (out_val) *out_val = scores[0];
-    return 0;
-  }
-  for (size_t i = 0; i < n; i++) {
-    double x_norm = (double)i / (double)(n - 1);
-    double y_norm = (scores[i] - min_score) / score_range;
-    normalized[i] = y_norm - x_norm;
-  }
-  double *smoothed = (double *)malloc(n * sizeof(double));
-  if (!smoothed) {
-    free(normalized);
-    if (out_val) *out_val = scores[0];
-    return 0;
-  }
-  smoothed[0] = normalized[0];
-  smoothed[n - 1] = normalized[n - 1];
-  for (size_t i = 1; i < n - 1; i++) {
-    smoothed[i] = (normalized[i - 1] + normalized[i] + normalized[i + 1]) / 3.0;
-  }
-  double max_diff = -DBL_MAX;
-  size_t knee_idx = 0;
-  for (size_t i = 0; i < n; i++) {
-    if (smoothed[i] > max_diff) {
-      max_diff = smoothed[i];
-      knee_idx = i;
-    }
-  }
-  free(normalized);
-  free(smoothed);
-  double threshold = max_diff - sensitivity / (double)n;
-  size_t final_knee = knee_idx;
-  for (size_t i = 0; i < n; i++) {
-    double x_norm = (double)i / (double)(n - 1);
-    double y_norm = (scores[i] - min_score) / score_range;
-    double diff = y_norm - x_norm;
-    if (diff >= threshold) {
-      final_knee = i;
-    }
-  }
-  if (out_val) *out_val = scores[final_knee];
-  return final_knee;
-}
-
-
-
-
-
-
-
-static inline size_t tk_dvec_scores_first_gap (
-  double *scores,
-  size_t n,
-  double alpha,
-  double *out_val
-) {
-  if (n < 2) {
-    if (out_val) *out_val = (n > 0) ? scores[0] : 0.0;
-    return n > 0 ? n - 1 : 0;
-  }
-  if (alpha <= 0.0) alpha = 3.0;
-
-  size_t n_gaps = n - 1;
-  double *gaps = (double *)malloc(n_gaps * sizeof(double));
-  if (!gaps) {
-    if (out_val) *out_val = scores[n - 1];
-    return n - 1;
-  }
-
-  for (size_t i = 0; i < n_gaps; i++) {
-    gaps[i] = fabs(scores[i + 1] - scores[i]);
-  }
-
-
-  for (size_t i = 1; i < n_gaps; i++) {
-    double key = gaps[i];
-    size_t j = i;
-    while (j > 0 && gaps[j - 1] > key) {
-      gaps[j] = gaps[j - 1];
-      j--;
-    }
-    gaps[j] = key;
-  }
-
-  double median_gap;
-  if (n_gaps % 2 == 1) {
-    median_gap = gaps[n_gaps / 2];
-  } else {
-    median_gap = (gaps[n_gaps / 2 - 1] + gaps[n_gaps / 2]) / 2.0;
-  }
-  free(gaps);
-
-  if (median_gap <= 0.0) {
-    double max_gap = 0.0;
-    size_t max_idx = n - 1;
-    for (size_t i = 0; i < n - 1; i++) {
-      double gap = fabs(scores[i + 1] - scores[i]);
-      if (gap > max_gap) {
-        max_gap = gap;
-        max_idx = i;
-      }
-    }
-    if (out_val) *out_val = scores[max_idx];
-    return max_idx;
-  }
-
-  double threshold = alpha * median_gap;
-
-  for (size_t i = 0; i < n - 1; i++) {
-    double gap = fabs(scores[i + 1] - scores[i]);
-    if (gap > threshold) {
-      if (out_val) *out_val = scores[i];
-      return i;
-    }
-  }
-
-  if (out_val) *out_val = scores[n - 1];
-  return n - 1;
-}
-
-
-
-
-static inline size_t tk_dvec_scores_otsu (
-  double *scores,
-  size_t n,
-  double *out_val
-) {
-  if (n < 2) {
-    if (out_val) *out_val = (n > 0) ? scores[0] : 0.0;
-    return n > 0 ? n - 1 : 0;
-  }
-
-
-  double min_val = scores[0], max_val = scores[0];
-  for (size_t i = 1; i < n; i++) {
-    if (scores[i] < min_val) min_val = scores[i];
-    if (scores[i] > max_val) max_val = scores[i];
-  }
-  if (max_val - min_val < 1e-10) {
-    if (out_val) *out_val = scores[n - 1];
-    return n - 1;
-  }
-
-
-  double total_sum = 0.0;
-  for (size_t i = 0; i < n; i++) {
-    total_sum += scores[i];
-  }
-
-
-
-
-  double best_variance = -1.0;
-  size_t best_k = 0;
-  double sum0 = 0.0;
-
-  for (size_t k = 0; k < n - 1; k++) {
-    sum0 += scores[k];
-    double sum1 = total_sum - sum0;
-
-    size_t n0 = k + 1;
-    size_t n1 = n - n0;
-
-    double w0 = (double)n0 / (double)n;
-    double w1 = (double)n1 / (double)n;
-
-    double mean0 = sum0 / (double)n0;
-    double mean1 = sum1 / (double)n1;
-
-
-    double variance = w0 * w1 * (mean0 - mean1) * (mean0 - mean1);
-
-    if (variance > best_variance) {
-      best_variance = variance;
-      best_k = k;
-    }
-  }
-
-  if (out_val) *out_val = scores[best_k];
-  return best_k;
-}
-
-static inline void tk_dvec_scores_tolerance (
-  double *scores,
-  size_t n,
-  double tolerance,
-  size_t *out_start,
-  size_t *out_end
-) {
-  if (n == 0) {
-    *out_start = 0;
-    *out_end = 0;
-    return;
-  }
-  if (n == 1) {
-    *out_start = 0;
-    *out_end = 0;
-    return;
-  }
-  size_t best_start = 0;
-  size_t best_end = 0;
-  size_t best_len = 1;
-  for (size_t i = 0; i < n; i++) {
-    double base = scores[i];
-    size_t span_end = i;
-    for (size_t j = i + 1; j < n; j++) {
-      if (fabs(scores[j] - base) <= tolerance) {
-        span_end = j;
-      } else {
-        break;
-      }
-    }
-    size_t span_len = span_end - i + 1;
-    if (span_len > best_len) {
-      best_len = span_len;
-      best_start = i;
-      best_end = span_end;
-    }
-  }
-  *out_start = best_start;
-  *out_end = best_end;
-}
-
 #if !defined(__EMSCRIPTEN__)
-
 static inline void tk_dvec_gemv(
   bool transpose, uint64_t rows, uint64_t cols,
   double alpha, double *A, double *x, double beta, double *y
@@ -630,7 +210,11 @@ static inline tk_dvec_t *tk_dvec_csums_override(lua_State *L, tk_dvec_t *m0, uin
 }
 
 #include <santoku/iumap.h>
-#include <santoku/cvec/ext.h>
+#include <santoku/cvec/base.h>
+#include <limits.h>
+#ifndef TK_CVEC_BITS_BYTES
+#define TK_CVEC_BITS_BYTES(n) (((n) + CHAR_BIT - 1) / CHAR_BIT)
+#endif
 
 static inline void tk_dvec_mtx_center (
   lua_State *L,
@@ -773,11 +357,6 @@ static inline void tk_dvec_mtx_threshold_raw (
   }
 }
 
-static int tk_dvec_mtx_cmp_double (const void *a, const void *b) {
-  double da = *(const double *)a;
-  double db = *(const double *)b;
-  return (da > db) - (da < db);
-}
 
 static inline tk_cvec_t *tk_dvec_mtx_median (
   lua_State *L,
@@ -795,7 +374,7 @@ static inline tk_cvec_t *tk_dvec_mtx_median (
   for (uint64_t k = 0; k < K; k++) {
     for (uint64_t i = 0; i < N; i++)
       col_buf[i] = codes->a[i * K + k];
-    qsort(col_buf, N, sizeof(double), tk_dvec_mtx_cmp_double);
+    ks_introsort(double, N, col_buf);
     medians[k] = (N % 2 == 1) ? col_buf[N / 2] : (col_buf[N / 2 - 1] + col_buf[N / 2]) / 2.0;
   }
   free(col_buf);
@@ -974,309 +553,6 @@ static inline int tk_dvec_mtx_extend_mapped (
   return 0;
 }
 
-static inline tk_ivec_t *tk_dvec_mtx_top_variance (
-  lua_State *L,
-  tk_dvec_t *matrix,
-  uint64_t n_samples,
-  uint64_t n_features,
-  uint64_t top_k
-) {
-  if (matrix == NULL || n_samples == 0 || n_features == 0)
-    return NULL;
-  double *data = matrix->a;
-  tk_rvec_t *top_heap = tk_rvec_create(0, 0);
-  #pragma omp parallel for
-  for (uint64_t f = 0; f < n_features; f++) {
-    double sum = 0.0;
-    for (uint64_t s = 0; s < n_samples; s++) {
-      sum += data[s * n_features + f];
-    }
-    double mean = sum / (double)n_samples;
-    double var_sum = 0.0;
-    for (uint64_t s = 0; s < n_samples; s++) {
-      double diff = data[s * n_features + f] - mean;
-      var_sum += diff * diff;
-    }
-    double variance = var_sum / (double)n_samples;
-    tk_rank_t r = { (int64_t)f, variance };
-    #pragma omp critical
-    tk_rvec_hmin(top_heap, top_k, r);
-  }
-  tk_rvec_desc(top_heap, 0, top_heap->n);
-  tk_ivec_t *out = tk_ivec_create(L, 0);
-  tk_dvec_t *weights = tk_dvec_create(L, 0);
-  tk_rvec_keys(L, top_heap, out);
-  tk_rvec_values(L, top_heap, weights);
-  tk_rvec_destroy(top_heap);
-  return out;
-}
-
-static inline tk_ivec_t *tk_dvec_mtx_top_skewness (
-  lua_State *L,
-  tk_dvec_t *matrix,
-  uint64_t n_samples,
-  uint64_t n_features,
-  uint64_t top_k
-) {
-  if (matrix == NULL || n_samples == 0 || n_features == 0)
-    return NULL;
-  double *data = matrix->a;
-  tk_rvec_t *top_heap = tk_rvec_create(0, 0);
-  #pragma omp parallel for
-  for (uint64_t f = 0; f < n_features; f++) {
-    double sum = 0.0;
-    for (uint64_t s = 0; s < n_samples; s++) {
-      sum += data[s * n_features + f];
-    }
-    double mean = sum / (double)n_samples;
-    double m2_sum = 0.0;
-    double m3_sum = 0.0;
-    for (uint64_t s = 0; s < n_samples; s++) {
-      double diff = data[s * n_features + f] - mean;
-      double diff2 = diff * diff;
-      m2_sum += diff2;
-      m3_sum += diff2 * diff;
-    }
-    double variance = m2_sum / (double)n_samples;
-    double m3 = m3_sum / (double)n_samples;
-    double skewness = 0.0;
-    if (variance > 1e-10) {
-      double std_dev = sqrt(variance);
-      skewness = m3 / (std_dev * std_dev * std_dev);
-    }
-    tk_rank_t r = { (int64_t)f, -fabs(skewness) };
-    #pragma omp critical
-    tk_rvec_hmin(top_heap, top_k, r);
-  }
-  tk_rvec_desc(top_heap, 0, top_heap->n);
-  tk_ivec_t *out = tk_ivec_create(L, 0);
-  tk_dvec_t *weights = tk_dvec_create(L, 0);
-  tk_rvec_keys(L, top_heap, out);
-  tk_rvec_values(L, top_heap, weights);
-  tk_rvec_destroy(top_heap);
-  return out;
-}
-
-static inline tk_ivec_t *tk_dvec_mtx_top_entropy (
-  lua_State *L,
-  tk_dvec_t *matrix,
-  uint64_t n_samples,
-  uint64_t n_features,
-  uint64_t top_k,
-  uint64_t n_bins
-) {
-  if (matrix == NULL || n_samples == 0 || n_features == 0)
-    return NULL;
-  if (n_bins == 0)
-    n_bins = 32;
-  double *data = matrix->a;
-  tk_rvec_t *top_heap = tk_rvec_create(0, 0);
-  #pragma omp parallel
-  {
-    uint64_t *bin_counts = (uint64_t *)calloc(n_bins, sizeof(uint64_t));
-    if (!bin_counts) {
-      #pragma omp critical
-      {
-        tk_rvec_destroy(top_heap);
-        luaL_error(L, "ESBER: failed to allocate bin buffer");
-      }
-    }
-    #pragma omp for
-    for (uint64_t f = 0; f < n_features; f++) {
-      double min_val = data[0 * n_features + f];
-      double max_val = min_val;
-      for (uint64_t s = 1; s < n_samples; s++) {
-        double val = data[s * n_features + f];
-        if (val < min_val) min_val = val;
-        if (val > max_val) max_val = val;
-      }
-      double range = max_val - min_val;
-      if (range < 1e-10) {
-        tk_rank_t r = { (int64_t)f, 0.0 };
-        #pragma omp critical
-        tk_rvec_hmin(top_heap, top_k, r);
-        continue;
-      }
-      memset(bin_counts, 0, n_bins * sizeof(uint64_t));
-      for (uint64_t s = 0; s < n_samples; s++) {
-        double val = data[s * n_features + f];
-        double normalized = (val - min_val) / range;
-        uint64_t bin_idx = (uint64_t)(normalized * (double)(n_bins - 1));
-        if (bin_idx >= n_bins) bin_idx = n_bins - 1;
-        bin_counts[bin_idx]++;
-      }
-      double entropy = 0.0;
-      for (uint64_t b = 0; b < n_bins; b++) {
-        if (bin_counts[b] > 0) {
-          double p = (double)bin_counts[b] / (double)n_samples;
-          entropy -= p * log2(p);
-        }
-      }
-      tk_rank_t r = { (int64_t)f, entropy };
-      #pragma omp critical
-      tk_rvec_hmin(top_heap, top_k, r);
-    }
-    free(bin_counts);
-  }
-  tk_rvec_desc(top_heap, 0, top_heap->n);
-  tk_ivec_t *out = tk_ivec_create(L, 0);
-  tk_dvec_t *weights = tk_dvec_create(L, 0);
-  tk_rvec_keys(L, top_heap, out);
-  tk_rvec_values(L, top_heap, weights);
-  tk_rvec_destroy(top_heap);
-  return out;
-}
-
-static inline tk_ivec_t *tk_dvec_mtx_top_bimodality (
-  lua_State *L,
-  tk_dvec_t *matrix,
-  uint64_t n_samples,
-  uint64_t n_features,
-  uint64_t top_k
-) {
-  if (matrix == NULL || n_samples == 0 || n_features == 0)
-    return NULL;
-  double *data = matrix->a;
-  tk_rvec_t *top_heap = tk_rvec_create(0, 0);
-  #pragma omp parallel for
-  for (uint64_t f = 0; f < n_features; f++) {
-    double sum = 0.0;
-    for (uint64_t s = 0; s < n_samples; s++) {
-      sum += data[s * n_features + f];
-    }
-    double mean = sum / (double)n_samples;
-    double m2_sum = 0.0;
-    double m3_sum = 0.0;
-    double m4_sum = 0.0;
-    for (uint64_t s = 0; s < n_samples; s++) {
-      double diff = data[s * n_features + f] - mean;
-      double diff2 = diff * diff;
-      double diff3 = diff2 * diff;
-      double diff4 = diff2 * diff2;
-      m2_sum += diff2;
-      m3_sum += diff3;
-      m4_sum += diff4;
-    }
-    double variance = m2_sum / (double)n_samples;
-    double m3 = m3_sum / (double)n_samples;
-    double m4 = m4_sum / (double)n_samples;
-    double bimodality = 0.0;
-    if (variance > 1e-10 && n_samples > 3) {
-      double std_dev = sqrt(variance);
-      double skewness = m3 / (std_dev * std_dev * std_dev);
-      double kurtosis = m4 / (variance * variance);
-      double excess_kurtosis = kurtosis - 3.0;
-      double n = (double)n_samples;
-      double sample_size_correction = 3.0 * (n - 1.0) * (n - 1.0) / ((n - 2.0) * (n - 3.0));
-      bimodality = (skewness * skewness + 1.0) / (excess_kurtosis + sample_size_correction);
-    }
-    tk_rank_t r = { (int64_t)f, -bimodality };
-    #pragma omp critical
-    tk_rvec_hmin(top_heap, top_k, r);
-  }
-  tk_rvec_desc(top_heap, 0, top_heap->n);
-  tk_ivec_t *out = tk_ivec_create(L, 0);
-  tk_dvec_t *weights = tk_dvec_create(L, 0);
-  tk_rvec_keys(L, top_heap, out);
-  tk_rvec_values(L, top_heap, weights);
-  tk_rvec_destroy(top_heap);
-  return out;
-}
-
-static inline tk_ivec_t *tk_dvec_mtx_top_dip (
-  lua_State *L,
-  tk_dvec_t *matrix,
-  uint64_t n_samples,
-  uint64_t n_features,
-  uint64_t top_k
-) {
-  if (matrix == NULL || n_samples == 0 || n_features == 0 || n_samples < 5)
-    return NULL;
-  double *data = matrix->a;
-  tk_rvec_t *top_heap = tk_rvec_create(0, 0);
-  uint64_t n_bins = n_samples < 100 ? 16 : 32;
-  #pragma omp parallel
-  {
-    uint64_t *bins = (uint64_t *)calloc(n_bins, sizeof(uint64_t));
-    double *smoothed = (double *)calloc(n_bins, sizeof(double));
-    if (!bins || !smoothed) {
-      #pragma omp critical
-      {
-        tk_rvec_destroy(top_heap);
-        if (bins) free(bins);
-        if (smoothed) free(smoothed);
-        luaL_error(L, "Multimodality test: failed to allocate buffers");
-      }
-    }
-    #pragma omp for
-    for (uint64_t f = 0; f < n_features; f++) {
-      double min_val = data[0 * n_features + f];
-      double max_val = min_val;
-      for (uint64_t s = 1; s < n_samples; s++) {
-        double val = data[s * n_features + f];
-        if (val < min_val) min_val = val;
-        if (val > max_val) max_val = val;
-      }
-      double range = max_val - min_val;
-      if (range < 1e-10) {
-        tk_rank_t r = { (int64_t)f, 0.0 };
-        #pragma omp critical
-        tk_rvec_hmin(top_heap, top_k, r);
-        continue;
-      }
-      memset(bins, 0, n_bins * sizeof(uint64_t));
-      for (uint64_t s = 0; s < n_samples; s++) {
-        double val = data[s * n_features + f];
-        double normalized = (val - min_val) / range;
-        uint64_t bin_idx = (uint64_t)(normalized * (double)(n_bins - 1));
-        if (bin_idx >= n_bins) bin_idx = n_bins - 1;
-        bins[bin_idx]++;
-      }
-      for (uint64_t b = 0; b < n_bins; b++) {
-        smoothed[b] = (double)bins[b] / (double)n_samples;
-      }
-      for (uint64_t pass = 0; pass < 2; pass++) {
-        for (uint64_t b = 1; b < n_bins - 1; b++) {
-          double val = (smoothed[b-1] + 2.0 * smoothed[b] + smoothed[b+1]) / 4.0;
-          smoothed[b] = val;
-        }
-      }
-      uint64_t n_local_min = 0;
-      double deepest_valley = 0.0;
-      for (uint64_t b = 1; b < n_bins - 1; b++) {
-        if (smoothed[b] < smoothed[b-1] && smoothed[b] < smoothed[b+1]) {
-          n_local_min++;
-          double left_peak = smoothed[b-1];
-          double right_peak = smoothed[b+1];
-          for (int64_t i = (int64_t)b - 2; i >= 0; i--) {
-            if (smoothed[i] > left_peak) left_peak = smoothed[i];
-          }
-          for (uint64_t i = b + 2; i < n_bins; i++) {
-            if (smoothed[i] > right_peak) right_peak = smoothed[i];
-          }
-          double valley_depth = fmin(left_peak - smoothed[b], right_peak - smoothed[b]);
-          if (valley_depth > deepest_valley) {
-            deepest_valley = valley_depth;
-          }
-        }
-      }
-      double multimodality_score = deepest_valley * (double)n_local_min;
-      tk_rank_t r = { (int64_t)f, multimodality_score };
-      #pragma omp critical
-      tk_rvec_hmin(top_heap, top_k, r);
-    }
-    free(bins);
-    free(smoothed);
-  }
-  tk_rvec_desc(top_heap, 0, top_heap->n);
-  tk_ivec_t *out = tk_ivec_create(L, 0);
-  tk_dvec_t *weights = tk_dvec_create(L, 0);
-  tk_rvec_keys(L, top_heap, out);
-  tk_rvec_values(L, top_heap, weights);
-  tk_rvec_destroy(top_heap);
-  return out;
-}
-
 static inline void tk_dvec_mtx_topk (
   lua_State *L,
   tk_dvec_t *queries,
@@ -1396,6 +672,115 @@ static inline void tk_dvec_mtx_standardize (
     }
     *mean_out = mu;
     *istd_out = is;
+  }
+}
+
+static inline tk_dvec_t *tk_dvec_mtx_select (
+  tk_dvec_t *src_matrix,
+  tk_ivec_t *selected_features,
+  tk_ivec_t *sample_ids,
+  uint64_t n_features,
+  tk_dvec_t *dest,
+  uint64_t dest_sample,
+  uint64_t dest_stride
+) {
+  if (src_matrix == NULL)
+    return NULL;
+
+  uint64_t n_samples = src_matrix->n / n_features;
+
+  if (dest == NULL && (selected_features == NULL || selected_features->n == 0) &&
+      (sample_ids == NULL || sample_ids->n == 0))
+    return src_matrix;
+
+  uint64_t n_output_samples = (sample_ids != NULL && sample_ids->n > 0)
+    ? sample_ids->n : n_samples;
+
+  uint64_t n_selected_features = (selected_features != NULL && selected_features->n > 0)
+    ? selected_features->n : n_features;
+  double *src_data = src_matrix->a;
+
+  if (dest != NULL) {
+    uint64_t final_stride = (dest_stride > 0) ? dest_stride : n_selected_features;
+
+    if (dest_sample == 0) {
+      tk_dvec_ensure(dest, n_output_samples * final_stride);
+      dest->n = n_output_samples * final_stride;
+    } else {
+      tk_dvec_ensure(dest, (dest_sample + n_output_samples) * final_stride);
+      dest->n = (dest_sample + n_output_samples) * final_stride;
+    }
+
+    double *dest_data = dest->a;
+
+    for (uint64_t si = 0; si < n_output_samples; si++) {
+      uint64_t s = (sample_ids != NULL && sample_ids->n > 0)
+        ? (uint64_t) sample_ids->a[si] : si;
+      if (s >= n_samples) continue;
+
+      uint64_t src_offset = s * n_features;
+      uint64_t dest_offset = (dest_sample + si) * final_stride;
+
+      if (selected_features != NULL && selected_features->n > 0) {
+        for (uint64_t f = 0; f < selected_features->n; f++) {
+          int64_t feat_idx = selected_features->a[f];
+          if (feat_idx >= 0 && (uint64_t)feat_idx < n_features)
+            dest_data[dest_offset + f] = src_data[src_offset + (uint64_t)feat_idx];
+        }
+      } else {
+        memcpy(dest_data + dest_offset, src_data + src_offset, n_features * sizeof(double));
+      }
+    }
+
+    return dest;
+  } else {
+    if (sample_ids != NULL && sample_ids->n > 0) {
+      double *tmp = (double *) malloc(n_output_samples * n_selected_features * sizeof(double));
+      if (!tmp) return NULL;
+
+      for (uint64_t si = 0; si < n_output_samples; si++) {
+        uint64_t s = (uint64_t) sample_ids->a[si];
+        if (s >= n_samples) continue;
+
+        uint64_t src_offset = s * n_features;
+        uint64_t tmp_offset = si * n_selected_features;
+
+        if (selected_features != NULL && selected_features->n > 0) {
+          for (uint64_t f = 0; f < selected_features->n; f++) {
+            int64_t feat_idx = selected_features->a[f];
+            if (feat_idx >= 0 && (uint64_t)feat_idx < n_features)
+              tmp[tmp_offset + f] = src_data[src_offset + (uint64_t)feat_idx];
+          }
+        } else {
+          memcpy(tmp + tmp_offset, src_data + src_offset, n_features * sizeof(double));
+        }
+      }
+
+      memcpy(src_data, tmp, n_output_samples * n_selected_features * sizeof(double));
+      free(tmp);
+    } else {
+      uint64_t write_idx = 0;
+      for (uint64_t s = 0; s < n_samples; s++) {
+        uint64_t src_offset = s * n_features;
+        uint64_t dest_offset = write_idx * n_selected_features;
+
+        if (selected_features != NULL && selected_features->n > 0) {
+          for (uint64_t f = 0; f < selected_features->n; f++) {
+            int64_t feat_idx = selected_features->a[f];
+            if (feat_idx >= 0 && (uint64_t)feat_idx < n_features)
+              src_data[dest_offset + f] = src_data[src_offset + (uint64_t)feat_idx];
+          }
+        } else {
+          if (dest_offset != src_offset)
+            memmove(src_data + dest_offset, src_data + src_offset, n_features * sizeof(double));
+        }
+
+        write_idx++;
+      }
+    }
+
+    src_matrix->n = n_output_samples * n_selected_features;
+    return src_matrix;
   }
 }
 

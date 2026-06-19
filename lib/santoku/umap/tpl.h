@@ -219,42 +219,6 @@ static inline int tk_umap_pfx(each_lua) (lua_State *L)
 }
 #endif
 
-#ifdef tk_umap_pushkey
-static inline int tk_umap_pfx(keach_lua_iter) (lua_State *L)
-{
-  lua_settop(L, 0);
-  tk_umap_pfx(t) *h = tk_umap_pfx(peek)(L, lua_upvalueindex(1), "umap");
-  uint32_t i = tk_lua_checkunsigned(L, lua_upvalueindex(2), "idx");
-  uint32_t end = tk_umap_pfx(end)(h);
-
-
-  while (i < end && !tk_umap_pfx(exist)(h, i)) {
-    i++;
-  }
-
-  if (i >= end)
-    return 0;
-
-
-  lua_pushinteger(L, (lua_Integer)(i + 1));
-  lua_replace(L, lua_upvalueindex(2));
-
-
-  tk_umap_pushkey(L, tk_umap_pfx(key)(h, i));
-  return 1;
-}
-
-static inline int tk_umap_pfx(keach_lua) (lua_State *L)
-{
-  lua_settop(L, 1);
-  tk_umap_pfx(t) *h = tk_umap_pfx(peek)(L, 1, "umap");
-  lua_pushvalue(L, 1);
-  lua_pushinteger(L, (lua_Integer)tk_umap_pfx(begin)(h));
-  lua_pushcclosure(L, tk_umap_pfx(keach_lua_iter), 2);
-  return 1;
-}
-#endif
-
 static inline int tk_umap_pfx(ieach_lua_iter) (lua_State *L)
 {
   lua_settop(L, 0);
@@ -288,42 +252,6 @@ static inline int tk_umap_pfx(ieach_lua) (lua_State *L)
   lua_pushcclosure(L, tk_umap_pfx(ieach_lua_iter), 2);
   return 1;
 }
-
-#ifdef tk_umap_pushvalue
-static inline int tk_umap_pfx(veach_lua_iter) (lua_State *L)
-{
-  lua_settop(L, 0);
-  tk_umap_pfx(t) *h = tk_umap_pfx(peek)(L, lua_upvalueindex(1), "umap");
-  uint32_t i = tk_lua_checkunsigned(L, lua_upvalueindex(2), "idx");
-  uint32_t end = tk_umap_pfx(end)(h);
-
-
-  while (i < end && !tk_umap_pfx(exist)(h, i)) {
-    i++;
-  }
-
-  if (i >= end)
-    return 0;
-
-
-  lua_pushinteger(L, (lua_Integer) (i + 1));
-  lua_replace(L, lua_upvalueindex(2));
-
-
-  tk_umap_pushvalue(L, tk_umap_pfx(val)(h, i));
-  return 1;
-}
-
-static inline int tk_umap_pfx(veach_lua) (lua_State *L)
-{
-  lua_settop(L, 1);
-  tk_umap_pfx(t) *h = tk_umap_pfx(peek)(L, 1, "umap");
-  lua_pushvalue(L, 1);
-  lua_pushinteger(L, (lua_Integer) tk_umap_pfx(begin)(h));
-  lua_pushcclosure(L, tk_umap_pfx(veach_lua_iter), 2);
-  return 1;
-}
-#endif
 
 static inline int tk_umap_pfx(clear_lua) (lua_State *L)
 {
@@ -527,11 +455,9 @@ static luaL_Reg tk_umap_pfx(lua_mt_fns)[] =
 #endif
 #ifdef tk_umap_pushkey
   { "key", tk_umap_pfx(key_lua) },
-  { "keach", tk_umap_pfx(keach_lua) },
 #endif
 #ifdef tk_umap_pushvalue
   { "val", tk_umap_pfx(val_lua) },
-  { "veach", tk_umap_pfx(veach_lua) },
 #endif
 #if defined(tk_umap_pushkey) && defined(tk_umap_pushvalue)
   { "each", tk_umap_pfx(each_lua) },

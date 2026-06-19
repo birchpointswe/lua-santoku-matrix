@@ -83,13 +83,13 @@ static inline tk_vec_pfx(t) *tk_parallel_sfx(tk_vec_pfx(rmaxs)) (
   tk_vec_pfx(t) *out = tk_vec_pfx(create)(L, m0->n / cols);
   TK_PARALLEL_FOR(schedule(static))
   for (uint64_t r = 0; r < m0->n / cols; r ++) {
-    tk_vec_base sum = 0.0;
-    for (uint64_t c = 0; c < cols; c ++) {
+    tk_vec_base maxv = m0->a[r * cols + 0];
+    for (uint64_t c = 1; c < cols; c ++) {
       tk_vec_base val = m0->a[r * cols + c];
-      if (val > sum)
-        sum = val;
+      if (val > maxv)
+        maxv = val;
     }
-    out->a[r] = sum;
+    out->a[r] = maxv;
   }
   return out;
 }
@@ -324,18 +324,6 @@ static inline void tk_parallel_sfx(tk_vec_pfx(fill_indices)) (tk_vec_pfx(t) *v) 
   TK_PARALLEL_FOR(schedule(static))
   for (uint64_t i = 0; i < v->n; i++)
     v->a[i] = (tk_vec_base) i;
-}
-
-static inline void tk_parallel_sfx(tk_vec_pfx(clamp)) (tk_vec_pfx(t) *v, tk_vec_base lo, tk_vec_base hi, uint64_t start, uint64_t end) {
-  if (end <= start)
-    return;
-  if (end > v->n)
-    end = v->n;
-  TK_PARALLEL_FOR(schedule(static))
-  for (uint64_t i = start; i < end; i ++) {
-    if (tk_vec_lt(v->a[i], lo)) v->a[i] = lo;
-    else if (tk_vec_gt(v->a[i], hi)) v->a[i] = hi;
-  }
 }
 
 #endif

@@ -19,14 +19,6 @@
 #define tk_vec_gt(a, b) ((a) > (b))
 #endif
 
-#ifndef tk_vec_ltx
-#define tk_vec_ltx(a, b) (memcmp(&(a), &(b), sizeof(a)) < 0)
-#endif
-
-#ifndef tk_vec_gtx
-#define tk_vec_gtx(a, b) (memcmp(&(a), &(b), sizeof(a)) > 0)
-#endif
-
 #ifndef tk_vec_eqx
 #define tk_vec_eqx(a, b) (memcmp(&(a), &(b), sizeof(a)) == 0)
 #endif
@@ -47,8 +39,6 @@ typedef kvec_t(tk_vec_base) tk_vec_pfx(t);
 #define tk_vec_ksort(...) KSORT_INIT(__VA_ARGS__)
 tk_vec_ksort(tk_vec_pfx(asc), tk_vec_base, tk_vec_lt)
 tk_vec_ksort(tk_vec_pfx(desc), tk_vec_base, tk_vec_gt)
-tk_vec_ksort(tk_vec_pfx(xasc), tk_vec_base, tk_vec_ltx)
-tk_vec_ksort(tk_vec_pfx(xdesc), tk_vec_base, tk_vec_gtx)
 
 #define tk_vec_shuffle(...) ks_shuffle(__VA_ARGS__)
 #define tk_vec_introsort(...) ks_introsort(__VA_ARGS__)
@@ -75,7 +65,6 @@ static inline void tk_vec_pfx(pow) (tk_vec_pfx(t) *v, double exponent, uint64_t 
 static inline void tk_vec_pfx(log) (tk_vec_pfx(t) *v, uint64_t start, uint64_t end);
 static inline void tk_vec_pfx(exp) (tk_vec_pfx(t) *v, uint64_t start, uint64_t end);
 static inline void tk_vec_pfx(fill_indices) (tk_vec_pfx(t) *v);
-static inline void tk_vec_pfx(clamp) (tk_vec_pfx(t) *v, tk_vec_base lo, tk_vec_base hi, uint64_t start, uint64_t end);
 #endif
 static inline void tk_vec_pfx(fill) (tk_vec_pfx(t) *v, tk_vec_base x, uint64_t start, uint64_t end);
 
@@ -439,28 +428,6 @@ static inline uint64_t tk_vec_pfx(udesc) (tk_vec_pfx(t) *v, uint64_t s, uint64_t
   return write;
 }
 
-static inline uint64_t tk_vec_pfx(xasc) (tk_vec_pfx(t) *v, uint64_t s, uint64_t e) {
-  tk_vec_introsort(tk_vec_pfx(xasc), e - s, v->a + s);
-  if (e - s == 0)
-    return e;
-  uint64_t write = s + 1;
-  for (uint64_t read = s + 1; read < e; read ++)
-    if (!tk_vec_eqx(v->a[read - 1], v->a[read]))
-      v->a[write ++] = v->a[read];
-  return write;
-}
-
-static inline uint64_t tk_vec_pfx(xdesc) (tk_vec_pfx(t) *v, uint64_t s, uint64_t e) {
-  tk_vec_introsort(tk_vec_pfx(xdesc), e - s, v->a + s);
-  if (e - s == 0)
-    return e;
-  uint64_t write = s + 1;
-  for (uint64_t read = s + 1; read < e; read ++)
-    if (!tk_vec_eqx(v->a[read - 1], v->a[read]))
-      v->a[write ++] = v->a[read];
-  return write;
-}
-
 static inline void tk_vec_pfx(kasc) (tk_vec_pfx(t) *v, size_t k, uint64_t s, uint64_t e) {
   tk_vec_ksmall(tk_vec_pfx(asc), e - s, v->a + s, k);
 }
@@ -820,32 +787,6 @@ static inline int tk_vec_pfx(udesc_lua) (lua_State *L)
   return 1;
 }
 
-static inline int tk_vec_pfx(xasc_lua) (lua_State *L)
-{
-  lua_settop(L, 3);
-  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
-  uint64_t start = tk_lua_optunsigned(L, 2, "start", 0);
-  uint64_t end = tk_lua_optunsigned(L, 3, "end", m0->n);
-  uint64_t end0 = tk_vec_pfx(xasc)(m0, start, end);
-  if (start == 0 && end == m0->n)
-    m0->n = end0;
-  lua_pushinteger(L, (int64_t) end0);
-  return 1;
-}
-
-static inline int tk_vec_pfx(xdesc_lua) (lua_State *L)
-{
-  lua_settop(L, 3);
-  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
-  uint64_t start = tk_lua_optunsigned(L, 2, "start", 0);
-  uint64_t end = tk_lua_optunsigned(L, 3, "end", m0->n);
-  uint64_t end0 = tk_vec_pfx(xdesc)(m0, start, end);
-  if (start == 0 && end == m0->n)
-    m0->n = end0;
-  lua_pushinteger(L, (int64_t) end0);
-  return 1;
-}
-
 static inline int tk_vec_pfx(kasc_lua) (lua_State *L)
 {
   lua_settop(L, 4);
@@ -1063,7 +1004,7 @@ static inline int tk_vec_pfx(add_scaled_lua) (lua_State *L)
     start = tk_lua_checkunsigned(L, 3, "start");
     end = tk_lua_checkunsigned(L, 4, "end");
   } else {
-    tk_vec_err(L, add_scaled, 1, "expected either 2 or 4 arguments (vec, add or vec, add, start, end)");
+    tk_vec_err(L, add_scaled, 1, "expected 2 or 4 arguments (vec, x or vec, x, start, end); adds x*i at each index i");
     return 0;
   }
   tk_vec_pfx(add_scaled)(m0, add, start, end);
@@ -1309,28 +1250,6 @@ static inline int tk_vec_pfx(fill_indices_lua) (lua_State *L)
   return 1;
 }
 
-static inline int tk_vec_pfx(clamp_lua) (lua_State *L)
-{
-  int t = lua_gettop(L);
-  tk_vec_pfx(t) *v = tk_vec_pfx(peek)(L, 1, "vector");
-  tk_vec_base lo = tk_vec_peekbase(L, 2);
-  tk_vec_base hi = tk_vec_peekbase(L, 3);
-  uint64_t start, end;
-  if (t == 3) {
-    start = 0;
-    end = v->n;
-  } else if (t == 5) {
-    start = tk_lua_checkunsigned(L, 4, "start");
-    end = tk_lua_checkunsigned(L, 5, "end");
-  } else {
-    tk_vec_err(L, clamp, 1, "expected 3 or 5 arguments (vec, lo, hi or vec, lo, hi, start, end)");
-    return 0;
-  }
-  tk_vec_pfx(clamp)(v, lo, hi, start, end);
-  lua_settop(L, 1);
-  return 1;
-}
-
 #endif
 
 static inline int tk_vec_pfx(raw_lua) (lua_State *L)
@@ -1368,7 +1287,6 @@ static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
   { "shrink", tk_vec_pfx(shrink_lua) },
   { "clear", tk_vec_pfx(clear_lua) },
   { "zero", tk_vec_pfx(zero_lua) },
-  { "transpose", tk_vec_pfx(transpose_lua) },
   { "raw", tk_vec_pfx(raw_lua) },
 #if !defined(__EMSCRIPTEN__)
   { "mmap_sync", tk_vec_pfx(mmap_sync_lua) },
@@ -1393,8 +1311,6 @@ static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
   { "desc", tk_vec_pfx(desc_lua) },
   { "uasc", tk_vec_pfx(uasc_lua) },
   { "udesc", tk_vec_pfx(udesc_lua) },
-  { "xasc", tk_vec_pfx(xasc_lua) },
-  { "xdesc", tk_vec_pfx(xdesc_lua) },
   { "kasc", tk_vec_pfx(kasc_lua) },
   { "kdesc", tk_vec_pfx(kdesc_lua) },
 
@@ -1413,21 +1329,13 @@ static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
 #ifdef tk_vec_abs
   { "abs", tk_vec_pfx(abs_lua) },
 #endif
-  { "multiply", tk_vec_pfx(multiply_lua) },
   { "dot", tk_vec_pfx(dot_lua) },
   { "magnitude", tk_vec_pfx(magnitude_lua) },
   { "sum", tk_vec_pfx(sum_lua) },
-  { "csums", tk_vec_pfx(csums_lua) },
-  { "rsums", tk_vec_pfx(rsums_lua) },
   { "max", tk_vec_pfx(max_lua) },
-  { "cmaxs", tk_vec_pfx(rmaxs_lua) },
-  { "rmaxs", tk_vec_pfx(cmaxs_lua) },
   { "min", tk_vec_pfx(min_lua) },
-  { "cmins", tk_vec_pfx(rmins_lua) },
-  { "rmins", tk_vec_pfx(cmins_lua) },
   { "fill", tk_vec_pfx(fill_lua) },
   { "fill_indices", tk_vec_pfx(fill_indices_lua) },
-  { "clamp", tk_vec_pfx(clamp_lua) },
 #endif
 
   { NULL, NULL }

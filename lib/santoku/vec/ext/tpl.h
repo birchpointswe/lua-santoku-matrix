@@ -1,8 +1,30 @@
 #if defined(_OPENMP) && !defined(__EMSCRIPTEN__)
 #include <omp.h>
 #endif
+#include <string.h>
 
 #define tk_vec_pfx(name) tk_pp_strcat(tk_vec_name, name)
+
+#ifndef tk_vec_lt
+#define tk_vec_lt(a, b) ((a) < (b))
+#endif
+
+#ifndef tk_vec_gt
+#define tk_vec_gt(a, b) ((a) > (b))
+#endif
+
+#ifndef tk_vec_eqx
+#define tk_vec_eqx(a, b) (memcmp(&(a), &(b), sizeof(a)) == 0)
+#endif
+
+#ifndef tk_vec_eq
+#define tk_vec_eq(a, b) tk_vec_eqx(a, b)
+#endif
+
+#ifndef tk_vec_err
+#define tk_vec_err(L, name, n, ...) \
+  tk_lua_verror((L), ((n) + 1), tk_pp_xstr(tk_vec_pfx(name)), __VA_ARGS__)
+#endif
 
 
 static inline void tk_vec_pfx(copy_indexed) (tk_vec_pfx(t) *m0, tk_vec_pfx(t) *m1, tk_ivec_t *indices);
@@ -129,6 +151,132 @@ static inline int tk_vec_pfx(cdesc_lua) (lua_State *L)
 
 #endif
 
+static inline bool tk_vec_pfx(eq) (tk_vec_pfx(t) *a, tk_vec_pfx(t) *b, uint64_t start, uint64_t end)
+{
+  if (end > a->n || end > b->n)
+    return false;
+  for (uint64_t i = start; i < end; i ++)
+    if (!tk_vec_eq(a->a[i], b->a[i]))
+      return false;
+  return true;
+}
+
+static inline int tk_vec_pfx(eq_lua) (lua_State *L)
+{
+  int t = lua_gettop(L);
+  tk_vec_pfx(t) *a = tk_vec_pfx(peek)(L, 1, "vector");
+  tk_vec_pfx(t) *b = tk_vec_pfx(peek)(L, 2, "other");
+  uint64_t start = 0, end = a->n;
+  bool full = true;
+#ifndef tk_vec_limited
+  double eps = -1.0;
+  if (t == 3 || t == 5)
+    eps = tk_lua_checkdouble(L, t, "eps");
+#else
+  if (t != 2 && t != 4) {
+    tk_vec_err(L, eq, 1, "expected 2 or 4 arguments (vec, other or vec, other, start, end)");
+    return 0;
+  }
+#endif
+  if (t >= 4) {
+    start = tk_lua_checkunsigned(L, 3, "start");
+    end = tk_lua_checkunsigned(L, 4, "end");
+    full = false;
+  }
+  if ((full && a->n != b->n) || end > a->n || end > b->n) {
+    lua_pushboolean(L, false);
+    return 1;
+  }
+  bool r;
+#ifndef tk_vec_limited
+  if (eps >= 0.0) {
+    r = true;
+    for (uint64_t i = start; i < end; i ++)
+      if (fabs((double) a->a[i] - (double) b->a[i]) > eps) {
+        r = false;
+        break;
+      }
+  } else {
+    r = tk_vec_pfx(eq)(a, b, start, end);
+  }
+#else
+  r = tk_vec_pfx(eq)(a, b, start, end);
+#endif
+  lua_pushboolean(L, r);
+  return 1;
+}
+
+#if !defined(tk_vec_limited) && defined(tk_vec_peekbase)
+
+static inline int tk_vec_pfx(where_lua) (lua_State *L)
+{
+  int t = lua_gettop(L);
+  tk_vec_pfx(t) *v = tk_vec_pfx(peek)(L, 1, "vector");
+  const char *cmp = luaL_checkstring(L, 2);
+  tk_vec_base x = tk_vec_peekbase(L, 3);
+  uint64_t start = 0, end = v->n;
+  if (t >= 5) {
+    start = tk_lua_checkunsigned(L, 4, "start");
+    end = tk_lua_checkunsigned(L, 5, "end");
+  }
+  if (end > v->n)
+    end = v->n;
+  int c;
+  if (strcmp(cmp, "lt") == 0) c = 0;
+  else if (strcmp(cmp, "le") == 0) c = 1;
+  else if (strcmp(cmp, "eq") == 0) c = 2;
+  else if (strcmp(cmp, "ne") == 0) c = 3;
+  else if (strcmp(cmp, "ge") == 0) c = 4;
+  else if (strcmp(cmp, "gt") == 0) c = 5;
+  else {
+    tk_vec_err(L, where, 1, "cmp must be one of lt, le, eq, ne, ge, gt");
+    return 0;
+  }
+  tk_ivec_t *out = tk_ivec_create(L, 0);
+  for (uint64_t i = start; i < end; i ++) {
+    tk_vec_base a = v->a[i];
+    bool m;
+    switch (c) {
+      case 0: m = tk_vec_lt(a, x); break;
+      case 1: m = !tk_vec_gt(a, x); break;
+      case 2: m = tk_vec_eq(a, x); break;
+      case 3: m = !tk_vec_eq(a, x); break;
+      case 4: m = !tk_vec_lt(a, x); break;
+      default: m = tk_vec_gt(a, x); break;
+    }
+    if (m)
+      tk_ivec_push(out, (int64_t) i);
+  }
+  return 1;
+}
+
+static inline void tk_vec_pfx(fill_segments) (tk_vec_pfx(t) *v, tk_ivec_t *offsets, tk_vec_pfx(t) *values)
+{
+  uint64_t nd = offsets->n > 0 ? offsets->n - 1 : 0;
+  for (uint64_t d = 0; d < nd && d < values->n; d ++) {
+    int64_t s = offsets->a[d], e = offsets->a[d + 1];
+    if (s < 0)
+      s = 0;
+    if (e > (int64_t) v->n)
+      e = (int64_t) v->n;
+    for (int64_t i = s; i < e; i ++)
+      v->a[i] = values->a[d];
+  }
+}
+
+static inline int tk_vec_pfx(fill_segments_lua) (lua_State *L)
+{
+  lua_settop(L, 3);
+  tk_vec_pfx(t) *v = tk_vec_pfx(peek)(L, 1, "vector");
+  tk_ivec_t *offsets = tk_ivec_peek(L, 2, "offsets");
+  tk_vec_pfx(t) *values = tk_vec_pfx(peek)(L, 3, "values");
+  tk_vec_pfx(fill_segments)(v, offsets, values);
+  lua_settop(L, 1);
+  return 1;
+}
+
+#endif
+
 static inline void tk_vec_pfx(persist) (lua_State *L, tk_vec_pfx(t) *v, FILE *fh)
 {
   uint64_t n64 = (uint64_t) v->n;
@@ -150,17 +298,12 @@ static luaL_Reg tk_vec_pfx(lua_mt_ext_fns)[] =
 {
   { "copy", tk_vec_pfx(copy_indexed_lua) },
   { "persist", tk_vec_pfx(persist_lua) },
+  { "eq", tk_vec_pfx(eq_lua) },
+#if !defined(tk_vec_limited) && defined(tk_vec_peekbase)
+  { "where", tk_vec_pfx(where_lua) },
+  { "fill_segments", tk_vec_pfx(fill_segments_lua) },
+#endif
 #ifndef tk_vec_limited
-  { "cmagnitudes", tk_vec_pfx(cmagnitudes_lua) },
-  { "rmagnitudes", tk_vec_pfx(rmagnitudes_lua) },
-  { "cmaxargs", tk_vec_pfx(cmaxargs_lua) },
-  { "rmaxargs", tk_vec_pfx(rmaxargs_lua) },
-  { "cminargs", tk_vec_pfx(cminargs_lua) },
-  { "rminargs", tk_vec_pfx(rminargs_lua) },
-  { "rasc", tk_vec_pfx(rasc_lua) },
-  { "rdesc", tk_vec_pfx(rdesc_lua) },
-  { "casc", tk_vec_pfx(casc_lua) },
-  { "cdesc", tk_vec_pfx(cdesc_lua) },
 #endif
   { NULL, NULL }
 };

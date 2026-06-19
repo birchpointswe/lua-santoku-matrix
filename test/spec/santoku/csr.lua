@@ -1,230 +1,205 @@
 local test = require("santoku.test")
 local err = require("santoku.error")
 local assert = err.assert
+local csr = require("santoku.csr")
+local mtx = require("santoku.mtx")
 local ivec = require("santoku.ivec")
 local dvec = require("santoku.dvec")
-local csr = require("santoku.csr")
+local fvec = require("santoku.fvec")
 require("santoku.cvec")
 local tbl = require("santoku.table")
 local teq = tbl.equals
 
-test("csr.from_cvec / csr.to_cvec roundtrip", function ()
-  local n_samples = 3
-  local n_features = 4
-  local offsets = ivec.create({ 0, 2, 3, 5 })
-  local neighbors = ivec.create({ 0, 2, 1, 0, 3 })
-  local bitmap = csr.to_cvec(offsets, neighbors, n_samples, n_features)
-  local offsets2, neighbors2 = csr.from_cvec(bitmap, n_samples, n_features)
-  assert(offsets2:size() == n_samples + 1)
-  assert(offsets2:get(0) == 0)
-  assert(offsets2:get(1) == 2)
-  assert(offsets2:get(2) == 3)
-  assert(offsets2:get(3) == 5)
-  assert(teq(neighbors2:table(), { 0, 2, 1, 0, 3 }))
-  local bitmap2 = csr.to_cvec(offsets2, neighbors2, n_samples, n_features)
-  assert(bitmap2:size() == bitmap:size())
+test("csr: wrap parts, accessors", function ()
+  local off = ivec.create({ 0, 2, 3, 5 })
+  local nbr = ivec.create({ 0, 2, 1, 0, 3 })
+  local X = csr.create({ offsets = off, neighbors = nbr, n_cols = 4 })
+  local r, c = X:shape()
+  assert(r == 3 and c == 4)
+  assert(X:nnz() == 5)
+  assert(X:type() == "none")
+  assert(X:offsets() == off)
+  assert(X:neighbors() == nbr)
+  assert(X:values() == nil)
 end)
 
-test("csr.to_cvec flip_interleave", function ()
-  local n_samples = 2
-  local n_features = 3
-  local offsets = ivec.create({ 0, 2, 3 })
-  local neighbors = ivec.create({ 0, 1, 2 })
-  local bitmap = csr.to_cvec(offsets, neighbors, n_samples, n_features, true)
-  assert(bitmap ~= nil)
+test("csr: builder push/row", function ()
+  local X = csr.create({ n_cols = 4, values = "f32" })
+  X:push(0, 1.5):push(2, 2.5):row()
+  X:row()
+  X:push(3):row()
+  local r, c = X:shape()
+  assert(r == 3 and c == 4)
+  assert(teq(X:offsets():table(), { 0, 2, 2, 3 }))
+  assert(teq(X:neighbors():table(), { 0, 2, 3 }))
+  assert(math.abs(X:values():get(1) - 2.5) < 1e-6)
 end)
 
-test("csr.from_dvec / csr.to_dvec roundtrip", function ()
-  local n_samples = 2
-  local n_features = 3
-  local dense = dvec.create({ 1.0, 0.0, 3.0, 0.0, 2.0, 0.0 })
-  local offsets, neighbors, values = csr.from_dvec(dense, n_samples, n_features)
-  assert(offsets:size() == n_samples + 1)
-  assert(offsets:get(0) == 0)
-  assert(offsets:get(1) == 2)
-  assert(offsets:get(2) == 3)
-  assert(teq(neighbors:table(), { 0, 2, 1 }))
-  assert(values:get(0) == 1.0)
-  assert(values:get(1) == 3.0)
-  assert(values:get(2) == 2.0)
-  local dense2 = csr.to_dvec(offsets, neighbors, values, n_samples, n_features)
-  assert(teq(dense2:table(), dense:table()))
-  local binary = csr.to_dvec(offsets, neighbors, nil, n_samples, n_features)
-  assert(teq(binary:table(), { 1.0, 0.0, 1.0, 0.0, 1.0, 0.0 }))
+test("csr.from_classes", function ()
+  local X = csr.from_classes(ivec.create({ 2, 0, 1, 2 }))
+  local r, c = X:shape()
+  assert(r == 4 and c == 3)
+  assert(teq(X:offsets():table(), { 0, 1, 2, 3, 4 }))
+  assert(teq(X:neighbors():table(), { 2, 0, 1, 2 }))
 end)
 
-test("csr.extend", function ()
-  local off1 = ivec.create({ 0, 2, 3 })
-  local nbr1 = ivec.create({ 0, 1, 2 })
-  local off2 = ivec.create({ 0, 1, 2 })
-  local nbr2 = ivec.create({ 0, 1 })
-  local out_off, out_nbr = csr.extend(off1, nbr1, off2, nbr2, 3)
-  assert(out_off:size() == 3)
-  assert(teq(out_nbr:table(), { 0, 1, 3, 2, 4 }))
+test("csr.from_mask", function ()
+  local X = csr.from_mask(ivec.create({ 1, 0, 1, 1, 0 }))
+  local r, c = X:shape()
+  assert(r == 5 and c == 1)
+  assert(teq(X:offsets():table(), { 0, 1, 1, 2, 3, 3 }))
+  assert(teq(X:neighbors():table(), { 0, 0, 0 }))
 end)
 
-test("csr.select", function ()
-  local offsets = ivec.create({ 0, 3, 5 })
-  local neighbors = ivec.create({ 0, 1, 2, 1, 3 })
-  local remap = ivec.create({ 1, 3 })
-  local new_off, new_nbr = csr.select(offsets, neighbors, remap)
-  assert(new_off:size() == 3)
-  assert(new_off:get(0) == 0)
-  assert(new_off:get(1) == 1)
-  assert(new_off:get(2) == 3)
-  assert(teq(new_nbr:table(), { 0, 0, 1 }))
+test("csr: to_bits/from_bits roundtrip", function ()
+  local X = csr.create({
+    offsets = ivec.create({ 0, 2, 3, 5 }),
+    neighbors = ivec.create({ 0, 2, 1, 0, 3 }),
+    n_cols = 4,
+  })
+  local bits = X:to_bits()
+  local Y = csr.from_bits(bits, 3, 4)
+  assert(X:eq(Y))
 end)
 
-test("csr.seq_select", function ()
-  local tokens = ivec.create({ 5, 3, 1, 3, 5 })
-  local offsets = ivec.create({ 0, 3, 5 })
-  local keep = ivec.create({ 3, 5 })
-  local new_tok, new_off = csr.seq_select(tokens, offsets, keep)
-  assert(new_off:size() == 3)
-  assert(teq(new_tok:table(), { 1, 0, 0, 1 }))
+test("csr: to_dense / mtx:to_sparse roundtrip", function ()
+  local M = mtx.create({
+    data = dvec.create({ 1, 0, 3, 0, 2, 0 }),
+    n_rows = 2, n_cols = 3,
+  })
+  local X = M:to_sparse()
+  local r, c = X:shape()
+  assert(r == 2 and c == 3)
+  assert(teq(X:offsets():table(), { 0, 2, 3 }))
+  assert(teq(X:neighbors():table(), { 0, 2, 1 }))
+  assert(X:values():get(1) == 3)
+  local D = X:to_dense()
+  assert(D:eq(M))
 end)
 
-test("csr.seq_select with values", function ()
-  local tokens = ivec.create({ 5, 3, 1, 3, 5 })
-  local offsets = ivec.create({ 0, 3, 5 })
-  local keep = ivec.create({ 3, 5 })
-  local vals = dvec.create({ 1.0, 2.0, 3.0, 4.0, 5.0 })
-  local new_tok, new_off, new_val = csr.seq_select(tokens, offsets, keep, vals)
-  assert(new_off:size() == 3)
-  assert(teq(new_tok:table(), { 1, 0, 0, 1 }))
-  assert(new_val:get(0) == 1.0)
-  assert(new_val:get(1) == 2.0)
-  assert(new_val:get(2) == 4.0)
-  assert(new_val:get(3) == 5.0)
+test("csr: rows gather (with values)", function ()
+  local X = csr.create({
+    offsets = ivec.create({ 0, 2, 4, 6 }),
+    neighbors = ivec.create({ 10, 20, 30, 40, 50, 60 }),
+    values = fvec.create({ 1, 2, 3, 4, 5, 6 }),
+    n_cols = 100,
+  })
+  local Y = X:rows(ivec.create({ 0, 2 }))
+  assert(teq(Y:offsets():table(), { 0, 2, 4 }))
+  assert(teq(Y:neighbors():table(), { 10, 20, 50, 60 }))
+  assert(Y:values():get(2) == 5)
 end)
 
-test("csr.merge", function ()
-  local off1 = ivec.create({ 0, 2, 3 })
-  local nbr1 = ivec.create({ 1, 3, 2 })
-  local off2 = ivec.create({ 0, 1, 3 })
-  local nbr2 = ivec.create({ 2, 1, 4 })
-  local out_off, out_nbr = csr.merge(off1, nbr1, off2, nbr2)
-  assert(out_off:size() == 3)
-  assert(teq(out_nbr:table(), { 1, 2, 3, 1, 2, 4 }))
+test("csr: select columns with remap", function ()
+  local X = csr.create({
+    offsets = ivec.create({ 0, 3, 5 }),
+    neighbors = ivec.create({ 0, 1, 2, 1, 3 }),
+    values = fvec.create({ 1, 2, 3, 4, 5 }),
+    n_cols = 4,
+  })
+  local Y = X:select(ivec.create({ 1, 3 }))
+  local _, c = Y:shape()
+  assert(c == 2)
+  assert(teq(Y:offsets():table(), { 0, 1, 3 }))
+  assert(teq(Y:neighbors():table(), { 0, 0, 1 }))
+  assert(Y:values():get(0) == 2)
+  assert(Y:values():get(1) == 4)
+  assert(Y:values():get(2) == 5)
 end)
 
-test("csr.subsample", function ()
-  local offsets = ivec.create({ 0, 2, 4, 6 })
-  local neighbors = ivec.create({ 10, 20, 30, 40, 50, 60 })
-  local ids = ivec.create({ 0, 2 })
-  local new_off, new_nbr = csr.subsample(offsets, neighbors, ids)
-  assert(new_off:size() == 3)
-  assert(new_off:get(0) == 0)
-  assert(new_off:get(1) == 2)
-  assert(new_off:get(2) == 4)
-  assert(teq(new_nbr:table(), { 10, 20, 50, 60 }))
+test("csr: hcat in place with shift", function ()
+  local A = csr.create({
+    offsets = ivec.create({ 0, 2, 3 }),
+    neighbors = ivec.create({ 0, 1, 2 }),
+    n_cols = 3,
+  })
+  local B = csr.create({
+    offsets = ivec.create({ 0, 1, 2 }),
+    neighbors = ivec.create({ 0, 1 }),
+    n_cols = 2,
+  })
+  assert(A:hcat(B) == A)
+  local _, c = A:shape()
+  assert(c == 5)
+  assert(teq(A:offsets():table(), { 0, 3, 5 }))
+  assert(teq(A:neighbors():table(), { 0, 1, 3, 2, 4 }))
+  assert(teq(B:neighbors():table(), { 0, 1 }))
 end)
 
-test("csr.transpose", function ()
-  local offsets = ivec.create({ 0, 2, 3, 5 })
-  local tokens = ivec.create({ 0, 1, 1, 0, 2 })
-  local csc_off, csc_rows = csr.transpose(offsets, tokens, 3, 3)
-  assert(csc_off:size() == 4)
-  assert(csc_off:get(0) == 0)
-  assert(csc_off:get(1) == 2)
-  assert(csc_off:get(2) == 4)
-  assert(csc_off:get(3) == 5)
-  assert(teq(csc_rows:table(), { 0, 2, 0, 1, 2 }))
+test("csr: transpose with values", function ()
+  local X = csr.create({
+    offsets = ivec.create({ 0, 2, 3 }),
+    neighbors = ivec.create({ 0, 1, 0 }),
+    values = fvec.create({ 1, 2, 3 }),
+    n_cols = 2,
+  })
+  local T = X:transpose()
+  local r, c = T:shape()
+  assert(r == 2 and c == 2)
+  assert(teq(T:offsets():table(), { 0, 2, 3 }))
+  assert(teq(T:neighbors():table(), { 0, 1, 0 }))
+  assert(T:values():get(0) == 1)
+  assert(T:values():get(1) == 3)
+  assert(T:values():get(2) == 2)
 end)
 
-test("csr.transpose with values", function ()
-  local offsets = ivec.create({ 0, 2, 3 })
-  local tokens = ivec.create({ 0, 1, 0 })
-  local values = dvec.create({ 1.0, 2.0, 3.0 })
-  local csc_off, csc_rows, csc_vals = csr.transpose(offsets, tokens, 2, 2, values)
-  assert(csc_off:size() == 3)
-  assert(teq(csc_rows:table(), { 0, 1, 0 }))
-  assert(csc_vals:get(0) == 1.0)
-  assert(csc_vals:get(1) == 3.0)
-  assert(csc_vals:get(2) == 2.0)
+test("csr: normalize materializes values on binary", function ()
+  local X = csr.create({
+    offsets = ivec.create({ 0, 2, 3 }),
+    neighbors = ivec.create({ 0, 1, 1 }),
+    n_cols = 2,
+  })
+  assert(X:normalize() == X)
+  assert(X:type() == "f32")
+  local v = X:values()
+  assert(math.abs(v:get(0) - 1 / math.sqrt(2)) < 1e-6)
+  assert(math.abs(v:get(2) - 1) < 1e-6)
 end)
 
-test("csr.complement", function ()
-  local subset = ivec.create({ 1, 3 })
-  local comp = csr.complement(subset, 5)
-  assert(teq(comp:table(), { 0, 2, 4 }))
+test("csr: scale_cols", function ()
+  local X = csr.create({
+    offsets = ivec.create({ 0, 2, 3 }),
+    neighbors = ivec.create({ 0, 1, 1 }),
+    values = fvec.create({ 2, 3, 4 }),
+    n_cols = 2,
+  })
+  X:scale_cols(fvec.create({ 10, 100 }))
+  assert(X:values():get(0) == 20)
+  assert(X:values():get(1) == 300)
+  assert(X:values():get(2) == 400)
 end)
 
-test("csr.sort_desc", function ()
-  local off = ivec.create({ 0, 3, 5 })
-  local nbr = ivec.create({ 0, 1, 2, 3, 4 })
-  local sco = dvec.create({ 1.0, 3.0, 2.0, 5.0, 4.0 })
-  local sorted_nbr, sorted_sco = csr.sort_desc(off, nbr, sco)
-  assert(sorted_nbr:get(0) == 1)
-  assert(sorted_nbr:get(1) == 2)
-  assert(sorted_nbr:get(2) == 0)
-  assert(sorted_sco:get(0) == 3.0)
-  assert(sorted_sco:get(1) == 2.0)
-  assert(sorted_sco:get(2) == 1.0)
-  assert(sorted_nbr:get(3) == 3)
-  assert(sorted_nbr:get(4) == 4)
+test("csr: sumsq_cols, plain and blocked", function ()
+  local X = csr.create({
+    offsets = ivec.create({ 0, 2, 4 }),
+    neighbors = ivec.create({ 0, 2, 1, 2 }),
+    values = fvec.create({ 1, 2, 3, 4 }),
+    n_cols = 3,
+  })
+  local ss = X:sumsq_cols()
+  assert(math.abs(ss:get(0) - 1) < 1e-6)
+  assert(math.abs(ss:get(1) - 9) < 1e-6)
+  assert(math.abs(ss:get(2) - 20) < 1e-6)
+  local blocks = X:sumsq_cols(ivec.create({ 0, 2, 3 }))
+  assert(math.abs(blocks:get(0) - 10) < 1e-6)
+  assert(math.abs(blocks:get(1) - 20) < 1e-6)
 end)
 
-test("csr.sample_select", function ()
-  local offsets = ivec.create({ 0, 2, 4, 6, 8 })
-  local neighbors = ivec.create({ 0, 5, 0, 3, 5, 7, 3, 7 })
-  local ids = ivec.create({ 0, 2 })
-  local new_off, new_nbr, local_feats, n_local = csr.sample_select(offsets, neighbors, ids, 10)
-  assert(new_off:size() == 3)
-  assert(new_off:get(0) == 0)
-  assert(new_off:get(1) == 2)
-  assert(new_off:get(2) == 4)
-  assert(n_local == 3)
-  assert(local_feats:size() == 3)
-  assert(teq(local_feats:table(), { 0, 5, 7 }))
-  assert(new_nbr:get(0) == 0)
-  assert(new_nbr:get(1) == 1)
-  assert(new_nbr:get(2) == 1)
-  assert(new_nbr:get(3) == 2)
-end)
-
-test("csr.top_idf basic", function ()
-  local offsets = ivec.create({ 0, 3, 6, 8, 10 })
-  local neighbors = ivec.create({ 0, 1, 2, 0, 1, 3, 0, 2, 0, 3 })
-  local top_features, weights = csr.top_idf(offsets, neighbors, 5, 3)
-  assert(top_features:size() == 3)
-  assert(weights:size() == 3)
-  local w = weights:table()
-  assert(w[1] >= w[2] and w[2] >= w[3])
-end)
-
-test("csr.top_bns with labels", function ()
-  local n_features = 4
-  local n_classes = 2
-  local f_off = ivec.create({})
-  local f_nbr = ivec.create({})
-  f_off:push(0)
-  f_nbr:push(0); f_nbr:push(1); f_off:push(2)
-  f_nbr:push(0); f_nbr:push(1); f_off:push(4)
-  f_nbr:push(0); f_nbr:push(1); f_off:push(6)
-  f_nbr:push(2); f_nbr:push(3); f_off:push(8)
-  f_nbr:push(2); f_nbr:push(3); f_off:push(10)
-  f_nbr:push(2); f_nbr:push(3); f_off:push(12)
-  local l_off = ivec.create({ 0, 1, 2, 3, 4, 5, 6 })
-  local l_nbr = ivec.create({ 0, 0, 0, 1, 1, 1 })
-  local top_features, weights = csr.top_bns(f_off, f_nbr, l_off, l_nbr, n_features, n_classes, nil, 2, "max")
-  assert(top_features:size() == 2)
-  assert(weights:size() == 2)
-end)
-
-test("csr.top_chi2 with labels", function ()
-  local n_features = 4
-  local n_classes = 2
-  local f_off = ivec.create({})
-  f_off:push(0)
-  local f_nbr = ivec.create({})
-  f_nbr:push(0); f_nbr:push(1); f_off:push(2)
-  f_nbr:push(0); f_off:push(3)
-  f_nbr:push(1); f_off:push(4)
-  f_nbr:push(2); f_nbr:push(3); f_off:push(6)
-  local l_off = ivec.create({ 0, 1, 2, 3, 4 })
-  local l_nbr = ivec.create({ 0, 0, 1, 1 })
-  local top_features, weights = csr.top_chi2(f_off, f_nbr, l_off, l_nbr, n_features, n_classes, nil, 2, "max")
-  assert(top_features:size() == 2)
-  assert(weights:size() == 2)
+test("csr: persist/load roundtrip", function ()
+  local tmp = ".csr_test.bin"
+  local X = csr.create({
+    offsets = ivec.create({ 0, 2, 3 }),
+    neighbors = ivec.create({ 0, 1, 1 }),
+    values = fvec.create({ 1.5, 2.5, 3.5 }),
+    n_cols = 2,
+  })
+  X:persist(tmp)
+  local Y = csr.load(tmp)
+  os.remove(tmp)
+  assert(X:eq(Y))
+  local B = csr.from_mask(ivec.create({ 1, 0, 1 }))
+  B:persist(tmp)
+  local B2 = csr.load(tmp)
+  os.remove(tmp)
+  assert(B:eq(B2))
 end)

@@ -10,6 +10,7 @@
 #include <immintrin.h>
 #endif
 #include <santoku/cvec/base.h>
+#include <santoku/iuset.h>
 #include <santoku/ivec.h>
 #include <santoku/dvec.h>
 #include <santoku/rvec.h>
@@ -279,6 +280,138 @@ static inline void tk_cvec_bits_topk (
   }
   tk_rvec_destroy(heap);
 #endif
+}
+
+static inline tk_cvec_t *tk_cvec_bits_select (
+  tk_cvec_t *src_bitmap,
+  tk_ivec_t *selected_features,
+  tk_ivec_t *sample_ids,
+  uint64_t n_features,
+  tk_cvec_t *dest,
+  uint64_t dest_sample,
+  uint64_t dest_stride
+) {
+  if (src_bitmap == NULL)
+    return NULL;
+
+  uint64_t n_samples = src_bitmap->n / TK_CVEC_BITS_BYTES(n_features);
+
+  if (dest == NULL && (selected_features == NULL || selected_features->n == 0) &&
+      (sample_ids == NULL || sample_ids->n == 0))
+    return src_bitmap;
+
+  tk_iuset_t *sample_set = NULL;
+  uint64_t n_output_samples = 0;
+
+  if (sample_ids != NULL && sample_ids->n > 0) {
+    sample_set = tk_iuset_from_ivec(NULL, sample_ids);
+    if (!sample_set)
+      return NULL;
+    n_output_samples = sample_ids->n;
+  } else {
+    n_output_samples = n_samples;
+  }
+
+  uint64_t n_selected_features = (selected_features != NULL && selected_features->n > 0)
+    ? selected_features->n : n_features;
+  uint64_t in_bytes_per_sample = TK_CVEC_BITS_BYTES(n_features);
+  uint64_t out_bytes_per_sample = TK_CVEC_BITS_BYTES(n_selected_features);
+  uint8_t *src_data = (uint8_t *)src_bitmap->a;
+
+  if (dest != NULL) {
+    uint64_t final_stride = (dest_stride > 0) ? dest_stride : n_selected_features;
+    uint64_t final_bytes_per_sample = TK_CVEC_BITS_BYTES(final_stride);
+
+    if (dest_sample == 0) {
+      tk_cvec_ensure(dest, n_output_samples * final_bytes_per_sample);
+      dest->n = n_output_samples * final_bytes_per_sample;
+    } else {
+      tk_cvec_ensure(dest, (dest_sample + n_output_samples) * final_bytes_per_sample);
+      dest->n = (dest_sample + n_output_samples) * final_bytes_per_sample;
+    }
+
+    uint8_t *dest_data = (uint8_t *)dest->a;
+    uint64_t dest_idx = 0;
+
+    for (uint64_t s = 0; s < n_samples; s++) {
+      if (sample_set != NULL && !tk_iuset_contains(sample_set, (int64_t) s))
+        continue;
+
+      uint8_t *temp = calloc(final_bytes_per_sample, 1);
+      if (!temp) {
+        if (sample_set != NULL) tk_iuset_destroy(sample_set);
+        return NULL;
+      }
+
+      uint64_t in_offset = s * in_bytes_per_sample;
+      if (selected_features != NULL && selected_features->n > 0) {
+        for (uint64_t i = 0; i < selected_features->n; i++) {
+          int64_t src_bit = selected_features->a[i];
+          if (src_bit >= 0 && (uint64_t) src_bit < n_features) {
+            uint64_t src_byte = (uint64_t) src_bit / CHAR_BIT;
+            uint8_t src_bit_pos = (uint64_t) src_bit % CHAR_BIT;
+            if (src_data[in_offset + src_byte] & (1u << src_bit_pos)) {
+              uint64_t dst_byte = i / CHAR_BIT;
+              uint8_t dst_bit_pos = i % CHAR_BIT;
+              temp[dst_byte] |= (1u << dst_bit_pos);
+            }
+          }
+        }
+      } else {
+        memcpy(temp, src_data + in_offset, out_bytes_per_sample);
+      }
+
+      uint64_t out_offset = (dest_sample + dest_idx) * final_bytes_per_sample;
+      memcpy(dest_data + out_offset, temp, out_bytes_per_sample);
+      free(temp);
+      dest_idx++;
+    }
+  } else {
+    uint8_t *data = src_data;
+    uint64_t write_sample = 0;
+
+    for (uint64_t s = 0; s < n_samples; s++) {
+      if (sample_set != NULL && !tk_iuset_contains(sample_set, (int64_t) s))
+        continue;
+
+      uint8_t *temp = malloc(out_bytes_per_sample);
+      if (!temp) {
+        if (sample_set != NULL) tk_iuset_destroy(sample_set);
+        return NULL;
+      }
+      memset(temp, 0, out_bytes_per_sample);
+
+      uint64_t in_offset = s * in_bytes_per_sample;
+      if (selected_features != NULL && selected_features->n > 0) {
+        for (uint64_t i = 0; i < selected_features->n; i++) {
+          int64_t src_bit = selected_features->a[i];
+          if (src_bit >= 0 && (uint64_t) src_bit < n_features) {
+            uint64_t src_byte = (uint64_t) src_bit / CHAR_BIT;
+            uint8_t src_bit_pos = (uint64_t) src_bit % CHAR_BIT;
+            if (data[in_offset + src_byte] & (1u << src_bit_pos)) {
+              uint64_t dst_byte = i / CHAR_BIT;
+              uint8_t dst_bit_pos = i % CHAR_BIT;
+              temp[dst_byte] |= (1u << dst_bit_pos);
+            }
+          }
+        }
+      } else {
+        memcpy(temp, data + in_offset, out_bytes_per_sample);
+      }
+
+      uint64_t out_offset = write_sample * out_bytes_per_sample;
+      memcpy(data + out_offset, temp, out_bytes_per_sample);
+      free(temp);
+      write_sample++;
+    }
+
+    src_bitmap->n = n_output_samples * out_bytes_per_sample;
+  }
+
+  if (sample_set != NULL)
+    tk_iuset_destroy(sample_set);
+
+  return dest != NULL ? dest : src_bitmap;
 }
 
 #endif
