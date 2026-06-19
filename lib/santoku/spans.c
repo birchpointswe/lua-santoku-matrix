@@ -89,6 +89,37 @@ static int tk_spans_create_lua (lua_State *L)
 {
   lua_settop(L, 1);
   luaL_checktype(L, 1, LUA_TTABLE);
+  lua_getfield(L, 1, "offsets");
+  if (!lua_isnil(L, -1)) {
+
+
+    tk_ivec_t *off = tk_ivec_peek(L, -1, "offsets");
+    int ioff = lua_gettop(L);
+    lua_newtable(L);
+    int inames = lua_gettop(L);
+    int nc = 0;
+    lua_pushnil(L);
+    while (lua_next(L, 1) != 0) {
+      if (lua_type(L, -2) == LUA_TSTRING && strcmp(lua_tostring(L, -2), "offsets") != 0) {
+        lua_pushvalue(L, -2);
+        lua_rawseti(L, inames, ++ nc);
+      }
+      lua_pop(L, 1);
+    }
+    tk_spans_t *S = tk_spans_alloc(L, inames);
+    int is = lua_gettop(L);
+    S->offsets = off;
+    tk_eph_anchor(L, is, ioff, off);
+    for (uint64_t c = 0; c < S->n_cols; c ++) {
+      lua_getfield(L, 1, S->names[c]);
+      S->cols[c] = tk_ivec_peek(L, -1, S->names[c]);
+      tk_eph_anchor(L, is, lua_gettop(L), S->cols[c]);
+      lua_pop(L, 1);
+    }
+    lua_remove(L, inames);
+    return 1;
+  }
+  lua_pop(L, 1);
   tk_spans_t *S = tk_spans_alloc(L, 1);
   tk_spans_init_children(L, S, lua_gettop(L), 0);
   return 1;

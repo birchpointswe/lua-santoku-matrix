@@ -25,6 +25,21 @@ test("spans: create/push/doc/accessors", function ()
   assert(teq(S:names(), { "s", "e", "ty" }))
 end)
 
+test("spans: wrap existing vecs (zero copy)", function ()
+  local S = spans.create({
+    offsets = ivec.create({ 0, 2, 2, 3 }),
+    s = ivec.create({ 0, 4, 2 }),
+    e = ivec.create({ 3, 7, 5 }),
+    ty = ivec.create({ 1, 2, 1 }),
+  })
+  assert(S:n() == 3)
+  assert(S:n_docs() == 3)
+  assert(teq(S:offsets():table(), { 0, 2, 2, 3 }))
+  assert(teq(S:col("s"):table(), { 0, 4, 2 }))
+  assert(teq(S:col("e"):table(), { 3, 7, 5 }))
+  assert(teq(S:col("ty"):table(), { 1, 2, 1 }))
+end)
+
 test("spans: filter in place", function ()
   local S = build()
   assert(S:filter(ivec.create({ 1, 0, 1 })) == S)
