@@ -1,5 +1,7 @@
 #include <santoku/iuset.h>
 #include <santoku/spans.h>
+#include <santoku/span.h>
+#include <santoku/fvec.h>
 #include <santoku/pvec/base.h>
 #include <string.h>
 #include <stdlib.h>
@@ -15,6 +17,7 @@ static inline void tk_spans_suppress_unused (void)
   (void) ks_heapsort_tk_spans_pairs;
   (void) ks_ksmall_tk_spans_pairs;
   (void) ks_shuffle_tk_spans_pairs;
+  tk_span_iv_suppress();
 }
 
 static inline void tk_spans_free_meta (tk_spans_t *S)
@@ -442,6 +445,135 @@ static int tk_spans_load_lua (lua_State *L)
   return 1;
 }
 
+
+
+
+static int tk_spans_enumerate_subspans_lua (lua_State *L)
+{
+  lua_settop(L, 3);
+  tk_spans_t *S = tk_spans_peek(L, 1, "spans");
+  int64_t max_span = luaL_checkinteger(L, 2);
+  int64_t outer = luaL_checkinteger(L, 3);
+  int64_t cs = tk_spans_colidx(S, "s");
+  int64_t ce = tk_spans_colidx(S, "e");
+  int64_t cty = tk_spans_colidx(S, "ty");
+  if (cs < 0 || ce < 0 || cty < 0)
+    return tk_lua_verror(L, 2, "spans", "enumerate_subspans requires columns \"s\", \"e\", \"ty\"");
+  uint64_t nd = tk_spans_docs(S);
+  lua_createtable(L, 2, 0);
+  int inames = lua_gettop(L);
+  lua_pushstring(L, "s"); lua_rawseti(L, inames, 1);
+  lua_pushstring(L, "e"); lua_rawseti(L, inames, 2);
+  tk_spans_t *O = tk_spans_alloc(L, inames);
+  int io = lua_gettop(L);
+  tk_spans_init_children(L, O, io, 0);
+  int64_t *Ss = S->cols[cs]->a, *Se = S->cols[ce]->a, *Sty = S->cols[cty]->a;
+  for (uint64_t d = 0; d < nd; d ++) {
+    int64_t j = S->offsets->a[d], end = S->offsets->a[d + 1];
+    while (j < end) {
+      if (Sty[j] == outer) { j ++; continue; }
+      int64_t r0 = j;
+      while (j < end && Sty[j] != outer) j ++;
+      int64_t r1 = j;
+      for (int64_t i = r0; i < r1; i ++)
+        for (int64_t len = 1; len <= max_span && i + len <= r1; len ++) {
+          tk_ivec_push(O->cols[0], Ss[i]);
+          tk_ivec_push(O->cols[1], Se[i + len - 1]);
+        }
+    }
+    tk_ivec_push(O->offsets, (int64_t) tk_spans_n(O));
+  }
+  lua_remove(L, inames);
+  return 1;
+}
+
+
+
+
+
+static int tk_spans_nms_dp_lua (lua_State *L)
+{
+  lua_settop(L, 5);
+  tk_spans_t *S = tk_spans_peek(L, 1, "spans");
+  tk_ivec_t *lab = tk_ivec_peek(L, 2, "labels");
+  tk_fvec_t *sco = tk_fvec_peek(L, 3, "scores");
+  int64_t k = luaL_checkinteger(L, 4);
+  int64_t reject = luaL_checkinteger(L, 5);
+  int64_t cs = tk_spans_colidx(S, "s");
+  int64_t ce = tk_spans_colidx(S, "e");
+  if (cs < 0 || ce < 0)
+    return tk_lua_verror(L, 2, "spans", "nms_dp requires columns \"s\" and \"e\"");
+  int64_t n_docs = (int64_t) tk_spans_docs(S);
+  int64_t ncand = (int64_t) tk_spans_n(S);
+  tk_ivec_t *keep = tk_ivec_create(L, (uint64_t) ncand);
+  keep->n = (uint64_t) ncand;
+  tk_ivec_t *cls = tk_ivec_create(L, (uint64_t) ncand);
+  cls->n = (uint64_t) ncand;
+  double *w = (double *) malloc((size_t) ncand * sizeof(double));
+  if (!w) return luaL_error(L, "nms_dp: alloc failed");
+  for (int64_t c = 0; c < ncand; c ++) {
+    keep->a[c] = 0;
+    cls->a[c] = lab->a[c * k];
+    w[c] = (double) sco->a[c * k] - (double) sco->a[c * k + 1];
+  }
+  int64_t maxn = tk_span_max_doc(S->offsets->a, n_docs);
+  if (maxn == 0) { free(w); return 2; }
+  tk_span_iv *iv = (tk_span_iv *) malloc((size_t) maxn * sizeof(tk_span_iv));
+  double *M = (double *) malloc((size_t) (maxn + 1) * sizeof(double));
+  int64_t *P = (int64_t *) malloc((size_t) (maxn + 1) * sizeof(int64_t));
+  if (!iv || !M || !P) { free(w); free(iv); free(M); free(P); return luaL_error(L, "nms_dp: alloc failed"); }
+  tk_span_nms_dp(S->offsets->a, S->cols[cs]->a, S->cols[ce]->a, n_docs, cls->a, w, reject, keep->a, iv, M, P);
+  free(w); free(iv); free(M); free(P);
+  return 2;
+}
+
+
+
+static int tk_spans_union_lua (lua_State *L)
+{
+  lua_settop(L, 3);
+  tk_spans_t *A = tk_spans_peek(L, 1, "spans");
+  tk_spans_t *B = tk_spans_peek(L, 2, "other");
+  tk_spans_t *G = tk_spans_peek(L, 3, "gold");
+  int64_t as = tk_spans_colidx(A, "s"), ae = tk_spans_colidx(A, "e"), at = tk_spans_colidx(A, "ty");
+  int64_t bs = tk_spans_colidx(B, "s"), be = tk_spans_colidx(B, "e"), bt = tk_spans_colidx(B, "ty");
+  int64_t gs = tk_spans_colidx(G, "s"), ge = tk_spans_colidx(G, "e"), gt = tk_spans_colidx(G, "ty");
+  if (as < 0 || ae < 0 || at < 0 || bs < 0 || be < 0 || bt < 0 || gs < 0 || ge < 0 || gt < 0)
+    return tk_lua_verror(L, 2, "spans", "union requires columns \"s\", \"e\", \"ty\"");
+  uint64_t nd = tk_spans_docs(A);
+  lua_createtable(L, 4, 0);
+  int inames = lua_gettop(L);
+  lua_pushstring(L, "s"); lua_rawseti(L, inames, 1);
+  lua_pushstring(L, "e"); lua_rawseti(L, inames, 2);
+  lua_pushstring(L, "ty"); lua_rawseti(L, inames, 3);
+  lua_pushstring(L, "lab"); lua_rawseti(L, inames, 4);
+  tk_spans_t *O = tk_spans_alloc(L, inames);
+  int io = lua_gettop(L);
+  tk_spans_init_children(L, O, io, 0);
+  tk_ivec_t *Os = O->cols[0], *Oe = O->cols[1], *Ot = O->cols[2], *Ol = O->cols[3];
+  for (uint64_t d = 0; d < nd; d ++) {
+    int64_t doc_start = (int64_t) Os->n;
+    for (int pass = 0; pass < 2; pass ++) {
+      tk_spans_t *P = pass ? B : A;
+      int64_t ps = pass ? bs : as, pe = pass ? be : ae, pt = pass ? bt : at;
+      for (int64_t j = P->offsets->a[d]; j < P->offsets->a[d + 1]; j ++) {
+        int64_t sj = P->cols[ps]->a[j], ej = P->cols[pe]->a[j], tj = P->cols[pt]->a[j];
+        int dup = 0;
+        for (int64_t kk = doc_start; kk < (int64_t) Os->n; kk ++)
+          if (Os->a[kk] == sj && Oe->a[kk] == ej && Ot->a[kk] == tj) { dup = 1; break; }
+        if (dup) continue;
+        int64_t lab = 0;
+        for (int64_t g = G->offsets->a[d]; g < G->offsets->a[d + 1]; g ++)
+          if (G->cols[gs]->a[g] == sj && G->cols[ge]->a[g] == ej && G->cols[gt]->a[g] == tj) { lab = 1; break; }
+        tk_ivec_push(Os, sj); tk_ivec_push(Oe, ej); tk_ivec_push(Ot, tj); tk_ivec_push(Ol, lab);
+      }
+    }
+    tk_ivec_push(O->offsets, (int64_t) tk_spans_n(O));
+  }
+  lua_remove(L, inames);
+  return 1;
+}
+
 static luaL_Reg tk_spans_mt_fns[] = {
   { "push", tk_spans_push_lua },
   { "doc", tk_spans_doc_lua },
@@ -456,6 +588,9 @@ static luaL_Reg tk_spans_mt_fns[] = {
   { "sort", tk_spans_sort_lua },
   { "eq", tk_spans_eq_lua },
   { "surfaces", tk_spans_surfaces_lua },
+  { "enumerate_subspans", tk_spans_enumerate_subspans_lua },
+  { "nms_dp", tk_spans_nms_dp_lua },
+  { "union", tk_spans_union_lua },
   { "persist", tk_spans_persist_lua },
   { NULL, NULL }
 };

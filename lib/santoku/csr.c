@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <limits.h>
+#include <math.h>
 
 #ifndef TK_CVEC_BITS_BYTES
 #define TK_CVEC_BITS_BYTES(n) (((n) + CHAR_BIT - 1) / CHAR_BIT)
@@ -617,6 +618,220 @@ static int tk_csr_sumsq_cols_lua (lua_State *L)
   return 1;
 }
 
+static inline void tk_csr_scale_by_cols (tk_csr_t *X, tk_fvec_t *wf, tk_dvec_t *wd)
+{
+  for (uint64_t i = 0; i < X->neighbors->n; i ++) {
+    double w = wf != NULL ? (double) wf->a[X->neighbors->a[i]] : wd->a[X->neighbors->a[i]];
+    tk_csr_setval1(X, i, tk_csr_val1(X, i) * w);
+  }
+}
+
+static inline double tk_csr_probit (double p)
+{
+  if (p <= 0.0) return -1e10;
+  if (p >= 1.0) return 1e10;
+  static const double a[] = {
+    -3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02,
+     1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00 };
+  static const double b[] = {
+    -5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02,
+     6.680131188771972e+01, -1.328068155288572e+01 };
+  static const double c[] = {
+    -7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00,
+    -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00 };
+  static const double d[] = {
+    7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00,
+    3.754408661907416e+00 };
+  double plow = 0.02425, phigh = 1.0 - plow;
+  double q, r;
+  if (p < plow) {
+    q = sqrt(-2.0 * log(p));
+    return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) /
+           ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1.0);
+  } else if (p <= phigh) {
+    q = p - 0.5;
+    r = q * q;
+    return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q /
+           (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1.0);
+  } else {
+    q = sqrt(-2.0 * log(1.0 - p));
+    return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) /
+            ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1.0);
+  }
+}
+
+#define TK_CSR_BNS_EPS 0.5
+
+static inline double tk_csr_bns_score (double N, double C, double P, double A)
+{
+  if (C <= 0 || C >= N || P <= 0 || P >= N) return 0.0;
+  double tpr = (A + TK_CSR_BNS_EPS) / (P + 2.0 * TK_CSR_BNS_EPS);
+  double fpr = (C - A + TK_CSR_BNS_EPS) / (N - P + 2.0 * TK_CSR_BNS_EPS);
+  return fabs(tk_csr_probit(tpr) - tk_csr_probit(fpr));
+}
+
+
+
+
+static int tk_csr_bns_lua (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_csr_t *X = tk_csr_peek(L, 1, "csr");
+  tk_csr_t *Y = tk_csr_peekopt(L, 2);
+  tk_csr_materialize(L, X, 1);
+  if (Y == NULL) {
+    tk_fvec_t *wf = tk_fvec_peekopt(L, 2);
+    tk_dvec_t *wd = wf == NULL ? tk_dvec_peek(L, 2, "weights") : NULL;
+    uint64_t wn = wf != NULL ? wf->n : wd->n;
+    if (wn < X->n_cols)
+      return tk_lua_verror(L, 2, "csr", "bns: weights shorter than n_cols");
+    tk_csr_scale_by_cols(X, wf, wd);
+    lua_pushvalue(L, 2);
+    return 1;
+  }
+  uint64_t nc = X->n_cols, n_labels = Y->n_cols, n_rows = tk_csr_rows(X);
+  if (Y->offsets->n != X->offsets->n)
+    return tk_lua_verror(L, 2, "csr", "bns: labels row count mismatch");
+  double N = (double) n_rows;
+  uint32_t *doc_freq = (uint32_t *) calloc(nc, sizeof(uint32_t));
+  uint32_t *label_freq = (uint32_t *) calloc(n_labels, sizeof(uint32_t));
+  uint32_t *lbl_off = (uint32_t *) malloc((n_labels + 1) * sizeof(uint32_t));
+  if (!doc_freq || !label_freq || !lbl_off) {
+    free(doc_freq); free(label_freq); free(lbl_off);
+    return tk_lua_verror(L, 2, "csr", "bns: alloc failed");
+  }
+  for (uint64_t j = 0; j < X->neighbors->n; j ++)
+    doc_freq[X->neighbors->a[j]] ++;
+  for (uint64_t d = 0; d < n_rows; d ++)
+    for (int64_t j = Y->offsets->a[d]; j < Y->offsets->a[d + 1]; j ++) {
+      uint64_t b = (uint64_t) Y->neighbors->a[j];
+      if (b < n_labels) label_freq[b] ++;
+    }
+  lbl_off[0] = 0;
+  for (uint64_t b = 0; b < n_labels; b ++)
+    lbl_off[b + 1] = lbl_off[b] + label_freq[b];
+  uint32_t *lbl_docs = (uint32_t *) malloc((uint64_t) lbl_off[n_labels] * sizeof(uint32_t));
+  uint32_t *lbl_pos = (uint32_t *) calloc(n_labels, sizeof(uint32_t));
+  if (!lbl_docs || !lbl_pos) {
+    free(doc_freq); free(label_freq); free(lbl_off); free(lbl_docs); free(lbl_pos);
+    return tk_lua_verror(L, 2, "csr", "bns: alloc failed");
+  }
+  for (uint64_t d = 0; d < n_rows; d ++)
+    for (int64_t j = Y->offsets->a[d]; j < Y->offsets->a[d + 1]; j ++) {
+      uint64_t b = (uint64_t) Y->neighbors->a[j];
+      if (b < n_labels) lbl_docs[lbl_off[b] + lbl_pos[b] ++] = (uint32_t) d;
+    }
+  free(lbl_pos);
+  tk_fvec_t *w = tk_fvec_create(L, nc);
+  w->n = nc;
+  memset(w->a, 0, nc * sizeof(float));
+  float *cooc = (float *) calloc(nc, sizeof(float));
+  int32_t *touched = (int32_t *) malloc(nc * sizeof(int32_t));
+  if (!cooc || !touched) {
+    free(doc_freq); free(label_freq); free(lbl_off); free(lbl_docs); free(cooc); free(touched);
+    return tk_lua_verror(L, 2, "csr", "bns: alloc failed");
+  }
+  for (uint64_t b = 0; b < n_labels; b ++) {
+    double P = (double) label_freq[b];
+    if (P <= 0.0 || P >= N) continue;
+    uint32_t n_touched = 0;
+    for (uint32_t di = lbl_off[b]; di < lbl_off[b + 1]; di ++) {
+      uint32_t dd = lbl_docs[di];
+      for (int64_t j = X->offsets->a[dd]; j < X->offsets->a[dd + 1]; j ++) {
+        int32_t f = (int32_t) X->neighbors->a[j];
+        if (cooc[f] == 0.0f) touched[n_touched ++] = f;
+        cooc[f] += 1.0f;
+      }
+    }
+    for (uint32_t i = 0; i < n_touched; i ++) {
+      int32_t f = touched[i];
+      float sc = (float) tk_csr_bns_score(N, (double) doc_freq[f], P, (double) cooc[f]);
+      if (sc > w->a[f]) w->a[f] = sc;
+      cooc[f] = 0.0f;
+    }
+  }
+  free(cooc); free(touched);
+  free(doc_freq); free(label_freq); free(lbl_off); free(lbl_docs);
+  tk_csr_scale_by_cols(X, w, NULL);
+  return 1;
+}
+
+
+
+
+static int tk_csr_standardize_lua (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_csr_t *X = tk_csr_peek(L, 1, "csr");
+  tk_fvec_t *wf = tk_fvec_peekopt(L, 2);
+  tk_dvec_t *wd = wf == NULL ? tk_dvec_peekopt(L, 2) : NULL;
+  tk_csr_materialize(L, X, 1);
+  if (wf != NULL || wd != NULL) {
+    uint64_t wn = wf != NULL ? wf->n : wd->n;
+    if (wn < X->n_cols)
+      return tk_lua_verror(L, 2, "csr", "standardize: weights shorter than n_cols");
+    tk_csr_scale_by_cols(X, wf, wd);
+    lua_pushvalue(L, 2);
+    return 1;
+  }
+  uint64_t nc = X->n_cols, n_rows = tk_csr_rows(X);
+  double *sum = (double *) calloc(nc, sizeof(double));
+  double *ssq = (double *) calloc(nc, sizeof(double));
+  if (!sum || !ssq) { free(sum); free(ssq); return tk_lua_verror(L, 2, "csr", "standardize: alloc failed"); }
+  for (uint64_t i = 0; i < X->neighbors->n; i ++) {
+    double v = tk_csr_val1(X, i);
+    int64_t c = X->neighbors->a[i];
+    sum[c] += v; ssq[c] += v * v;
+  }
+  tk_fvec_t *w = tk_fvec_create(L, nc);
+  w->n = nc;
+  double n = (double) n_rows;
+  for (uint64_t c = 0; c < nc; c ++) {
+    double mean = n > 0 ? sum[c] / n : 0.0;
+    double var = n > 0 ? ssq[c] / n - mean * mean : 0.0;
+    double sd = sqrt(var > 0.0 ? var : 0.0);
+    w->a[c] = sd > 1e-10 ? (float) (1.0 / sd) : 0.0f;
+  }
+  free(sum); free(ssq);
+  tk_csr_scale_by_cols(X, w, NULL);
+  return 1;
+}
+
+
+
+
+static int tk_csr_idf_lua (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_csr_t *X = tk_csr_peek(L, 1, "csr");
+  tk_fvec_t *wf = tk_fvec_peekopt(L, 2);
+  tk_dvec_t *wd = wf == NULL ? tk_dvec_peekopt(L, 2) : NULL;
+  tk_csr_materialize(L, X, 1);
+  if (wf != NULL || wd != NULL) {
+    uint64_t wn = wf != NULL ? wf->n : wd->n;
+    if (wn < X->n_cols)
+      return tk_lua_verror(L, 2, "csr", "idf: weights shorter than n_cols");
+    tk_csr_scale_by_cols(X, wf, wd);
+    lua_pushvalue(L, 2);
+    return 1;
+  }
+  uint64_t nc = X->n_cols, n_rows = tk_csr_rows(X);
+  uint32_t *df = (uint32_t *) calloc(nc, sizeof(uint32_t));
+  if (!df) return tk_lua_verror(L, 2, "csr", "idf: alloc failed");
+  for (uint64_t i = 0; i < X->neighbors->n; i ++)
+    df[X->neighbors->a[i]] ++;
+  tk_fvec_t *w = tk_fvec_create(L, nc);
+  w->n = nc;
+  double N = (double) n_rows;
+  for (uint64_t c = 0; c < nc; c ++) {
+    double d = (double) df[c];
+    w->a[c] = (float) log((N - d + 0.5) / (d + 0.5));
+  }
+  free(df);
+  tk_csr_scale_by_cols(X, w, NULL);
+  return 1;
+}
+
 static int tk_csr_eq_lua (lua_State *L)
 {
   lua_settop(L, 2);
@@ -714,6 +929,9 @@ static luaL_Reg tk_csr_mt_fns[] = {
   { "normalize", tk_csr_normalize_lua },
   { "scale_cols", tk_csr_scale_cols_lua },
   { "sumsq_cols", tk_csr_sumsq_cols_lua },
+  { "standardize", tk_csr_standardize_lua },
+  { "idf", tk_csr_idf_lua },
+  { "bns", tk_csr_bns_lua },
   { "to_bits", tk_csr_to_bits_lua },
   { "to_dense", tk_csr_to_dense_lua },
   { "eq", tk_csr_eq_lua },

@@ -203,3 +203,63 @@ test("csr: persist/load roundtrip", function ()
   os.remove(tmp)
   assert(B:eq(B2))
 end)
+
+test("csr: standardize fit/apply", function ()
+  local X = csr.create({
+    offsets = ivec.create({ 0, 2, 4 }),
+    neighbors = ivec.create({ 0, 1, 0, 1 }),
+    values = fvec.create({ 2, 10, 4, 10 }),
+    n_cols = 2,
+  })
+  local w = X:standardize()
+  assert(math.abs(w:get(0) - 1) < 1e-5)
+  assert(math.abs(w:get(1) - 0) < 1e-5)
+  assert(teq(X:values():table(), { 2, 0, 4, 0 }))
+  local Y = csr.create({
+    offsets = ivec.create({ 0, 2 }),
+    neighbors = ivec.create({ 0, 1 }),
+    values = fvec.create({ 5, 7 }),
+    n_cols = 2,
+  })
+  assert(Y:standardize(w) == w)
+  assert(teq(Y:values():table(), { 5, 0 }))
+end)
+
+test("csr: bns fit/apply", function ()
+  local X = csr.create({
+    offsets = ivec.create({ 0, 1, 2, 3, 4 }),
+    neighbors = ivec.create({ 0, 0, 1, 1 }),
+    n_cols = 2,
+  })
+  local Y = csr.create({
+    offsets = ivec.create({ 0, 1, 2, 2, 2 }),
+    neighbors = ivec.create({ 0, 0 }),
+    n_cols = 1,
+  })
+  local w = X:bns(Y)
+  assert(#w:table() == 2)
+  assert(w:get(1) == 0)
+  assert(w:get(0) > 1.5)
+  local w0 = w:get(0)
+  assert(X:type() == "f32")
+  assert(teq(X:values():table(), { w0, w0, 0, 0 }))
+  local Z = csr.create({
+    offsets = ivec.create({ 0, 2 }),
+    neighbors = ivec.create({ 0, 1 }),
+    n_cols = 2,
+  })
+  assert(Z:bns(w) == w)
+  assert(teq(Z:values():table(), { w0, 0 }))
+end)
+
+test("csr: idf fit", function ()
+  local X = csr.create({
+    offsets = ivec.create({ 0, 1, 2, 4 }),
+    neighbors = ivec.create({ 0, 0, 0, 1 }),
+    values = fvec.create({ 1, 1, 1, 1 }),
+    n_cols = 2,
+  })
+  local w = X:idf()
+  assert(math.abs(w:get(0) - math.log(0.5 / 3.5)) < 1e-5)
+  assert(math.abs(w:get(1) - math.log(2.5 / 1.5)) < 1e-5)
+end)

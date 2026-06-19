@@ -3,6 +3,7 @@
 
 #include <santoku/shaped.h>
 #include <santoku/ivec.h>
+#include <stdlib.h>
 
 #define TK_SPANS_MT "tk_spans_t"
 
@@ -39,6 +40,38 @@ static inline int64_t tk_spans_colidx (tk_spans_t *S, const char *name)
     if (strcmp(S->names[c], name) == 0)
       return (int64_t) c;
   return -1;
+}
+
+
+
+
+
+static inline tk_spans_t *tk_spans_push (lua_State *L, uint64_t n_cols,
+  const char *const *names, int ioff, tk_ivec_t *offsets,
+  const int *icols, tk_ivec_t *const *cols)
+{
+  tk_spans_t *S = (tk_spans_t *) lua_newuserdata(L, sizeof(tk_spans_t));
+  S->n_cols = n_cols;
+  S->offsets = offsets;
+  S->cols = (tk_ivec_t **) calloc(n_cols, sizeof(tk_ivec_t *));
+  S->names = (char **) calloc(n_cols, sizeof(char *));
+  if (S->cols == NULL || S->names == NULL) {
+    free(S->cols); free(S->names);
+    S->cols = NULL; S->names = NULL;
+    tk_lua_verror(L, 2, "spans", "allocation failed");
+  }
+  for (uint64_t c = 0; c < n_cols; c ++) {
+    S->cols[c] = cols[c];
+    S->names[c] = strdup(names[c]);
+  }
+  luaL_getmetatable(L, TK_SPANS_MT);
+  lua_setmetatable(L, -2);
+  int ix = lua_gettop(L);
+  tk_eph_init(L, ix);
+  tk_eph_anchor(L, ix, ioff, offsets);
+  for (uint64_t c = 0; c < n_cols; c ++)
+    tk_eph_anchor(L, ix, icols[c], cols[c]);
+  return S;
 }
 
 #endif
