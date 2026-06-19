@@ -24,6 +24,19 @@ static inline tk_spans_t *tk_spans_peek (lua_State *L, int i, const char *name)
   return S;
 }
 
+static inline tk_spans_t *tk_spans_peekopt (lua_State *L, int i)
+{
+  if (lua_type(L, i) != LUA_TUSERDATA)
+    return NULL;
+  void *p = lua_touserdata(L, i);
+  if (!lua_getmetatable(L, i))
+    return NULL;
+  luaL_getmetatable(L, TK_SPANS_MT);
+  bool ok = lua_rawequal(L, -1, -2);
+  lua_pop(L, 2);
+  return ok ? (tk_spans_t *) p : NULL;
+}
+
 static inline uint64_t tk_spans_n (tk_spans_t *S)
 {
   return S->n_cols > 0 ? S->cols[0]->n : 0;
