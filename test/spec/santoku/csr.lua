@@ -314,3 +314,42 @@ test("csr: idf fit", function ()
   assert(math.abs(w:get(0) - math.log(0.5 / 3.5)) < 1e-5)
   assert(math.abs(w:get(1) - math.log(2.5 / 1.5)) < 1e-5)
 end)
+
+local function fapprox (got, exp)
+  if #got ~= #exp then return false end
+  for i = 1, #exp do if math.abs(got[i] - exp[i]) > 1e-5 then return false end end
+  return true
+end
+
+test("csr: sort_by_weight + reorder_cols + prefix_meta", function ()
+
+
+  local X = csr.create({
+    offsets = ivec.create({ 0, 3, 5 }),
+    neighbors = ivec.create({ 0, 2, 3, 1, 3 }),
+    values = fvec.create({ 1, 2, 3, 4, 5 }),
+    n_cols = 4,
+  })
+  local w = fvec.create({ 0.1, 0.9, 0.5, 0.7 })
+  local perm = X:sort_by_weight(w)
+  assert(teq(perm:table(), { 1, 3, 2, 0 }))
+
+  assert(teq(X:neighbors():table(), { 1, 2, 3, 0, 1 }))
+  assert(fapprox(X:values():table(), { 3, 2, 1, 4, 5 }))
+  assert(fapprox(w:table(), { 0.9, 0.7, 0.5, 0.1 }))
+
+
+  local Y = csr.create({
+    offsets = ivec.create({ 0, 2, 4 }),
+    neighbors = ivec.create({ 0, 1, 2, 3 }),
+    values = fvec.create({ 1, 1, 1, 1 }),
+    n_cols = 4,
+  })
+  Y:reorder_cols(perm)
+  assert(teq(Y:neighbors():table(), { 0, 3, 1, 2 }))
+
+
+  local ke, rs = X:prefix_meta(2)
+  assert(teq(ke:table(), { 1, 2 }))
+  assert(fapprox(rs:table(), { 1 / 3, 1 / math.sqrt(41) }))
+end)

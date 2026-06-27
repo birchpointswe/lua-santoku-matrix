@@ -1067,6 +1067,44 @@ static int tk_csr_reorder_cols_lua (lua_State *L)
   return 1;
 }
 
+
+
+
+
+static int tk_csr_prefix_meta_lua (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_csr_t *X = tk_csr_peek(L, 1, "csr");
+  int64_t topk = (int64_t) luaL_checkinteger(L, 2);
+  uint64_t n_rows = tk_csr_rows(X);
+  int has_vals = X->tag != TK_TAG_NONE;
+  tk_ivec_t *ke = tk_ivec_create(L, n_rows);
+  int ike = lua_gettop(L);
+  ke->n = n_rows;
+  tk_fvec_t *rs = tk_fvec_create(L, n_rows);
+  int irs = lua_gettop(L);
+  rs->n = n_rows;
+  for (uint64_t i = 0; i < n_rows; i ++) {
+    int64_t lo = X->offsets->a[i], hi = X->offsets->a[i + 1];
+    int64_t a = lo, b = hi;
+    while (a < b) {
+      int64_t mid = a + (b - a) / 2;
+      if (tk_csr_nbr(X, (uint64_t) mid) < topk) a = mid + 1; else b = mid;
+    }
+    int64_t k = a - lo;
+    ke->a[i] = k;
+    double ss = 0.0;
+    if (has_vals)
+      for (int64_t j = lo; j < lo + k; j ++) { double v = tk_csr_val1(X, (uint64_t) j); ss += v * v; }
+    else
+      ss = (double) k;
+    rs->a[i] = ss > 0.0 ? (float) (1.0 / sqrt(ss)) : 0.0f;
+  }
+  lua_pushvalue(L, ike);
+  lua_pushvalue(L, irs);
+  return 2;
+}
+
 static luaL_Reg tk_csr_mt_fns[] = {
   { "shape", tk_csr_shape_lua },
   { "nnz", tk_csr_nnz_lua },
@@ -1080,6 +1118,7 @@ static luaL_Reg tk_csr_mt_fns[] = {
   { "select", tk_csr_select_lua },
   { "sort_by_weight", tk_csr_sort_by_weight_lua },
   { "reorder_cols", tk_csr_reorder_cols_lua },
+  { "prefix_meta", tk_csr_prefix_meta_lua },
   { "hcat", tk_csr_hcat_lua },
   { "transpose", tk_csr_transpose_lua },
   { "normalize", tk_csr_normalize_lua },
