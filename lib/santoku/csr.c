@@ -3,6 +3,7 @@
 #include <santoku/mtx.h>
 #include <santoku/iumap.h>
 #include <santoku/iumap/ext.h>
+#include <santoku/rvec.h>
 #include <string.h>
 #include <stdlib.h>
 #include <limits.h>
@@ -945,6 +946,127 @@ static int tk_csr_load_lua (lua_State *L)
   return 1;
 }
 
+static uint64_t tk_csr_max_rownnz (tk_csr_t *X)
+{
+  uint64_t n_rows = tk_csr_rows(X), m = 0;
+  for (uint64_t i = 0; i < n_rows; i ++) {
+    uint64_t rn = (uint64_t) (X->offsets->a[i + 1] - X->offsets->a[i]);
+    if (rn > m) m = rn;
+  }
+  return m;
+}
+
+
+
+
+static void tk_csr_apply_col_perm (tk_csr_t *X, const int64_t *new_for_old,
+  tk_rvec_t *scratch, int64_t *tnbr, float *tval)
+{
+  uint64_t n_rows = tk_csr_rows(X), nnz = tk_csr_nbr_n(X);
+  int has_vals = X->tag != TK_TAG_NONE;
+  for (uint64_t j = 0; j < nnz; j ++)
+    tk_csr_setnbr(X, j, new_for_old[tk_csr_nbr(X, j)]);
+  for (uint64_t i = 0; i < n_rows; i ++) {
+    int64_t lo = X->offsets->a[i], hi = X->offsets->a[i + 1];
+    uint64_t rn = (uint64_t) (hi - lo);
+    if (rn <= 1) continue;
+    tk_rvec_clear(scratch);
+    for (int64_t j = lo; j < hi; j ++)
+      tk_rvec_push(scratch, tk_rank(j, (double) tk_csr_nbr(X, (uint64_t) j)));
+    tk_rvec_asc(scratch, 0, scratch->n);
+    for (uint64_t k = 0; k < rn; k ++) {
+      int64_t src = scratch->a[k].i;
+      tnbr[k] = tk_csr_nbr(X, (uint64_t) src);
+      if (has_vals) tval[k] = (float) tk_csr_val1(X, (uint64_t) src);
+    }
+    for (uint64_t k = 0; k < rn; k ++) {
+      tk_csr_setnbr(X, (uint64_t) (lo + (int64_t) k), tnbr[k]);
+      if (has_vals) tk_csr_setval1(X, (uint64_t) (lo + (int64_t) k), (double) tval[k]);
+    }
+  }
+}
+
+
+
+
+
+static int tk_csr_sort_by_weight_lua (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_csr_t *X = tk_csr_peek(L, 1, "csr");
+  tk_fvec_t *wf = tk_fvec_peekopt(L, 2);
+  if (wf == NULL)
+    return tk_lua_verror(L, 2, "csr", "sort_by_weight: expected a weights fvec");
+  tk_csr_materialize(L, X, 1);
+  uint64_t nc = X->n_cols;
+  if (wf->n < nc)
+    return tk_lua_verror(L, 2, "csr", "sort_by_weight: weights shorter than n_cols");
+  tk_rvec_t *R = tk_rvec_create(L, nc);
+  tk_rvec_clear(R);
+  for (uint64_t c = 0; c < nc; c ++)
+    tk_rvec_push(R, tk_rank((int64_t) c, (double) wf->a[c]));
+  tk_rvec_desc(R, 0, R->n);
+  tk_ivec_t *perm = tk_ivec_create(L, nc);
+  int ip = lua_gettop(L);
+  perm->n = nc;
+  int64_t *new_for_old = (int64_t *) malloc((nc ? nc : 1) * sizeof(int64_t));
+  if (!new_for_old)
+    return tk_lua_verror(L, 2, "csr", "sort_by_weight: alloc failed");
+  for (uint64_t r = 0; r < nc; r ++) {
+    int64_t old = R->a[r].i;
+    perm->a[r] = old;
+    new_for_old[old] = (int64_t) r;
+  }
+  uint64_t maxrow = tk_csr_max_rownnz(X);
+  tk_rvec_t *S = tk_rvec_create(L, maxrow);
+  int64_t *tnbr = (int64_t *) malloc((maxrow ? maxrow : 1) * sizeof(int64_t));
+  float *tval = (X->tag != TK_TAG_NONE) ? (float *) malloc((maxrow ? maxrow : 1) * sizeof(float)) : NULL;
+  if (!tnbr || (X->tag != TK_TAG_NONE && !tval)) {
+    free(new_for_old); free(tnbr); free(tval);
+    return tk_lua_verror(L, 2, "csr", "sort_by_weight: alloc failed");
+  }
+  tk_csr_apply_col_perm(X, new_for_old, S, tnbr, tval);
+  free(tnbr); free(tval);
+  float *tmp = (float *) malloc((nc ? nc : 1) * sizeof(float));
+  if (!tmp) { free(new_for_old); return tk_lua_verror(L, 2, "csr", "sort_by_weight: alloc failed"); }
+  for (uint64_t r = 0; r < nc; r ++) tmp[r] = wf->a[perm->a[r]];
+  memcpy(wf->a, tmp, nc * sizeof(float));
+  free(tmp);
+  free(new_for_old);
+  lua_settop(L, ip);
+  return 1;
+}
+
+
+
+
+static int tk_csr_reorder_cols_lua (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_csr_t *X = tk_csr_peek(L, 1, "csr");
+  tk_ivec_t *perm = tk_ivec_peek(L, 2, "perm");
+  tk_csr_materialize(L, X, 1);
+  uint64_t nc = X->n_cols;
+  if ((uint64_t) perm->n < nc)
+    return tk_lua_verror(L, 2, "csr", "reorder_cols: perm shorter than n_cols");
+  int64_t *new_for_old = (int64_t *) malloc((nc ? nc : 1) * sizeof(int64_t));
+  if (!new_for_old)
+    return tk_lua_verror(L, 2, "csr", "reorder_cols: alloc failed");
+  for (uint64_t r = 0; r < nc; r ++) new_for_old[perm->a[r]] = (int64_t) r;
+  uint64_t maxrow = tk_csr_max_rownnz(X);
+  tk_rvec_t *S = tk_rvec_create(L, maxrow);
+  int64_t *tnbr = (int64_t *) malloc((maxrow ? maxrow : 1) * sizeof(int64_t));
+  float *tval = (X->tag != TK_TAG_NONE) ? (float *) malloc((maxrow ? maxrow : 1) * sizeof(float)) : NULL;
+  if (!tnbr || (X->tag != TK_TAG_NONE && !tval)) {
+    free(new_for_old); free(tnbr); free(tval);
+    return tk_lua_verror(L, 2, "csr", "reorder_cols: alloc failed");
+  }
+  tk_csr_apply_col_perm(X, new_for_old, S, tnbr, tval);
+  free(new_for_old); free(tnbr); free(tval);
+  lua_pushvalue(L, 1);
+  return 1;
+}
+
 static luaL_Reg tk_csr_mt_fns[] = {
   { "shape", tk_csr_shape_lua },
   { "nnz", tk_csr_nnz_lua },
@@ -956,6 +1078,8 @@ static luaL_Reg tk_csr_mt_fns[] = {
   { "row", tk_csr_row_lua },
   { "rows", tk_csr_rows_lua },
   { "select", tk_csr_select_lua },
+  { "sort_by_weight", tk_csr_sort_by_weight_lua },
+  { "reorder_cols", tk_csr_reorder_cols_lua },
   { "hcat", tk_csr_hcat_lua },
   { "transpose", tk_csr_transpose_lua },
   { "normalize", tk_csr_normalize_lua },
