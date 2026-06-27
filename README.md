@@ -1,20 +1,20 @@
 # santoku-matrix
 
-The data layer for santoku: typed numeric containers for ML and retrieval work —
-dense matrices (`mtx`), sparse matrices (`csr`), labelled span sets (`spans`), the
+The data layer for santoku: typed numeric containers for ML and retrieval work.
+Dense matrices (`mtx`), sparse matrices (`csr`), labelled span sets (`spans`), the
 typed vectors they're built on, plus disk-backed (mmap) vectors and C-level hash
 maps/sets.
 
-This README is a usage guide, not an API reference. **The tests are the spec** —
+This README is a usage guide, not an API reference. **The tests are the spec**:
 each section points at the test that exercises the full surface. Read those for the
-exhaustive method list; read this for the shape of things and the ergonomics.
+exhaustive method list; read this for how the types are used and the conventions.
 
 ## Conventions (shared across the object types)
 
 These hold for `mtx` / `csr` / `spans` unless noted:
 
 - **Zero-copy wrap.** `create({ data = vec, ... })` / `create({ offsets = vec, ... })`
-  *adopts* the vecs you pass — storage is shared, not copied. Mutating the vec mutates
+  *adopts* the vecs you pass: storage is shared, not copied. Mutating the vec mutates
   the object (and vice versa).
 - **In-place ops return self**, so they chain: `X:normalize()`, `A:hcat(B)`.
 - **fit / apply.** Feature transforms return the parameters they learned; pass those back
@@ -34,7 +34,7 @@ These hold for `mtx` / `csr` / `spans` unless noted:
 
 ---
 
-## `mtx` — dense matrix  ·  `test/spec/santoku/mtx.lua`
+## `mtx`: dense matrix  ·  `test/spec/santoku/mtx.lua`
 
 Row-major dense matrix over a typed vector. Allocate-and-zero, or wrap an existing vec.
 
@@ -57,10 +57,10 @@ Covers: axis reductions (`sums`/`maxs`/`mins`/`maxargs`/`mags`/`argsort`), `tran
 `multiplyv`, `sign`/`median` (→ bit matrices), the `bits` layout (`popcount`/`hamming`/
 `band`/...), `topk`, `from_pairs`, and `to_sparse` (↔ `csr`).
 
-## `csr` — sparse matrix  ·  `test/spec/santoku/csr.lua`
+## `csr`: sparse matrix  ·  `test/spec/santoku/csr.lua`
 
 Rows of `(column, value)` pairs: `offsets` (length `n_rows+1`), `neighbors` (column ids),
-and optional `values` (binary — value 1 — when omitted). This is what tokenizers and
+and optional `values` (binary, value 1, when omitted). This is what tokenizers and
 label sets produce.
 
 ```lua
@@ -88,7 +88,7 @@ Also: `from_classes` / `from_mask` / `from_bits` constructors; `shape`/`nnz`/`ty
 `offsets`/`neighbors`/`values` accessors; `rows`/`select`/`transpose`/`scale_cols`/
 `sumsq_cols`; and the dense/bitmap bridges `to_dense` (→ `mtx`) and `to_bits`.
 
-## `spans` — per-document labelled intervals  ·  `test/spec/santoku/spans.lua`
+## `spans`: per-document labelled intervals  ·  `test/spec/santoku/spans.lua`
 
 Per-document sets of integer-keyed records: `offsets` (per-doc, like csr) plus one or more
 **named integer columns** (e.g. `s`, `e`, `ty`). Columns are addressed by name via `:col`.
@@ -113,9 +113,9 @@ Covers: `filter`/`docs`/`append`/`sort`/`eq`/`surfaces`, and the span algorithms
 `enumerate_subspans`, `nms_dp` (weighted interval scheduling), and `union` (with gold
 labelling). (santoku-learn extends this metatable with NER helpers like `type_labels`.)
 
-## Vectors — `ivec` `dvec` `fvec` `svec` `cvec` `rvec` `pvec`  ·  `test/spec/santoku/matrix.lua`
+## Vectors: `ivec` `dvec` `fvec` `svec` `cvec` `rvec` `pvec`  ·  `test/spec/santoku/matrix.lua`
 
-Typed, growable arrays — the storage under everything above. Element types: `i64` (ivec),
+Typed, growable arrays, the storage under everything above. Element types: `i64` (ivec),
 `f64` (dvec), `f32` (fvec), `i32` (svec), `u8`/bitmap (cvec), and the pair vectors
 `rvec` `{i64,f64}` / `pvec` `{i64,i64}`.
 
@@ -127,7 +127,7 @@ v:dot(other); v:sum()         -- math on ivec/dvec/fvec
 ```
 
 Beyond the core: `cvec` is the raw byte vector (blob/string storage, and the backing store for
-bit-matrices — the bitmap *operations* live on `mtx`, above); `rvec`/`pvec` provide top-k heaps
+bit-matrices, the bitmap *operations* live on `mtx`, above); `rvec`/`pvec` provide top-k heaps
 (`hmin`/`hmax`); `ivec` carries set-similarity (`set_jaccard`/`set_intersect`/`set_union`/...).
 
 ## Disk-backed vectors (mmap)  ·  `test/spec/santoku/mmap.lua`
@@ -142,11 +142,27 @@ local w = fvec.mmap_open(path)        -- reopen
 
 Useful as `out=` storage for big encodes (e.g. writing codes straight to disk).
 
-## Hash maps & sets (C API)
+## Hash maps & sets  ·  `test/spec/santoku/matrix.lua`
 
-`iuset`/`iumap`/`zumap`/`duset`/`cuset`/... are header-only templated hash containers
-(`<santoku/iuset.h>` etc.) used from C extensions — not Lua-facing. See the headers for
-the `tk_*_create`/`put`/`get`/`foreach` surface.
+`iumap`/`iuset`/`zumap`/`dumap`/`duset`/`cuset` are templated hash containers, exposed two
+ways. As Lua modules (`require("santoku.iumap")` etc.) they offer a slot-based, khash-style
+API: `create(n)`, `put(key)` inserts and `get(key)` looks up a key (both return a slot),
+`setval(slot, value)` writes the value at a slot, `each()` iterates, `destroy()` frees. As
+header-only C templates (`<santoku/iumap.h>` etc.) the same containers are available to C
+extensions through the `tk_*_create`/`put`/`get`/`foreach` surface.
+
+```lua
+local iumap = require("santoku.iumap")
+local m = iumap.create(0)
+m:put(10)
+m:setval(m:get(10), 100)               -- get returns the slot for key 10
+m:put(20)
+m:setval(m:get(20), 200)
+for _ in m:each() do ... end
+m:destroy()
+```
+
+Anchor: the `iumap: create and operations` case in `test/spec/santoku/matrix.lua`.
 
 ## License
 

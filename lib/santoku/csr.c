@@ -719,7 +719,8 @@ static int tk_csr_bns_lua (lua_State *L)
   double N = (double) n_rows;
   uint32_t *doc_freq = (uint32_t *) calloc(nc, sizeof(uint32_t));
   uint32_t *label_freq = (uint32_t *) calloc(n_labels, sizeof(uint32_t));
-  uint32_t *lbl_off = (uint32_t *) malloc((n_labels + 1) * sizeof(uint32_t));
+
+  int64_t *lbl_off = (int64_t *) malloc((n_labels + 1) * sizeof(int64_t));
   if (!doc_freq || !label_freq || !lbl_off) {
     free(doc_freq); free(label_freq); free(lbl_off);
     return tk_lua_verror(L, 2, "csr", "bns: alloc failed");
@@ -760,7 +761,7 @@ static int tk_csr_bns_lua (lua_State *L)
     double P = (double) label_freq[b];
     if (P <= 0.0 || P >= N) continue;
     uint32_t n_touched = 0;
-    for (uint32_t di = lbl_off[b]; di < lbl_off[b + 1]; di ++) {
+    for (int64_t di = lbl_off[b]; di < lbl_off[b + 1]; di ++) {
       uint32_t dd = lbl_docs[di];
       for (int64_t j = X->offsets->a[dd]; j < X->offsets->a[dd + 1]; j ++) {
         int32_t f = (int32_t) tk_csr_nbr(X, (uint64_t) j);

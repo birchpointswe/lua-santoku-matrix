@@ -1,18 +1,18 @@
 # Using santoku-matrix
 
-A by-example guide to the data types. The [README](../README.md) is the map; this is the
-cookbook. **The tests are the spec** — every section names the test that covers the rest.
+Worked examples for each data type. See the [README](../README.md) for orientation and the
+type map. **The tests are the spec**: every section names the test that covers the rest.
 
-Recurring idioms (worth internalizing once):
-- **wrap = zero-copy** — `create({ data/offsets = vec })` shares storage with `vec`.
-- **in-place ops return self** — chain them.
-- **fit returns params, apply takes them** — `local w = X:standardize(); Y:standardize(w)`.
-- **`out=` reuse** — pass a destination to avoid allocation in hot loops.
-- **everything persists** — `obj:persist(path)` / `type.load(path)`.
+Recurring idioms:
+- **wrap = zero-copy.** `create({ data/offsets = vec })` shares storage with `vec`.
+- **in-place ops return self.** chain them.
+- **fit returns params, apply takes them.** `local w = X:standardize(); Y:standardize(w)`.
+- **`out=` reuse.** pass a destination to avoid allocation in hot loops.
+- **everything persists.** `obj:persist(path)` / `type.load(path)`.
 
 ---
 
-## csr — sparse rows  ·  `test/spec/santoku/csr.lua`
+## csr: sparse rows  ·  `test/spec/santoku/csr.lua`
 
 Build by wrapping parallel vecs, or row-by-row:
 
@@ -48,7 +48,7 @@ local M = X:to_dense()                                  -- -> mtx ;  mtx:to_spar
 local bits = X:to_bits()                                -- packed bitmap ;  csr.from_bits(bits, n, c)
 ```
 
-## mtx — dense matrix  ·  `test/spec/santoku/mtx.lua`
+## mtx: dense matrix  ·  `test/spec/santoku/mtx.lua`
 
 ```lua
 local mtx, dvec = require("santoku.mtx"), require("santoku.dvec")
@@ -71,7 +71,7 @@ local bits = M:sign()                 -- f-matrix -> sign bitmap (bits-tagged mt
 -- a bits mtx supports :popcount / :hamming / :band / :transpose
 ```
 
-## spans — per-document labelled intervals  ·  `test/spec/santoku/spans.lua`
+## spans: per-document labelled intervals  ·  `test/spec/santoku/spans.lua`
 
 Offsets (per-doc) + named integer columns, addressed by name:
 
@@ -98,7 +98,7 @@ local U    = A:union(B, gold)                           -- merge + label against
 local ids, surfs = S:surfaces(texts, lowercase)        -- intern surface strings
 ```
 
-## vectors — `ivec dvec fvec svec cvec rvec pvec`  ·  `test/spec/santoku/matrix.lua`
+## vectors: `ivec dvec fvec svec cvec rvec pvec`  ·  `test/spec/santoku/matrix.lua`
 
 ```lua
 local ivec = require("santoku.ivec")
@@ -112,7 +112,7 @@ v:dot(other); v:sum()               -- math on ivec/dvec/fvec
 - `rvec` {i64,f64} / `pvec` {i64,i64} = pair vectors with top-k heaps (`hmin`/`hmax`).
 - `ivec` carries set similarity (`set_jaccard`/`set_intersect`/`set_union`/...).
 
-## mmap — disk-backed vectors  ·  `test/spec/santoku/mmap.lua`
+## mmap: disk-backed vectors  ·  `test/spec/santoku/mmap.lua`
 
 For arrays too big for RAM, or to persist large results:
 
@@ -128,7 +128,7 @@ to disk via the `out=` parameter.
 ## Gotchas
 
 - **Aliasing:** because `create` wraps, two objects can share one vec. Mutating one is visible in
-  the other — intentional for `out=`/mmap, surprising if unexpected. Copy the vec if you need
+  the other (intentional for `out=`/mmap, surprising if unexpected). Copy the vec if you need
   independence.
 - **In-place vs new:** `hcat`/`normalize`/`standardize`/`center`/`scale_cols`/`filter`/`sort`/
   `append` mutate and return self; `rows`/`select`/`transpose`/`to_dense`/`topk`/`docs`/`union`/
