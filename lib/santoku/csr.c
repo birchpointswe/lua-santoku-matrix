@@ -990,6 +990,8 @@ static void tk_csr_apply_col_perm (tk_csr_t *X, const int64_t *new_for_old,
 
 
 
+
+
 static int tk_csr_sort_by_weight_lua (lua_State *L)
 {
   lua_settop(L, 2);
@@ -1027,11 +1029,6 @@ static int tk_csr_sort_by_weight_lua (lua_State *L)
   }
   tk_csr_apply_col_perm(X, new_for_old, S, tnbr, tval);
   free(tnbr); free(tval);
-  float *tmp = (float *) malloc((nc ? nc : 1) * sizeof(float));
-  if (!tmp) { free(new_for_old); return tk_lua_verror(L, 2, "csr", "sort_by_weight: alloc failed"); }
-  for (uint64_t r = 0; r < nc; r ++) tmp[r] = wf->a[perm->a[r]];
-  memcpy(wf->a, tmp, nc * sizeof(float));
-  free(tmp);
   free(new_for_old);
   lua_settop(L, ip);
   return 1;

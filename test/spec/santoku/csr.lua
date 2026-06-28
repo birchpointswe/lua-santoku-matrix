@@ -336,7 +336,7 @@ test("csr: sort_by_weight + reorder_cols + prefix_meta", function ()
 
   assert(teq(X:neighbors():table(), { 1, 2, 3, 0, 1 }))
   assert(fapprox(X:values():table(), { 3, 2, 1, 4, 5 }))
-  assert(fapprox(w:table(), { 0.9, 0.7, 0.5, 0.1 }))
+  assert(fapprox(w:table(), { 0.1, 0.9, 0.5, 0.7 }))
 
 
   local Y = csr.create({
