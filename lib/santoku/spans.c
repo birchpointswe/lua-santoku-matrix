@@ -605,8 +605,93 @@ static int tk_spans_union_lua (lua_State *L)
   return 1;
 }
 
+
+
+
+static int tk_spans_span_f1_lua (lua_State *L)
+{
+  lua_settop(L, 3);
+  tk_spans_t *S = tk_spans_peek(L, 1, "spans");
+  tk_ivec_t *acc = tk_ivec_peek(L, 2, "accept");
+  tk_spans_t *G = tk_spans_peek(L, 3, "gold");
+  int64_t cs = tk_spans_colidx(S, "s"), ce = tk_spans_colidx(S, "e"), ct = tk_spans_colidx(S, "ty");
+  int64_t gs = tk_spans_colidx(G, "s"), ge = tk_spans_colidx(G, "e"), gt = tk_spans_colidx(G, "ty");
+  if (cs < 0 || ce < 0 || ct < 0 || gs < 0 || ge < 0 || gt < 0)
+    return tk_lua_verror(L, 2, "spans", "span_f1 requires columns \"s\", \"e\", \"ty\"");
+  uint64_t nd = tk_spans_docs(S);
+  int64_t *Ss = S->cols[cs]->a, *Se = S->cols[ce]->a, *St = S->cols[ct]->a;
+  int64_t *Gs = G->cols[gs]->a, *Ge = G->cols[ge]->a, *Gt = G->cols[gt]->a;
+  int64_t *Co = S->offsets->a, *Go = G->offsets->a, *A = acc->a;
+  int64_t tp = 0, fp = 0, fn = 0;
+  for (uint64_t d = 0; d < nd; d ++) {
+    int64_t c0 = Co[d], c1 = Co[d + 1], g0 = Go[d], g1 = Go[d + 1];
+    for (int64_t ci = c0; ci < c1; ci ++) {
+      if (A[ci] != 1) continue;
+      int dup = 0;
+      for (int64_t cj = c0; cj < ci; cj ++)
+        if (A[cj] == 1 && Ss[cj] == Ss[ci] && Se[cj] == Se[ci] && St[cj] == St[ci]) { dup = 1; break; }
+      if (dup) continue;
+      int matched = 0;
+      for (int64_t g = g0; g < g1; g ++)
+        if (Gs[g] == Ss[ci] && Ge[g] == Se[ci] && Gt[g] == St[ci]) { matched = 1; break; }
+      if (matched) tp ++; else fp ++;
+    }
+    for (int64_t g = g0; g < g1; g ++) {
+      int dupg = 0;
+      for (int64_t gj = g0; gj < g; gj ++)
+        if (Gs[gj] == Gs[g] && Ge[gj] == Ge[g] && Gt[gj] == Gt[g]) { dupg = 1; break; }
+      if (dupg) continue;
+      int found = 0;
+      for (int64_t ci = c0; ci < c1; ci ++)
+        if (A[ci] == 1 && Ss[ci] == Gs[g] && Se[ci] == Ge[g] && St[ci] == Gt[g]) { found = 1; break; }
+      if (!found) fn ++;
+    }
+  }
+  double P = (tp + fp) > 0 ? (double) tp / (double) (tp + fp) : 0.0;
+  double R = (tp + fn) > 0 ? (double) tp / (double) (tp + fn) : 0.0;
+  lua_pushnumber(L, P);
+  lua_pushnumber(L, R);
+  lua_pushnumber(L, (P + R) > 0 ? 2.0 * P * R / (P + R) : 0.0);
+  return 3;
+}
+
+
+static int tk_spans_coverage_lua (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_spans_t *S = tk_spans_peek(L, 1, "spans");
+  tk_spans_t *G = tk_spans_peek(L, 2, "gold");
+  int64_t cs = tk_spans_colidx(S, "s"), ce = tk_spans_colidx(S, "e"), ct = tk_spans_colidx(S, "ty");
+  int64_t gs = tk_spans_colidx(G, "s"), ge = tk_spans_colidx(G, "e"), gt = tk_spans_colidx(G, "ty");
+  if (cs < 0 || ce < 0 || ct < 0 || gs < 0 || ge < 0 || gt < 0)
+    return tk_lua_verror(L, 2, "spans", "coverage requires columns \"s\", \"e\", \"ty\"");
+  uint64_t nd = tk_spans_docs(S);
+  int64_t *Ss = S->cols[cs]->a, *Se = S->cols[ce]->a, *St = S->cols[ct]->a;
+  int64_t *Gs = G->cols[gs]->a, *Ge = G->cols[ge]->a, *Gt = G->cols[gt]->a;
+  int64_t *Co = S->offsets->a, *Go = G->offsets->a;
+  int64_t hit = 0, tot = 0;
+  for (uint64_t d = 0; d < nd; d ++) {
+    int64_t c0 = Co[d], c1 = Co[d + 1], g0 = Go[d], g1 = Go[d + 1];
+    for (int64_t g = g0; g < g1; g ++) {
+      int dupg = 0;
+      for (int64_t gj = g0; gj < g; gj ++)
+        if (Gs[gj] == Gs[g] && Ge[gj] == Ge[g] && Gt[gj] == Gt[g]) { dupg = 1; break; }
+      if (dupg) continue;
+      tot ++;
+      int found = 0;
+      for (int64_t ci = c0; ci < c1; ci ++)
+        if (Ss[ci] == Gs[g] && Se[ci] == Ge[g] && St[ci] == Gt[g]) { found = 1; break; }
+      if (found) hit ++;
+    }
+  }
+  lua_pushnumber(L, tot > 0 ? (double) hit / (double) tot : 0.0);
+  return 1;
+}
+
 static luaL_Reg tk_spans_mt_fns[] = {
   { "push", tk_spans_push_lua },
+  { "span_f1", tk_spans_span_f1_lua },
+  { "coverage", tk_spans_coverage_lua },
   { "doc", tk_spans_doc_lua },
   { "n", tk_spans_n_lua },
   { "n_docs", tk_spans_n_docs_lua },
