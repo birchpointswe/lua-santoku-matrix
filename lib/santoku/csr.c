@@ -641,6 +641,35 @@ static int tk_csr_sumsq_cols_lua (lua_State *L)
   return 1;
 }
 
+static int tk_csr_nnz_cols_lua (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_csr_t *X = tk_csr_peek(L, 1, "csr");
+  tk_ivec_t *bounds = lua_isnil(L, 2) ? NULL : tk_ivec_peek(L, 2, "bounds");
+  uint64_t nn = tk_csr_nbr_n(X);
+  if (bounds == NULL) {
+    tk_ivec_t *out = tk_ivec_create(L, X->n_cols);
+    memset(out->a, 0, X->n_cols * sizeof(int64_t));
+    for (uint64_t i = 0; i < nn; i ++)
+      out->a[tk_csr_nbr(X, i)] += 1;
+    return 1;
+  }
+  uint64_t nb = bounds->n > 0 ? bounds->n - 1 : 0;
+  tk_ivec_t *out = tk_ivec_create(L, nb);
+  memset(out->a, 0, nb * sizeof(int64_t));
+  for (uint64_t i = 0; i < nn; i ++) {
+    int64_t c = tk_csr_nbr(X, i);
+    uint64_t lo = 0, hi = nb;
+    while (lo + 1 < hi) {
+      uint64_t mid = (lo + hi) / 2;
+      if (bounds->a[mid] <= c) lo = mid; else hi = mid;
+    }
+    if (c >= bounds->a[lo] && c < bounds->a[lo + 1])
+      out->a[lo] += 1;
+  }
+  return 1;
+}
+
 static inline void tk_csr_scale_by_cols (tk_csr_t *X, tk_fvec_t *wf, tk_dvec_t *wd)
 {
   uint64_t nn = tk_csr_nbr_n(X);
@@ -1162,6 +1191,7 @@ static luaL_Reg tk_csr_mt_fns[] = {
   { "normalize", tk_csr_normalize_lua },
   { "scale_cols", tk_csr_scale_cols_lua },
   { "sumsq_cols", tk_csr_sumsq_cols_lua },
+  { "nnz_cols", tk_csr_nnz_cols_lua },
   { "standardize", tk_csr_standardize_lua },
   { "idf", tk_csr_idf_lua },
   { "bns", tk_csr_bns_lua },
