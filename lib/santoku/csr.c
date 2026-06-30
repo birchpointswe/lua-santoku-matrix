@@ -1102,6 +1102,47 @@ static int tk_csr_prefix_meta_lua (lua_State *L)
   return 2;
 }
 
+static int tk_csr_i32_lua (lua_State *L)
+{
+  lua_settop(L, 1);
+  tk_csr_t *X = tk_csr_peek(L, 1, "csr");
+  if (X->ntag == TK_TAG_I32) { lua_pushvalue(L, 1); return 1; }
+  uint64_t n_off = X->offsets->n;
+  uint64_t total = tk_csr_nbr_n(X);
+  tk_ivec_t *off = tk_ivec_create(L, n_off);
+  int io = lua_gettop(L);
+  for (uint64_t i = 0; i < n_off; i ++) off->a[i] = X->offsets->a[i];
+  off->n = n_off;
+  void *nbr = tk_csr_new_nbr(L, TK_TAG_I32, total);
+  int in_ = lua_gettop(L);
+  tk_nbr_setn(nbr, TK_TAG_I32, total);
+  const int64_t *nsrc = (const int64_t *) tk_csr_nbr_ptr(X);
+  int32_t *ndst = (int32_t *) tk_nbr_aptr(nbr, TK_TAG_I32);
+  for (uint64_t i = 0; i < total; i ++) {
+    int64_t v = nsrc[i];
+    if (v < 0 || v > (int64_t) INT32_MAX)
+      return tk_lua_verror(L, 2, "csr", "i32: neighbor index exceeds int32 range");
+    ndst[i] = (int32_t) v;
+  }
+  void *vals = NULL;
+  int iv = 0;
+  if (X->tag != TK_TAG_NONE) {
+    vals = tk_csr_new_values(L, X->tag, total);
+    iv = lua_gettop(L);
+    char *vdst;
+    switch (X->tag) {
+      case TK_TAG_I32: vdst = (char *) ((tk_svec_t *) vals)->a; break;
+      case TK_TAG_I64: vdst = (char *) ((tk_ivec_t *) vals)->a; break;
+      case TK_TAG_F32: vdst = (char *) ((tk_fvec_t *) vals)->a; break;
+      case TK_TAG_F64: vdst = (char *) ((tk_dvec_t *) vals)->a; break;
+      default: vdst = ((tk_cvec_t *) vals)->a; break;
+    }
+    memcpy(vdst, tk_csr_val_ptr(X), tk_tag_size(X->tag) * total);
+  }
+  tk_csr_push(L, X->tag, TK_TAG_I32, X->n_cols, io, off, in_, nbr, iv, vals);
+  return 1;
+}
+
 static luaL_Reg tk_csr_mt_fns[] = {
   { "shape", tk_csr_shape_lua },
   { "nnz", tk_csr_nnz_lua },
@@ -1126,6 +1167,7 @@ static luaL_Reg tk_csr_mt_fns[] = {
   { "bns", tk_csr_bns_lua },
   { "to_bits", tk_csr_to_bits_lua },
   { "to_dense", tk_csr_to_dense_lua },
+  { "i32", tk_csr_i32_lua },
   { "eq", tk_csr_eq_lua },
   { "persist", tk_csr_persist_lua },
   { NULL, NULL }
