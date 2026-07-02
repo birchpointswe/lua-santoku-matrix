@@ -2,6 +2,7 @@
 #include <santoku/ivec.h>
 #include <santoku/dvec.h>
 #include <santoku/fvec.h>
+#include <math.h>
 
 
 
@@ -58,6 +59,45 @@ static inline int tk_fvec_ceil_lua (lua_State *L)
   return 1;
 }
 
+
+
+
+
+
+
+static inline int tk_fvec_colscale_lua (lua_State *L)
+{
+  lua_settop(L, 5);
+  tk_fvec_t *w = tk_fvec_peek(L, 1, "fvec");
+  tk_dvec_t *pc = tk_dvec_peek(L, 2, "colsumsq");
+  uint64_t k = tk_lua_checkunsigned(L, 3, "k");
+  double e = luaL_checknumber(L, 4);
+  double floorv = luaL_optnumber(L, 5, 1e-6);
+  if (k > w->n) k = w->n;
+  if (k > pc->n) k = pc->n;
+  tk_fvec_t *cs = tk_fvec_create(L, k);
+  cs->n = k;
+  double logsum = 0.0;
+  #pragma omp parallel for reduction(+:logsum) schedule(static)
+  for (uint64_t r = 0; r < k; r ++) {
+    double wv = (double) w->a[r];
+    if (wv < floorv) wv = floorv;
+    logsum += log(wv);
+  }
+  double g = k > 0 ? exp(logsum / (double) k) : 1.0;
+  double wssq = 0.0;
+  #pragma omp parallel for reduction(+:wssq) schedule(static)
+  for (uint64_t r = 0; r < k; r ++) {
+    double wv = (double) w->a[r];
+    if (wv < floorv) wv = floorv;
+    double m = pow(wv / g, e);
+    cs->a[r] = (float) m;
+    wssq += m * m * pc->a[r];
+  }
+  lua_pushnumber(L, wssq);
+  return 2;
+}
+
 static inline int tk_fvec_to_ivec_lua (lua_State *L)
 {
   lua_settop(L, 1);
@@ -88,6 +128,7 @@ static luaL_Reg tk_fvec_lua_mt_ext2_fns[] =
   { "ceil", tk_fvec_ceil_lua },
   { "to_ivec", tk_fvec_to_ivec_lua },
   { "to_dvec", tk_fvec_to_dvec_lua },
+  { "colscale", tk_fvec_colscale_lua },
   { NULL, NULL }
 };
 
