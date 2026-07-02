@@ -727,8 +727,11 @@ static inline double tk_csr_bns_score (double N, double C, double P, double A)
 
 
 
+
 static int tk_csr_bns_lua (lua_State *L)
 {
+  lua_settop(L, 3);
+  int noscale = lua_toboolean(L, 3);
   lua_settop(L, 2);
   tk_csr_t *X = tk_csr_peek(L, 1, "csr");
   tk_csr_t *Y = tk_csr_peekopt(L, 2);
@@ -808,7 +811,127 @@ static int tk_csr_bns_lua (lua_State *L)
   }
   free(cooc); free(touched);
   free(doc_freq); free(label_freq); free(lbl_off); free(lbl_docs);
-  tk_csr_scale_by_cols(X, w, NULL);
+  if (!noscale)
+    tk_csr_scale_by_cols(X, w, NULL);
+  return 1;
+}
+
+#define TK_CSR_AUC_EPS 1e-4
+
+
+
+
+
+
+
+
+static int tk_csr_auc_lua (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_csr_t *X = tk_csr_peek(L, 1, "csr");
+  tk_csr_t *Y = tk_csr_peek(L, 2, "labels");
+  tk_csr_materialize(L, X, 1);
+  uint64_t nc = X->n_cols, n_labels = Y->n_cols, n_rows = tk_csr_rows(X);
+  if (Y->offsets->n != X->offsets->n)
+    return tk_lua_verror(L, 2, "csr", "auc: labels row count mismatch");
+  double N = (double) n_rows;
+  uint64_t nn = tk_csr_nbr_n(X);
+  int has_vals = X->tag != TK_TAG_NONE;
+  uint32_t *doc_freq = (uint32_t *) calloc(nc ? nc : 1, sizeof(uint32_t));
+  uint32_t *label_freq = (uint32_t *) calloc(n_labels ? n_labels : 1, sizeof(uint32_t));
+  uint64_t *col_off = (uint64_t *) malloc((nc + 1) * sizeof(uint64_t));
+  uint32_t *col_cur = (uint32_t *) calloc(nc ? nc : 1, sizeof(uint32_t));
+  uint32_t *row_of = (uint32_t *) malloc((nn ? nn : 1) * sizeof(uint32_t));
+  float *val_of = (float *) malloc((nn ? nn : 1) * sizeof(float));
+  double *rank_sum = (double *) calloc(n_labels ? n_labels : 1, sizeof(double));
+  uint32_t *cnt = (uint32_t *) calloc(n_labels ? n_labels : 1, sizeof(uint32_t));
+  if (!doc_freq || !label_freq || !col_off || !col_cur || !row_of || !val_of || !rank_sum || !cnt) {
+    free(doc_freq); free(label_freq); free(col_off); free(col_cur);
+    free(row_of); free(val_of); free(rank_sum); free(cnt);
+    return tk_lua_verror(L, 2, "csr", "auc: alloc failed");
+  }
+  for (uint64_t j = 0; j < nn; j ++)
+    doc_freq[tk_csr_nbr(X, j)] ++;
+  col_off[0] = 0;
+  for (uint64_t c = 0; c < nc; c ++)
+    col_off[c + 1] = col_off[c] + doc_freq[c];
+  for (uint64_t d = 0; d < n_rows; d ++)
+    for (int64_t j = X->offsets->a[d]; j < X->offsets->a[d + 1]; j ++) {
+      int64_t c = tk_csr_nbr(X, (uint64_t) j);
+      uint64_t p = col_off[c] + col_cur[c] ++;
+      row_of[p] = (uint32_t) d;
+      val_of[p] = has_vals ? (float) tk_csr_val1(X, (uint64_t) j) : 1.0f;
+    }
+  for (uint64_t d = 0; d < n_rows; d ++)
+    for (int64_t j = Y->offsets->a[d]; j < Y->offsets->a[d + 1]; j ++) {
+      uint64_t b = (uint64_t) tk_csr_nbr(Y, (uint64_t) j);
+      if (b < n_labels) label_freq[b] ++;
+    }
+  tk_fvec_t *w = tk_fvec_create(L, nc);
+  int iw = lua_gettop(L);
+  w->n = nc;
+  memset(w->a, 0, nc * sizeof(float));
+  uint64_t maxcol = 0;
+  for (uint64_t c = 0; c < nc; c ++) if (doc_freq[c] > maxcol) maxcol = doc_freq[c];
+  tk_rvec_t *S = tk_rvec_create(L, maxcol ? maxcol : 1);
+  double *rk = (double *) malloc((maxcol ? maxcol : 1) * sizeof(double));
+  if (!rk) {
+    free(doc_freq); free(label_freq); free(col_off); free(col_cur);
+    free(row_of); free(val_of); free(rank_sum); free(cnt);
+    return tk_lua_verror(L, 2, "csr", "auc: alloc failed");
+  }
+  for (uint64_t c = 0; c < nc; c ++) {
+    uint64_t cn = doc_freq[c];
+    tk_rvec_clear(S);
+    for (uint64_t p = 0; p < cn; p ++)
+      tk_rvec_push(S, tk_rank((int64_t) row_of[col_off[c] + p], (double) val_of[col_off[c] + p]));
+    tk_rvec_asc(S, 0, S->n);
+    uint64_t neg = 0, ez = 0;
+    for (uint64_t p = 0; p < cn; p ++) {
+      if (S->a[p].d < 0.0) neg ++;
+      else if (S->a[p].d == 0.0) ez ++;
+      else break;
+    }
+    uint64_t z = (n_rows - cn) + ez;
+    double midrank_zero = (double) neg + ((double) z + 1.0) / 2.0;
+    uint64_t p = 0;
+    while (p < cn) {
+      double v = S->a[p].d;
+      uint64_t q = p;
+      while (q + 1 < cn && S->a[q + 1].d == v) q ++;
+      double mr;
+      if (v == 0.0) mr = midrank_zero;
+      else if (v < 0.0) mr = ((double) (p + 1) + (double) (q + 1)) / 2.0;
+      else mr = ((double) (p + 1 - ez) + (double) z + (double) (q + 1 - ez) + (double) z) / 2.0;
+      for (uint64_t t = p; t <= q; t ++) rk[t] = mr;
+      p = q + 1;
+    }
+    for (uint64_t t = 0; t < cn; t ++) {
+      uint32_t d = (uint32_t) S->a[t].i;
+      for (int64_t j = Y->offsets->a[d]; j < Y->offsets->a[d + 1]; j ++) {
+        uint64_t b = (uint64_t) tk_csr_nbr(Y, (uint64_t) j);
+        if (b < n_labels) { rank_sum[b] += rk[t]; cnt[b] ++; }
+      }
+    }
+    float best = 0.0f;
+    for (uint64_t b = 0; b < n_labels; b ++) {
+      double P = (double) label_freq[b];
+      if (P > 0.0 && P < N) {
+        double rs = rank_sum[b] + (P - (double) cnt[b]) * midrank_zero;
+        double u = rs - P * (P + 1.0) / 2.0;
+        double auc = u / (P * (N - P));
+        auc = (auc + TK_CSR_AUC_EPS) / (1.0 + 2.0 * TK_CSR_AUC_EPS);
+        float sc = (float) (fabs(tk_csr_probit(auc)) * M_SQRT2);
+        if (sc > best) best = sc;
+      }
+      rank_sum[b] = 0.0; cnt[b] = 0;
+    }
+    w->a[c] = best;
+  }
+  free(rk);
+  free(doc_freq); free(label_freq); free(col_off); free(col_cur);
+  free(row_of); free(val_of); free(rank_sum); free(cnt);
+  lua_pushvalue(L, iw);
   return 1;
 }
 
@@ -1203,6 +1326,7 @@ static luaL_Reg tk_csr_mt_fns[] = {
   { "standardize", tk_csr_standardize_lua },
   { "idf", tk_csr_idf_lua },
   { "bns", tk_csr_bns_lua },
+  { "auc", tk_csr_auc_lua },
   { "to_bits", tk_csr_to_bits_lua },
   { "to_dense", tk_csr_to_dense_lua },
   { "i32", tk_csr_i32_lua },
