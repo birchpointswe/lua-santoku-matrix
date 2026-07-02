@@ -1117,6 +1117,7 @@ static int tk_csr_prefix_meta_lua (lua_State *L)
   tk_fvec_t *rs = tk_fvec_create(L, n_rows);
   int irs = lua_gettop(L);
   rs->n = n_rows;
+  #pragma omp parallel for schedule(static)
   for (uint64_t i = 0; i < n_rows; i ++) {
     int64_t lo = X->offsets->a[i], hi = X->offsets->a[i + 1];
     int64_t a = lo, b = hi;
