@@ -1059,8 +1059,15 @@ static int tk_csr_sort_by_weight_lua (lua_State *L)
   tk_csr_apply_col_perm(X, new_for_old, S, tnbr, tval);
   free(tnbr); free(tval);
   free(new_for_old);
-  lua_settop(L, ip);
-  return 1;
+
+
+  tk_fvec_t *sorted = tk_fvec_create(L, nc);
+  sorted->n = nc;
+  for (uint64_t r = 0; r < nc; r ++) sorted->a[r] = (float) R->a[r].d;
+  int isorted = lua_gettop(L);
+  lua_pushvalue(L, ip);
+  lua_pushvalue(L, isorted);
+  return 2;
 }
 
 

@@ -1181,6 +1181,22 @@ static inline int tk_vec_pfx(max_lua) (lua_State *L)
   return 2;
 }
 
+
+static inline int tk_vec_pfx(cumsum_lua) (lua_State *L)
+{
+  lua_settop(L, 1);
+  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
+  tk_vec_pfx(t) *out = tk_vec_pfx(create)(L, m0->n + 1);
+  out->n = m0->n + 1;
+  tk_vec_base acc = 0;
+  out->a[0] = 0;
+  for (uint64_t i = 0; i < m0->n; i ++) {
+    acc += m0->a[i];
+    out->a[i + 1] = acc;
+  }
+  return 1;
+}
+
 static inline int tk_vec_pfx(rmaxs_lua) (lua_State *L) {
   lua_settop(L, 2);
   tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
@@ -1334,6 +1350,7 @@ static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
   { "sum", tk_vec_pfx(sum_lua) },
   { "max", tk_vec_pfx(max_lua) },
   { "min", tk_vec_pfx(min_lua) },
+  { "cumsum", tk_vec_pfx(cumsum_lua) },
   { "fill", tk_vec_pfx(fill_lua) },
   { "fill_indices", tk_vec_pfx(fill_indices_lua) },
 #endif
