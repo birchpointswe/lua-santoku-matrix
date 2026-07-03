@@ -616,9 +616,13 @@ static int tk_csr_sumsq_cols_lua (lua_State *L)
   if (bounds == NULL) {
     tk_dvec_t *out = tk_dvec_create(L, X->n_cols);
     memset(out->a, 0, X->n_cols * sizeof(double));
+    #pragma omp parallel for schedule(static)
     for (uint64_t i = 0; i < nn; i ++) {
       double v = X->tag == TK_TAG_NONE ? 1.0 : tk_csr_val1(X, i);
-      out->a[tk_csr_nbr(X, i)] += v * v;
+      double vv = v * v;
+      int64_t c = tk_csr_nbr(X, i);
+      #pragma omp atomic
+      out->a[c] += vv;
     }
     return 1;
   }
@@ -650,8 +654,12 @@ static int tk_csr_nnz_cols_lua (lua_State *L)
   if (bounds == NULL) {
     tk_ivec_t *out = tk_ivec_create(L, X->n_cols);
     memset(out->a, 0, X->n_cols * sizeof(int64_t));
-    for (uint64_t i = 0; i < nn; i ++)
-      out->a[tk_csr_nbr(X, i)] += 1;
+    #pragma omp parallel for schedule(static)
+    for (uint64_t i = 0; i < nn; i ++) {
+      int64_t c = tk_csr_nbr(X, i);
+      #pragma omp atomic
+      out->a[c] += 1;
+    }
     return 1;
   }
   uint64_t nb = bounds->n > 0 ? bounds->n - 1 : 0;
@@ -1235,31 +1243,50 @@ static uint64_t tk_csr_max_rownnz (tk_csr_t *X)
 
 
 
-static void tk_csr_apply_col_perm (tk_csr_t *X, const int64_t *new_for_old,
-  tk_rvec_t *scratch, int64_t *tnbr, float *tval)
+
+static int tk_csr_apply_col_perm (tk_csr_t *X, const int64_t *new_for_old)
 {
   uint64_t n_rows = tk_csr_rows(X), nnz = tk_csr_nbr_n(X);
   int has_vals = X->tag != TK_TAG_NONE;
-  for (uint64_t j = 0; j < nnz; j ++)
-    tk_csr_setnbr(X, j, new_for_old[tk_csr_nbr(X, j)]);
-  for (uint64_t i = 0; i < n_rows; i ++) {
-    int64_t lo = X->offsets->a[i], hi = X->offsets->a[i + 1];
-    uint64_t rn = (uint64_t) (hi - lo);
-    if (rn <= 1) continue;
-    tk_rvec_clear(scratch);
-    for (int64_t j = lo; j < hi; j ++)
-      tk_rvec_push(scratch, tk_rank(j, (double) tk_csr_nbr(X, (uint64_t) j)));
-    tk_rvec_asc(scratch, 0, scratch->n);
-    for (uint64_t k = 0; k < rn; k ++) {
-      int64_t src = scratch->a[k].i;
-      tnbr[k] = tk_csr_nbr(X, (uint64_t) src);
-      if (has_vals) tval[k] = (float) tk_csr_val1(X, (uint64_t) src);
+  uint64_t maxrow = tk_csr_max_rownnz(X);
+  if (maxrow == 0) maxrow = 1;
+  int ok = 1;
+  #pragma omp parallel
+  {
+    tk_rank_t *sr = (tk_rank_t *) malloc(maxrow * sizeof(tk_rank_t));
+    int64_t *tnbr = (int64_t *) malloc(maxrow * sizeof(int64_t));
+    float *tval = has_vals ? (float *) malloc(maxrow * sizeof(float)) : NULL;
+    if (!sr || !tnbr || (has_vals && !tval)) {
+      #pragma omp atomic write
+      ok = 0;
     }
-    for (uint64_t k = 0; k < rn; k ++) {
-      tk_csr_setnbr(X, (uint64_t) (lo + (int64_t) k), tnbr[k]);
-      if (has_vals) tk_csr_setval1(X, (uint64_t) (lo + (int64_t) k), (double) tval[k]);
+    #pragma omp barrier
+    if (ok) {
+      #pragma omp for schedule(static)
+      for (uint64_t j = 0; j < nnz; j ++)
+        tk_csr_setnbr(X, j, new_for_old[tk_csr_nbr(X, j)]);
+      #pragma omp for schedule(dynamic, 64)
+      for (uint64_t i = 0; i < n_rows; i ++) {
+        int64_t lo = X->offsets->a[i], hi = X->offsets->a[i + 1];
+        uint64_t rn = (uint64_t) (hi - lo);
+        if (rn <= 1) continue;
+        for (int64_t j = lo; j < hi; j ++)
+          sr[j - lo] = tk_rank(j, (double) tk_csr_nbr(X, (uint64_t) j));
+        ks_introsort(tk_rvec_asc, rn, sr);
+        for (uint64_t k = 0; k < rn; k ++) {
+          int64_t src = sr[k].i;
+          tnbr[k] = tk_csr_nbr(X, (uint64_t) src);
+          if (has_vals) tval[k] = (float) tk_csr_val1(X, (uint64_t) src);
+        }
+        for (uint64_t k = 0; k < rn; k ++) {
+          tk_csr_setnbr(X, (uint64_t) (lo + (int64_t) k), tnbr[k]);
+          if (has_vals) tk_csr_setval1(X, (uint64_t) (lo + (int64_t) k), (double) tval[k]);
+        }
+      }
     }
+    free(sr); free(tnbr); free(tval);
   }
+  return ok ? 0 : -1;
 }
 
 
@@ -1295,17 +1322,10 @@ static int tk_csr_sort_by_weight_lua (lua_State *L)
     perm->a[r] = old;
     new_for_old[old] = (int64_t) r;
   }
-  uint64_t maxrow = tk_csr_max_rownnz(X);
-  tk_rvec_t *S = tk_rvec_create(L, maxrow);
-  int64_t *tnbr = (int64_t *) malloc((maxrow ? maxrow : 1) * sizeof(int64_t));
-  float *tval = (X->tag != TK_TAG_NONE) ? (float *) malloc((maxrow ? maxrow : 1) * sizeof(float)) : NULL;
-  if (!tnbr || (X->tag != TK_TAG_NONE && !tval)) {
-    free(new_for_old); free(tnbr); free(tval);
-    return tk_lua_verror(L, 2, "csr", "sort_by_weight: alloc failed");
-  }
-  tk_csr_apply_col_perm(X, new_for_old, S, tnbr, tval);
-  free(tnbr); free(tval);
+  int rc = tk_csr_apply_col_perm(X, new_for_old);
   free(new_for_old);
+  if (rc != 0)
+    return tk_lua_verror(L, 2, "csr", "sort_by_weight: alloc failed");
 
 
   tk_fvec_t *sorted = tk_fvec_create(L, nc);
@@ -1333,16 +1353,10 @@ static int tk_csr_reorder_cols_lua (lua_State *L)
   if (!new_for_old)
     return tk_lua_verror(L, 2, "csr", "reorder_cols: alloc failed");
   for (uint64_t r = 0; r < nc; r ++) new_for_old[perm->a[r]] = (int64_t) r;
-  uint64_t maxrow = tk_csr_max_rownnz(X);
-  tk_rvec_t *S = tk_rvec_create(L, maxrow);
-  int64_t *tnbr = (int64_t *) malloc((maxrow ? maxrow : 1) * sizeof(int64_t));
-  float *tval = (X->tag != TK_TAG_NONE) ? (float *) malloc((maxrow ? maxrow : 1) * sizeof(float)) : NULL;
-  if (!tnbr || (X->tag != TK_TAG_NONE && !tval)) {
-    free(new_for_old); free(tnbr); free(tval);
+  int rc = tk_csr_apply_col_perm(X, new_for_old);
+  free(new_for_old);
+  if (rc != 0)
     return tk_lua_verror(L, 2, "csr", "reorder_cols: alloc failed");
-  }
-  tk_csr_apply_col_perm(X, new_for_old, S, tnbr, tval);
-  free(new_for_old); free(tnbr); free(tval);
   lua_pushvalue(L, 1);
   return 1;
 }
