@@ -823,12 +823,136 @@ static int tk_csr_bns_lua (lua_State *L)
 
 
 
+static int tk_csr_auc_spearman (lua_State *L, tk_csr_t *X, tk_dvec_t *Yt)
+{
+  tk_csr_materialize(L, X, 1);
+  uint64_t nc = X->n_cols, n_rows = tk_csr_rows(X);
+  if (Yt->n < n_rows)
+    return tk_lua_verror(L, 2, "csr", "auc: targets shorter than rows");
+  double N = (double) n_rows;
+  uint64_t nn = tk_csr_nbr_n(X);
+  int has_vals = X->tag != TK_TAG_NONE;
+  uint32_t *doc_freq = (uint32_t *) calloc(nc ? nc : 1, sizeof(uint32_t));
+  uint64_t *col_off = (uint64_t *) malloc((nc + 1) * sizeof(uint64_t));
+  uint32_t *col_cur = (uint32_t *) calloc(nc ? nc : 1, sizeof(uint32_t));
+  uint32_t *row_of = (uint32_t *) malloc((nn ? nn : 1) * sizeof(uint32_t));
+  float *val_of = (float *) malloc((nn ? nn : 1) * sizeof(float));
+  double *yrk = (double *) malloc((n_rows ? n_rows : 1) * sizeof(double));
+  if (!doc_freq || !col_off || !col_cur || !row_of || !val_of || !yrk) {
+    free(doc_freq); free(col_off); free(col_cur);
+    free(row_of); free(val_of); free(yrk);
+    return tk_lua_verror(L, 2, "csr", "auc: alloc failed");
+  }
+  for (uint64_t j = 0; j < nn; j ++)
+    doc_freq[tk_csr_nbr(X, j)] ++;
+  col_off[0] = 0;
+  for (uint64_t c = 0; c < nc; c ++)
+    col_off[c + 1] = col_off[c] + doc_freq[c];
+  for (uint64_t d = 0; d < n_rows; d ++)
+    for (int64_t j = X->offsets->a[d]; j < X->offsets->a[d + 1]; j ++) {
+      int64_t c = tk_csr_nbr(X, (uint64_t) j);
+      uint64_t p = col_off[c] + col_cur[c] ++;
+      row_of[p] = (uint32_t) d;
+      val_of[p] = has_vals ? (float) tk_csr_val1(X, (uint64_t) j) : 1.0f;
+    }
+  tk_rvec_t *Sy = tk_rvec_create(L, n_rows ? n_rows : 1);
+  for (uint64_t d = 0; d < n_rows; d ++)
+    tk_rvec_push(Sy, tk_rank((int64_t) d, Yt->a[d]));
+  tk_rvec_asc(Sy, 0, Sy->n);
+  {
+    uint64_t p = 0;
+    while (p < n_rows) {
+      double v = Sy->a[p].d;
+      uint64_t q = p;
+      while (q + 1 < n_rows && Sy->a[q + 1].d == v) q ++;
+      double mr = ((double) (p + 1) + (double) (q + 1)) / 2.0;
+      for (uint64_t t = p; t <= q; t ++) yrk[Sy->a[t].i] = mr;
+      p = q + 1;
+    }
+  }
+  double mean = (N + 1.0) / 2.0;
+  double Sy_sum = N * (N + 1.0) / 2.0;
+  double Syy = 0.0;
+  for (uint64_t d = 0; d < n_rows; d ++) Syy += yrk[d] * yrk[d];
+  double var_y = Syy / N - mean * mean;
+  tk_fvec_t *w = tk_fvec_create(L, nc);
+  int iw = lua_gettop(L);
+  w->n = nc;
+  memset(w->a, 0, nc * sizeof(float));
+  uint64_t maxcol = 0;
+  for (uint64_t c = 0; c < nc; c ++) if (doc_freq[c] > maxcol) maxcol = doc_freq[c];
+  tk_rvec_t *S = tk_rvec_create(L, maxcol ? maxcol : 1);
+  double *rk = (double *) malloc((maxcol ? maxcol : 1) * sizeof(double));
+  if (!rk) {
+    free(doc_freq); free(col_off); free(col_cur);
+    free(row_of); free(val_of); free(yrk);
+    return tk_lua_verror(L, 2, "csr", "auc: alloc failed");
+  }
+  for (uint64_t c = 0; c < nc; c ++) {
+    uint64_t cn = doc_freq[c];
+    tk_rvec_clear(S);
+    for (uint64_t p = 0; p < cn; p ++)
+      tk_rvec_push(S, tk_rank((int64_t) row_of[col_off[c] + p], (double) val_of[col_off[c] + p]));
+    tk_rvec_asc(S, 0, S->n);
+    uint64_t neg = 0, ez = 0;
+    for (uint64_t p = 0; p < cn; p ++) {
+      if (S->a[p].d < 0.0) neg ++;
+      else if (S->a[p].d == 0.0) ez ++;
+      else break;
+    }
+    uint64_t z = (n_rows - cn) + ez;
+    double midrank_zero = (double) neg + ((double) z + 1.0) / 2.0;
+    uint64_t p = 0;
+    while (p < cn) {
+      double v = S->a[p].d;
+      uint64_t q = p;
+      while (q + 1 < cn && S->a[q + 1].d == v) q ++;
+      double mr;
+      if (v == 0.0) mr = midrank_zero;
+      else if (v < 0.0) mr = ((double) (p + 1) + (double) (q + 1)) / 2.0;
+      else mr = ((double) (p + 1 - ez) + (double) z + (double) (q + 1 - ez) + (double) z) / 2.0;
+      for (uint64_t t = p; t <= q; t ++) rk[t] = mr;
+      p = q + 1;
+    }
+    double sxy = 0.0, sxx = 0.0, sy_expl = 0.0;
+    for (uint64_t t = 0; t < cn; t ++) {
+      double yr = yrk[S->a[t].i];
+      sxy += rk[t] * yr;
+      sxx += rk[t] * rk[t];
+      sy_expl += yr;
+    }
+    sxy += midrank_zero * (Sy_sum - sy_expl);
+    sxx += (double) (n_rows - cn) * midrank_zero * midrank_zero;
+    double var_x = sxx / N - mean * mean;
+    if (var_x > 0.0 && var_y > 0.0) {
+      double rho = (sxy / N - mean * mean) / sqrt(var_x * var_y);
+      double auc = (rho + 1.0) / 2.0;
+      auc = (auc + TK_CSR_AUC_EPS) / (1.0 + 2.0 * TK_CSR_AUC_EPS);
+      w->a[c] = (float) (fabs(tk_csr_probit(auc)) * M_SQRT2);
+    }
+  }
+  free(rk);
+  free(doc_freq); free(col_off); free(col_cur);
+  free(row_of); free(val_of); free(yrk);
+  lua_pushvalue(L, iw);
+  return 1;
+}
+
+
+
+
+
+
+
 
 
 static int tk_csr_auc_lua (lua_State *L)
 {
   lua_settop(L, 2);
   tk_csr_t *X = tk_csr_peek(L, 1, "csr");
+  tk_dvec_t *Yt = tk_dvec_peekopt(L, 2);
+  if (Yt != NULL)
+    return tk_csr_auc_spearman(L, X, Yt);
   tk_csr_t *Y = tk_csr_peek(L, 2, "labels");
   tk_csr_materialize(L, X, 1);
   uint64_t nc = X->n_cols, n_labels = Y->n_cols, n_rows = tk_csr_rows(X);
