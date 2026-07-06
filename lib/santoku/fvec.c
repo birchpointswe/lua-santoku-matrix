@@ -64,16 +64,14 @@ static inline int tk_fvec_ceil_lua (lua_State *L)
 
 
 
-
 static inline int tk_fvec_colscale_lua (lua_State *L)
 {
-  lua_settop(L, 5);
+  lua_settop(L, 4);
   tk_fvec_t *w = tk_fvec_peek(L, 1, "fvec");
   tk_dvec_t *pc = tk_dvec_peek(L, 2, "colsumsq");
-  uint64_t k = tk_lua_checkunsigned(L, 3, "k");
-  double e = luaL_checknumber(L, 4);
-  double floorv = luaL_optnumber(L, 5, 1e-6);
-  if (k > w->n) k = w->n;
+  double e = luaL_checknumber(L, 3);
+  double floorv = luaL_optnumber(L, 4, 1e-6);
+  uint64_t k = w->n;
   if (k > pc->n) k = pc->n;
   tk_fvec_t *cs = tk_fvec_create(L, k);
   cs->n = k;
