@@ -102,6 +102,10 @@ static inline void tk_vec_pfx(destroy) (tk_vec_pfx(t) *r)
   kv_destroy(*r);
   if (!lua_managed)
     free(r);
+  else {
+    r->a = NULL;
+    r->n = r->m = 0;
+  }
 }
 
 static inline bool tk_vec_pfx(lt) (tk_vec_base a, tk_vec_base b)
@@ -1448,7 +1452,6 @@ static inline tk_vec_pfx(t) *tk_vec_pfx(mmap_create) (lua_State *L, const char *
       close(fd);
       return (tk_vec_pfx(t) *)(intptr_t) tk_vec_err(L, mmap_create, 1, strerror(errno));
     }
-    memset(v->a, 0, map_len);
   } else {
     v->a = NULL;
   }
