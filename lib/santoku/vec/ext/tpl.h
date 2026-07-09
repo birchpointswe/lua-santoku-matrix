@@ -149,6 +149,44 @@ static inline int tk_vec_pfx(cdesc_lua) (lua_State *L)
   return 1;
 }
 
+
+static inline int tk_vec_pfx(argsort_lua) (lua_State *L)
+{
+  lua_settop(L, 1);
+  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
+  if (m0->n == 0) { tk_ivec_create(L, 0); return 1; }
+  tk_vec_pfx(rasc)(L, m0, m0->n);
+  return 1;
+}
+
+
+static inline int tk_vec_pfx(argsort_desc_lua) (lua_State *L)
+{
+  lua_settop(L, 1);
+  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
+  if (m0->n == 0) { tk_ivec_create(L, 0); return 1; }
+  tk_vec_pfx(rdesc)(L, m0, m0->n);
+  return 1;
+}
+
+
+static inline int tk_vec_pfx(quantile_bins_lua) (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
+  int64_t bins = tk_lua_checkinteger(L, 2, "bins");
+  uint64_t n = m0->n;
+  tk_ivec_t *out = tk_ivec_create(L, n);
+  if (n == 0 || bins <= 0)
+    return 1;
+  tk_vec_pfx(rasc)(L, m0, n);
+  tk_ivec_t *order = tk_ivec_peek(L, -1, "order");
+  for (uint64_t r = 0; r < n; r ++)
+    out->a[order->a[r]] = (int64_t) ((double) r * (double) bins / (double) n);
+  lua_pop(L, 1);
+  return 1;
+}
+
 #endif
 
 static inline bool tk_vec_pfx(eq) (tk_vec_pfx(t) *a, tk_vec_pfx(t) *b, uint64_t start, uint64_t end)
@@ -304,6 +342,9 @@ static luaL_Reg tk_vec_pfx(lua_mt_ext_fns)[] =
   { "fill_segments", tk_vec_pfx(fill_segments_lua) },
 #endif
 #ifndef tk_vec_limited
+  { "argsort", tk_vec_pfx(argsort_lua) },
+  { "argsort_desc", tk_vec_pfx(argsort_desc_lua) },
+  { "quantile_bins", tk_vec_pfx(quantile_bins_lua) },
 #endif
   { NULL, NULL }
 };

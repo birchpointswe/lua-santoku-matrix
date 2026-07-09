@@ -399,6 +399,69 @@ static int tk_csr_rows_lua (lua_State *L)
   return 1;
 }
 
+
+static int tk_csr_append_lua (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_csr_t *X = tk_csr_peek(L, 1, "csr");
+  tk_csr_t *B = tk_csr_peek(L, 2, "other");
+  if (X->n_cols != B->n_cols)
+    return tk_lua_verror(L, 2, "csr", "append requires matching n_cols");
+  if (X->ntag != B->ntag)
+    return tk_lua_verror(L, 2, "csr", "append requires matching neighbor type");
+  if (X->tag != B->tag)
+    return tk_lua_verror(L, 2, "csr", "append requires matching value type");
+  uint64_t base = tk_csr_nnz(X);
+  uint64_t nb = tk_csr_nnz(B);
+  size_t nesz = tk_nbr_esz(X->ntag);
+  if (tk_csr_nbr_ensure(X, base + nb) != 0)
+    return tk_lua_verror(L, 2, "csr", "allocation failed");
+  memcpy((char *) tk_csr_nbr_ptr(X) + base * nesz, tk_csr_nbr_ptr(B), nb * nesz);
+  tk_csr_nbr_setn(X, base + nb);
+  if (X->tag != TK_TAG_NONE) {
+    size_t esz = tk_tag_size(X->tag);
+    tk_csr_vals_grow(L, X, base + nb);
+    memcpy((char *) tk_csr_val_ptr(X) + base * esz, tk_csr_val_ptr(B), nb * esz);
+  }
+  uint64_t bd = tk_csr_rows(B);
+  for (uint64_t d = 1; d <= bd; d ++)
+    tk_ivec_push(X->offsets, (int64_t) (base + (uint64_t) B->offsets->a[d]));
+  lua_settop(L, 1);
+  return 1;
+}
+
+
+static int tk_csr_clone_lua (lua_State *L)
+{
+  lua_settop(L, 1);
+  tk_csr_t *X = tk_csr_peek(L, 1, "csr");
+  uint64_t no = X->offsets->n;
+  uint64_t nn = tk_csr_nnz(X);
+  tk_ivec_t *off = tk_ivec_create(L, no);
+  int io = lua_gettop(L);
+  memcpy(off->a, X->offsets->a, no * sizeof(int64_t));
+  void *nbr = tk_csr_new_nbr(L, X->ntag, nn);
+  int in_ = lua_gettop(L);
+  memcpy(tk_nbr_aptr(nbr, X->ntag), tk_csr_nbr_ptr(X), nn * tk_nbr_esz(X->ntag));
+  void *vals = NULL;
+  int iv = 0;
+  if (X->tag != TK_TAG_NONE) {
+    vals = tk_csr_new_values(L, X->tag, nn);
+    iv = lua_gettop(L);
+    char *vdst;
+    switch (X->tag) {
+      case TK_TAG_I32: vdst = (char *) ((tk_svec_t *) vals)->a; break;
+      case TK_TAG_I64: vdst = (char *) ((tk_ivec_t *) vals)->a; break;
+      case TK_TAG_F32: vdst = (char *) ((tk_fvec_t *) vals)->a; break;
+      case TK_TAG_F64: vdst = (char *) ((tk_dvec_t *) vals)->a; break;
+      default: vdst = ((tk_cvec_t *) vals)->a; break;
+    }
+    memcpy(vdst, tk_csr_val_ptr(X), nn * tk_tag_size(X->tag));
+  }
+  tk_csr_push(L, X->tag, X->ntag, X->n_cols, io, off, in_, nbr, iv, vals);
+  return 1;
+}
+
 static int tk_csr_select_lua (lua_State *L)
 {
   lua_settop(L, 2);
@@ -1281,6 +1344,8 @@ static luaL_Reg tk_csr_mt_fns[] = {
   { "push", tk_csr_push_lua },
   { "row", tk_csr_row_lua },
   { "rows", tk_csr_rows_lua },
+  { "append", tk_csr_append_lua },
+  { "clone", tk_csr_clone_lua },
   { "select", tk_csr_select_lua },
   { "hcat", tk_csr_hcat_lua },
   { "transpose", tk_csr_transpose_lua },

@@ -607,6 +607,34 @@ static int tk_spans_union_lua (lua_State *L)
 
 
 
+static int tk_spans_match_labels_lua (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_spans_t *A = tk_spans_peek(L, 1, "spans");
+  tk_spans_t *G = tk_spans_peek(L, 2, "gold");
+  int64_t as = tk_spans_colidx(A, "s"), ae = tk_spans_colidx(A, "e"), at = tk_spans_colidx(A, "ty");
+  int64_t gs = tk_spans_colidx(G, "s"), ge = tk_spans_colidx(G, "e"), gt = tk_spans_colidx(G, "ty");
+  if (as < 0 || ae < 0 || at < 0 || gs < 0 || ge < 0 || gt < 0)
+    return tk_lua_verror(L, 2, "spans", "match_labels requires columns \"s\", \"e\", \"ty\"");
+  uint64_t nd = tk_spans_docs(A);
+  uint64_t na = tk_spans_n(A);
+  tk_ivec_t *out = tk_ivec_create(L, na);
+  for (uint64_t i = 0; i < na; i ++)
+    out->a[i] = 0;
+  for (uint64_t d = 0; d < nd; d ++) {
+    for (int64_t j = A->offsets->a[d]; j < A->offsets->a[d + 1]; j ++) {
+      int64_t sj = A->cols[as]->a[j], ej = A->cols[ae]->a[j], tj = A->cols[at]->a[j];
+      for (int64_t g = G->offsets->a[d]; g < G->offsets->a[d + 1]; g ++)
+        if (G->cols[gs]->a[g] == sj && G->cols[ge]->a[g] == ej && G->cols[gt]->a[g] == tj) {
+          out->a[j] = 1; break;
+        }
+    }
+  }
+  return 1;
+}
+
+
+
 
 static int tk_spans_span_f1_lua (lua_State *L)
 {
@@ -707,6 +735,7 @@ static luaL_Reg tk_spans_mt_fns[] = {
   { "enumerate_subspans", tk_spans_enumerate_subspans_lua },
   { "nms_dp", tk_spans_nms_dp_lua },
   { "union", tk_spans_union_lua },
+  { "match_labels", tk_spans_match_labels_lua },
   { "persist", tk_spans_persist_lua },
   { NULL, NULL }
 };
