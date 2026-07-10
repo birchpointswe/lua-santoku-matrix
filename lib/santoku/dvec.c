@@ -2,6 +2,7 @@
 #include <santoku/ivec.h>
 #include <santoku/fvec.h>
 #include <santoku/dvec.h>
+#include <math.h>
 
 
 
@@ -80,8 +81,85 @@ static inline int tk_dvec_to_fvec_lua (lua_State *L)
 
 
 
+
+
+
+
+
+
+static inline int tk_dvec_group_gauge_lua (lua_State *L)
+{
+  lua_settop(L, 5);
+  tk_dvec_t *pc = tk_dvec_peek(L, 1, "colsumsq");
+  tk_ivec_t *go = tk_ivec_peek(L, 2, "group_offsets");
+  luaL_checktype(L, 3, LUA_TTABLE);
+  double n = luaL_checknumber(L, 4);
+  tk_fvec_t *w = NULL;
+  double floorv = 1e-6;
+  int exps_idx = 0;
+  if (!lua_isnil(L, 5)) {
+    luaL_checktype(L, 5, LUA_TTABLE);
+    lua_getfield(L, 5, "w");
+    if (lua_isnil(L, -1)) lua_pop(L, 1);
+    else w = tk_fvec_peek(L, -1, "w");
+    lua_getfield(L, 5, "floor");
+    if (!lua_isnil(L, -1)) floorv = luaL_checknumber(L, -1);
+    lua_pop(L, 1);
+    lua_getfield(L, 5, "exps");
+    if (lua_isnil(L, -1)) lua_pop(L, 1);
+    else exps_idx = lua_gettop(L);
+  }
+  uint64_t G = go->n > 0 ? go->n - 1 : 0;
+  uint64_t total = G > 0 ? (uint64_t) go->a[G] : 0;
+  if (total > pc->n)
+    return luaL_error(L, "group_gauge: offsets exceed colsumsq length");
+  if (w && w->n < total)
+    return luaL_error(L, "group_gauge: w shorter than columns");
+  tk_fvec_t *out = tk_fvec_create(L, total);
+  out->n = total;
+  for (uint64_t g = 0; g < G; g ++) {
+    int64_t lo = go->a[g], hi = go->a[g + 1];
+    lua_rawgeti(L, 3, (int) g + 1);
+    double sg = lua_type(L, -1) == LUA_TNUMBER ? lua_tonumber(L, -1) : 1.0;
+    lua_pop(L, 1);
+    double eg = 1.0;
+    if (exps_idx) {
+      lua_rawgeti(L, exps_idx, (int) g + 1);
+      if (lua_type(L, -1) == LUA_TNUMBER) eg = lua_tonumber(L, -1);
+      lua_pop(L, 1);
+    }
+    double wssq = 0.0;
+    if (w) {
+      double logsum = 0.0;
+      for (int64_t c = lo; c < hi; c ++) {
+        double wv = (double) w->a[c];
+        if (wv < floorv) wv = floorv;
+        logsum += log(wv);
+      }
+      double geo = hi > lo ? exp(logsum / (double) (hi - lo)) : 1.0;
+      for (int64_t c = lo; c < hi; c ++) {
+        double wv = (double) w->a[c];
+        if (wv < floorv) wv = floorv;
+        double cs = pow(wv / geo, eg);
+        out->a[c] = (float) cs;
+        wssq += cs * cs * pc->a[c];
+      }
+    } else {
+      for (int64_t c = lo; c < hi; c ++) {
+        out->a[c] = 1.0f;
+        wssq += pc->a[c];
+      }
+    }
+    double mult = wssq > 0.0 ? sg * sqrt(n / wssq) : 0.0;
+    for (int64_t c = lo; c < hi; c ++)
+      out->a[c] = (float) ((double) out->a[c] * mult);
+  }
+  return 1;
+}
+
 static luaL_Reg tk_dvec_lua_mt_ext2_fns[] =
 {
+  { "group_gauge", tk_dvec_group_gauge_lua },
   { "round", tk_dvec_round_lua },
   { "trunc", tk_dvec_trunc_lua },
   { "floor", tk_dvec_floor_lua },
