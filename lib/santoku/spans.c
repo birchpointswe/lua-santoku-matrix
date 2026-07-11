@@ -269,13 +269,8 @@ static int tk_spans_append_lua (lua_State *L)
 }
 
 
-static int tk_spans_sort_lua (lua_State *L)
+static void tk_spans_sort_inplace (lua_State *L, tk_spans_t *S, int64_t k)
 {
-  lua_settop(L, 2);
-  tk_spans_t *S = tk_spans_peek(L, 1, "spans");
-  int64_t k = tk_spans_colidx(S, luaL_checkstring(L, 2));
-  if (k < 0)
-    return tk_lua_verror(L, 2, "spans", "no such column");
   uint64_t nd = tk_spans_docs(S);
   uint64_t maxlen = 0;
   for (uint64_t d = 0; d < nd; d ++) {
@@ -283,16 +278,15 @@ static int tk_spans_sort_lua (lua_State *L)
     if (len > maxlen)
       maxlen = len;
   }
-  if (maxlen < 2) {
-    lua_settop(L, 1);
-    return 1;
-  }
+  if (maxlen < 2)
+    return;
   tk_pair_t *pairs = (tk_pair_t *) malloc(maxlen * sizeof(tk_pair_t));
   int64_t *scratch = (int64_t *) malloc(maxlen * sizeof(int64_t));
   if (pairs == NULL || scratch == NULL) {
     free(pairs);
     free(scratch);
-    return tk_lua_verror(L, 2, "spans", "allocation failed");
+    tk_lua_verror(L, 2, "spans", "allocation failed");
+    return;
   }
   for (uint64_t d = 0; d < nd; d ++) {
     int64_t lo = S->offsets->a[d];
@@ -310,6 +304,17 @@ static int tk_spans_sort_lua (lua_State *L)
   }
   free(pairs);
   free(scratch);
+}
+
+
+static int tk_spans_sort_lua (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_spans_t *S = tk_spans_peek(L, 1, "spans");
+  int64_t k = tk_spans_colidx(S, luaL_checkstring(L, 2));
+  if (k < 0)
+    return tk_lua_verror(L, 2, "spans", "no such column");
+  tk_spans_sort_inplace(L, S, k);
   lua_settop(L, 1);
   return 1;
 }
@@ -607,6 +612,81 @@ static int tk_spans_union_lua (lua_State *L)
 
 
 
+
+
+
+static int tk_spans_overlay_lua (lua_State *L)
+{
+  lua_settop(L, 1);
+  luaL_checktype(L, 1, LUA_TTABLE);
+  uint64_t np = lua_objlen(L, 1);
+  if (np == 0)
+    return tk_lua_verror(L, 2, "spans", "overlay requires at least one spans");
+  tk_spans_t **P = (tk_spans_t **) malloc(np * sizeof(tk_spans_t *));
+  int64_t *pc = (int64_t *) malloc(np * 3 * sizeof(int64_t));
+  if (P == NULL || pc == NULL) {
+    free(P);
+    free(pc);
+    return tk_lua_verror(L, 2, "spans", "allocation failed");
+  }
+  uint64_t nd = 0;
+  for (uint64_t p = 0; p < np; p ++) {
+    lua_rawgeti(L, 1, (int) p + 1);
+    P[p] = tk_spans_peek(L, -1, "spans");
+    lua_pop(L, 1);
+    pc[p * 3] = tk_spans_colidx(P[p], "s");
+    pc[p * 3 + 1] = tk_spans_colidx(P[p], "e");
+    pc[p * 3 + 2] = tk_spans_colidx(P[p], "ty");
+    if (pc[p * 3] < 0 || pc[p * 3 + 1] < 0 || pc[p * 3 + 2] < 0) {
+      free(P);
+      free(pc);
+      return tk_lua_verror(L, 2, "spans", "overlay requires columns \"s\", \"e\", \"ty\"");
+    }
+    if (p == 0)
+      nd = tk_spans_docs(P[p]);
+    else if (tk_spans_docs(P[p]) != nd) {
+      free(P);
+      free(pc);
+      return tk_lua_verror(L, 2, "spans", "overlay requires matching doc counts");
+    }
+  }
+  lua_createtable(L, 3, 0);
+  int inames = lua_gettop(L);
+  lua_pushstring(L, "s"); lua_rawseti(L, inames, 1);
+  lua_pushstring(L, "e"); lua_rawseti(L, inames, 2);
+  lua_pushstring(L, "ty"); lua_rawseti(L, inames, 3);
+  tk_spans_t *O = tk_spans_alloc(L, inames);
+  int io = lua_gettop(L);
+  tk_spans_init_children(L, O, io, 0);
+  tk_ivec_t *Os = O->cols[0], *Oe = O->cols[1], *Ot = O->cols[2];
+  for (uint64_t d = 0; d < nd; d ++) {
+    int64_t doc_start = (int64_t) Os->n;
+    for (uint64_t p = 0; p < np; p ++) {
+      tk_spans_t *A = P[p];
+      int64_t *As = A->cols[pc[p * 3]]->a, *Ae = A->cols[pc[p * 3 + 1]]->a, *At = A->cols[pc[p * 3 + 2]]->a;
+      for (int64_t j = A->offsets->a[d]; j < A->offsets->a[d + 1]; j ++) {
+        int64_t sj = As[j], ej = Ae[j];
+        int drop = 0;
+        for (int64_t kk = doc_start; kk < (int64_t) Os->n; kk ++)
+          if (sj < Oe->a[kk] && Os->a[kk] < ej) { drop = 1; break; }
+        if (drop)
+          continue;
+        tk_ivec_push(Os, sj);
+        tk_ivec_push(Oe, ej);
+        tk_ivec_push(Ot, At[j]);
+      }
+    }
+    tk_ivec_push(O->offsets, (int64_t) tk_spans_n(O));
+  }
+  free(P);
+  free(pc);
+  tk_spans_sort_inplace(L, O, 0);
+  lua_remove(L, inames);
+  return 1;
+}
+
+
+
 static int tk_spans_match_labels_lua (lua_State *L)
 {
   lua_settop(L, 2);
@@ -772,6 +852,7 @@ static luaL_Reg tk_spans_mt_fns[] = {
 static luaL_Reg tk_spans_fns[] = {
   { "create", tk_spans_create_lua },
   { "load", tk_spans_load_lua },
+  { "overlay", tk_spans_overlay_lua },
   { NULL, NULL }
 };
 
