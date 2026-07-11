@@ -567,41 +567,41 @@ static int tk_spans_nms_dp_lua (lua_State *L)
 
 static int tk_spans_union_lua (lua_State *L)
 {
-  lua_settop(L, 3);
+  lua_settop(L, 2);
   tk_spans_t *A = tk_spans_peek(L, 1, "spans");
   tk_spans_t *B = tk_spans_peek(L, 2, "other");
-  tk_spans_t *G = tk_spans_peek(L, 3, "gold");
-  int64_t as = tk_spans_colidx(A, "s"), ae = tk_spans_colidx(A, "e"), at = tk_spans_colidx(A, "ty");
-  int64_t bs = tk_spans_colidx(B, "s"), be = tk_spans_colidx(B, "e"), bt = tk_spans_colidx(B, "ty");
-  int64_t gs = tk_spans_colidx(G, "s"), ge = tk_spans_colidx(G, "e"), gt = tk_spans_colidx(G, "ty");
-  if (as < 0 || ae < 0 || at < 0 || bs < 0 || be < 0 || bt < 0 || gs < 0 || ge < 0 || gt < 0)
-    return tk_lua_verror(L, 2, "spans", "union requires columns \"s\", \"e\", \"ty\"");
+  if (A->n_cols != B->n_cols)
+    return tk_lua_verror(L, 2, "spans", "union requires matching columns");
+  for (uint64_t c = 0; c < A->n_cols; c ++)
+    if (strcmp(A->names[c], B->names[c]) != 0)
+      return tk_lua_verror(L, 2, "spans", "union requires matching column names");
+  if (tk_spans_docs(A) != tk_spans_docs(B))
+    return tk_lua_verror(L, 2, "spans", "union requires matching doc counts");
   uint64_t nd = tk_spans_docs(A);
-  lua_createtable(L, 4, 0);
+  uint64_t nc = A->n_cols;
+  lua_createtable(L, (int) nc, 0);
   int inames = lua_gettop(L);
-  lua_pushstring(L, "s"); lua_rawseti(L, inames, 1);
-  lua_pushstring(L, "e"); lua_rawseti(L, inames, 2);
-  lua_pushstring(L, "ty"); lua_rawseti(L, inames, 3);
-  lua_pushstring(L, "lab"); lua_rawseti(L, inames, 4);
+  for (uint64_t c = 0; c < nc; c ++) {
+    lua_pushstring(L, A->names[c]);
+    lua_rawseti(L, inames, (int) c + 1);
+  }
   tk_spans_t *O = tk_spans_alloc(L, inames);
   int io = lua_gettop(L);
   tk_spans_init_children(L, O, io, 0);
-  tk_ivec_t *Os = O->cols[0], *Oe = O->cols[1], *Ot = O->cols[2], *Ol = O->cols[3];
   for (uint64_t d = 0; d < nd; d ++) {
-    int64_t doc_start = (int64_t) Os->n;
+    int64_t doc_start = (int64_t) tk_spans_n(O);
     for (int pass = 0; pass < 2; pass ++) {
       tk_spans_t *P = pass ? B : A;
-      int64_t ps = pass ? bs : as, pe = pass ? be : ae, pt = pass ? bt : at;
       for (int64_t j = P->offsets->a[d]; j < P->offsets->a[d + 1]; j ++) {
-        int64_t sj = P->cols[ps]->a[j], ej = P->cols[pe]->a[j], tj = P->cols[pt]->a[j];
         int dup = 0;
-        for (int64_t kk = doc_start; kk < (int64_t) Os->n; kk ++)
-          if (Os->a[kk] == sj && Oe->a[kk] == ej && Ot->a[kk] == tj) { dup = 1; break; }
+        for (int64_t kk = doc_start; !dup && kk < (int64_t) tk_spans_n(O); kk ++) {
+          dup = 1;
+          for (uint64_t c = 0; c < nc; c ++)
+            if (O->cols[c]->a[kk] != P->cols[c]->a[j]) { dup = 0; break; }
+        }
         if (dup) continue;
-        int64_t lab = 0;
-        for (int64_t g = G->offsets->a[d]; g < G->offsets->a[d + 1]; g ++)
-          if (G->cols[gs]->a[g] == sj && G->cols[ge]->a[g] == ej && G->cols[gt]->a[g] == tj) { lab = 1; break; }
-        tk_ivec_push(Os, sj); tk_ivec_push(Oe, ej); tk_ivec_push(Ot, tj); tk_ivec_push(Ol, lab);
+        for (uint64_t c = 0; c < nc; c ++)
+          tk_ivec_push(O->cols[c], P->cols[c]->a[j]);
       }
     }
     tk_ivec_push(O->offsets, (int64_t) tk_spans_n(O));
