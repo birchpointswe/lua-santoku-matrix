@@ -87,9 +87,13 @@ static inline int tk_dvec_to_fvec_lua (lua_State *L)
 
 
 
+
+
+
+
 static inline int tk_dvec_group_gauge_lua (lua_State *L)
 {
-  lua_settop(L, 5);
+  lua_settop(L, 6);
   tk_dvec_t *pc = tk_dvec_peek(L, 1, "colsumsq");
   tk_ivec_t *go = tk_ivec_peek(L, 2, "group_offsets");
   luaL_checktype(L, 3, LUA_TTABLE);
@@ -109,13 +113,22 @@ static inline int tk_dvec_group_gauge_lua (lua_State *L)
     if (lua_isnil(L, -1)) lua_pop(L, 1);
     else exps_idx = lua_gettop(L);
   }
+  tk_fvec_t *out_arg = lua_isnil(L, 6) ? NULL : tk_fvec_peek(L, 6, "out");
   uint64_t G = go->n > 0 ? go->n - 1 : 0;
   uint64_t total = G > 0 ? (uint64_t) go->a[G] : 0;
   if (total > pc->n)
     return luaL_error(L, "group_gauge: offsets exceed colsumsq length");
   if (w && w->n < total)
     return luaL_error(L, "group_gauge: w shorter than columns");
-  tk_fvec_t *out = tk_fvec_create(L, total);
+  if (out_arg && out_arg->m < total)
+    return luaL_error(L, "group_gauge: out buffer shorter than columns");
+  tk_fvec_t *out;
+  if (out_arg) {
+    out = out_arg;
+    lua_pushvalue(L, 6);
+  } else {
+    out = tk_fvec_create(L, total);
+  }
   out->n = total;
   for (uint64_t g = 0; g < G; g ++) {
     int64_t lo = go->a[g], hi = go->a[g + 1];
