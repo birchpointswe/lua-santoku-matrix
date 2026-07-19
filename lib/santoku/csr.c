@@ -1334,8 +1334,28 @@ static int tk_csr_i32_lua (lua_State *L)
   return 1;
 }
 
+static int tk_csr_clear_lua (lua_State *L)
+{
+  tk_csr_t *X = tk_csr_peek(L, 1, "csr");
+
+
+  if (X->offsets->m >= 1) { X->offsets->a[0] = 0; X->offsets->n = 1; }
+  else X->offsets->n = 0;
+  tk_csr_nbr_setn(X, 0);
+  if (X->values) switch (X->tag) {
+    case TK_TAG_I32: ((tk_svec_t *) X->values)->n = 0; break;
+    case TK_TAG_I64: ((tk_ivec_t *) X->values)->n = 0; break;
+    case TK_TAG_F32: ((tk_fvec_t *) X->values)->n = 0; break;
+    case TK_TAG_F64: ((tk_dvec_t *) X->values)->n = 0; break;
+    case TK_TAG_U8:  ((tk_cvec_t *) X->values)->n = 0; break;
+    default: break;
+  }
+  return 0;
+}
+
 static luaL_Reg tk_csr_mt_fns[] = {
   { "shape", tk_csr_shape_lua },
+  { "clear", tk_csr_clear_lua },
   { "nnz", tk_csr_nnz_lua },
   { "type", tk_csr_type_lua },
   { "offsets", tk_csr_offsets_lua },
