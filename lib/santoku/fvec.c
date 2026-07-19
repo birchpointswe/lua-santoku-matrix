@@ -66,14 +66,23 @@ static inline int tk_fvec_ceil_lua (lua_State *L)
 
 static inline int tk_fvec_colscale_lua (lua_State *L)
 {
-  lua_settop(L, 4);
+  lua_settop(L, 5);
   tk_fvec_t *w = tk_fvec_peek(L, 1, "fvec");
   tk_dvec_t *pc = tk_dvec_peek(L, 2, "colsumsq");
   double e = luaL_checknumber(L, 3);
   double floorv = luaL_optnumber(L, 4, 1e-6);
   uint64_t k = w->n;
   if (k > pc->n) k = pc->n;
-  tk_fvec_t *cs = tk_fvec_create(L, k);
+
+
+  tk_fvec_t *cs;
+  if (lua_isnil(L, 5)) {
+    cs = tk_fvec_create(L, k);
+  } else {
+    cs = tk_fvec_peek(L, 5, "out");
+    tk_fvec_ensure(cs, k);
+    lua_pushvalue(L, 5);
+  }
   cs->n = k;
   double logsum = 0.0;
   #pragma omp parallel for reduction(+:logsum) schedule(static)
