@@ -148,6 +148,14 @@ static inline bool tk_umap_pfx(exist) (tk_umap_pfx(t) *h, uint32_t k)
   return kh_exist(h, k);
 }
 
+static inline uint32_t tk_umap_pfx(checkidx) (lua_State *L, tk_umap_pfx(t) *h, int i)
+{
+  uint32_t b = tk_lua_checkunsigned(L, i, "i");
+  if (b >= tk_umap_pfx(end)(h))
+    tk_lua_verror(L, 2, "umap", "iterator out of range");
+  return b;
+}
+
 static inline bool tk_umap_pfx(contains) (tk_umap_pfx(t) *h, tk_umap_key k)
 {
   uint32_t i = tk_umap_pfx(get)(h, k);
@@ -190,7 +198,6 @@ static inline int tk_umap_pfx(each_lua_iter) (lua_State *L)
   uint32_t i = tk_lua_checkunsigned(L, lua_upvalueindex(2), "idx");
   uint32_t end = tk_umap_pfx(end)(h);
 
-
   while (i < end && !tk_umap_pfx(exist)(h, i)) {
     i++;
   }
@@ -198,10 +205,8 @@ static inline int tk_umap_pfx(each_lua_iter) (lua_State *L)
   if (i >= end)
     return 0;
 
-
   lua_pushinteger(L, (lua_Integer) (i + 1));
   lua_replace(L, lua_upvalueindex(2));
-
 
   tk_umap_pushkey(L, tk_umap_pfx(key)(h, i));
   tk_umap_pushvalue(L, tk_umap_pfx(val)(h, i));
@@ -226,7 +231,6 @@ static inline int tk_umap_pfx(ieach_lua_iter) (lua_State *L)
   uint32_t i = tk_lua_checkunsigned(L, lua_upvalueindex(2), "idx");
   uint32_t end = tk_umap_pfx(end)(h);
 
-
   while (i < end && !tk_umap_pfx(exist)(h, i)) {
     i++;
   }
@@ -234,10 +238,8 @@ static inline int tk_umap_pfx(ieach_lua_iter) (lua_State *L)
   if (i >= end)
     return 0;
 
-
   lua_pushinteger(L, (lua_Integer)(i + 1));
   lua_replace(L, lua_upvalueindex(2));
-
 
   lua_pushinteger(L, (lua_Integer)i);
   return 1;
@@ -263,7 +265,7 @@ static inline int tk_umap_pfx(clear_lua) (lua_State *L)
 static inline int tk_umap_pfx(del_lua) (lua_State *L)
 {
   tk_umap_pfx(t) *h = tk_umap_pfx(peek)(L, 1, "umap");
-  uint32_t i = tk_lua_checkunsigned(L, 2, "i");
+  uint32_t i = tk_umap_pfx(checkidx)(L, h, 2);
   tk_umap_pfx(del)(h, i);
   return 0;
 }
@@ -271,7 +273,7 @@ static inline int tk_umap_pfx(del_lua) (lua_State *L)
 static inline int tk_umap_pfx(exist_lua) (lua_State *L)
 {
   tk_umap_pfx(t) *h = tk_umap_pfx(peek)(L, 1, "umap");
-  uint32_t i = tk_lua_checkunsigned(L, 2, "i");
+  uint32_t i = tk_umap_pfx(checkidx)(L, h, 2);
   lua_pushboolean(L, tk_umap_pfx(exist)(h, i));
   return 1;
 }
@@ -315,7 +317,7 @@ static inline int tk_umap_pfx(contains_lua) (lua_State *L)
 static inline int tk_umap_pfx(setkey_lua) (lua_State *L)
 {
   tk_umap_pfx(t) *h = tk_umap_pfx(peek)(L, 1, "umap");
-  uint32_t i = tk_lua_checkunsigned(L, 2, "i");
+  uint32_t i = tk_umap_pfx(checkidx)(L, h, 2);
   tk_umap_key k = tk_umap_peekkey(L, 3, "key");
   tk_umap_pfx(setkey)(h, i, k);
   return 0;
@@ -326,7 +328,7 @@ static inline int tk_umap_pfx(setkey_lua) (lua_State *L)
 static inline int tk_umap_pfx(setval_lua) (lua_State *L)
 {
   tk_umap_pfx(t) *h = tk_umap_pfx(peek)(L, 1, "umap");
-  uint32_t i = tk_lua_checkunsigned(L, 2, "i");
+  uint32_t i = tk_umap_pfx(checkidx)(L, h, 2);
   tk_umap_value v = tk_umap_peekvalue(L, 3, "value");
   tk_umap_pfx(setval)(h, i, v);
   return 0;
@@ -337,7 +339,7 @@ static inline int tk_umap_pfx(setval_lua) (lua_State *L)
 static inline int tk_umap_pfx(key_lua) (lua_State *L)
 {
   tk_umap_pfx(t) *h = tk_umap_pfx(peek)(L, 1, "umap");
-  uint32_t i = tk_lua_checkunsigned(L, 2, "i");
+  uint32_t i = tk_umap_pfx(checkidx)(L, h, 2);
   tk_umap_key k = tk_umap_pfx(key)(h, i);
   tk_umap_pushkey(L, k);
   return 1;
@@ -348,7 +350,7 @@ static inline int tk_umap_pfx(key_lua) (lua_State *L)
 static inline int tk_umap_pfx(val_lua) (lua_State *L)
 {
   tk_umap_pfx(t) *h = tk_umap_pfx(peek)(L, 1, "umap");
-  uint32_t i = tk_lua_checkunsigned(L, 2, "i");
+  uint32_t i = tk_umap_pfx(checkidx)(L, h, 2);
   tk_umap_value v = tk_umap_pfx(val)(h, i);
   tk_umap_pushvalue(L, v);
   return 1;
@@ -432,7 +434,6 @@ static inline int tk_umap_pfx(shrink_lua) (lua_State *L)
     return tk_lua_verror(L, 2, "shrink", "allocation failed");
   return 0;
 }
-
 
 static luaL_Reg tk_umap_pfx(lua_mt_fns)[] =
 {

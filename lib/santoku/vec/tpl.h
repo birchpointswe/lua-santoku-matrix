@@ -44,7 +44,6 @@ tk_vec_ksort(tk_vec_pfx(desc), tk_vec_base, tk_vec_gt)
 #define tk_vec_introsort(...) ks_introsort(__VA_ARGS__)
 #define tk_vec_ksmall(...) ks_ksmall(__VA_ARGS__)
 
-
 static inline void tk_vec_pfx(transpose) (tk_vec_pfx(t) *m0, tk_vec_pfx(t) *m1, uint64_t cols);
 #ifndef tk_vec_limited
 static inline tk_vec_pfx(t) *tk_vec_pfx(csums) (lua_State *L, tk_vec_pfx(t) *m0, uint64_t cols);
@@ -207,7 +206,6 @@ static inline int tk_vec_pfx(copy) (
     m0->n = m;
   return 0;
 }
-
 
 static inline uint64_t tk_vec_pfx(capacity) (tk_vec_pfx(t) *m0)
 {
@@ -402,15 +400,24 @@ static inline void tk_vec_pfx(shuffle) (tk_vec_pfx(t) *v, uint64_t s, uint64_t e
   }
 }
 
+static inline bool tk_vec_pfx(range) (tk_vec_pfx(t) *v, uint64_t *s, uint64_t *e) {
+  if (*e > v->n) *e = v->n;
+  return *s < *e;
+}
+
 static inline void tk_vec_pfx(asc) (tk_vec_pfx(t) *v, uint64_t s, uint64_t e) {
+  if (!tk_vec_pfx(range)(v, &s, &e)) return;
   tk_vec_introsort(tk_vec_pfx(asc), e - s, v->a + s);
 }
 
 static inline void tk_vec_pfx(desc) (tk_vec_pfx(t) *v, uint64_t s, uint64_t e) {
+  if (!tk_vec_pfx(range)(v, &s, &e)) return;
   tk_vec_introsort(tk_vec_pfx(desc), e - s, v->a + s);
 }
 
 static inline uint64_t tk_vec_pfx(uasc) (tk_vec_pfx(t) *v, uint64_t s, uint64_t e) {
+  if (!tk_vec_pfx(range)(v, &s, &e))
+    return e;
   tk_vec_introsort(tk_vec_pfx(asc), e - s, v->a + s);
   if (e - s == 0)
     return e;
@@ -422,6 +429,8 @@ static inline uint64_t tk_vec_pfx(uasc) (tk_vec_pfx(t) *v, uint64_t s, uint64_t 
 }
 
 static inline uint64_t tk_vec_pfx(udesc) (tk_vec_pfx(t) *v, uint64_t s, uint64_t e) {
+  if (!tk_vec_pfx(range)(v, &s, &e))
+    return e;
   tk_vec_introsort(tk_vec_pfx(desc), e - s, v->a + s);
   if (e - s == 0)
     return e;
@@ -433,10 +442,14 @@ static inline uint64_t tk_vec_pfx(udesc) (tk_vec_pfx(t) *v, uint64_t s, uint64_t
 }
 
 static inline void tk_vec_pfx(kasc) (tk_vec_pfx(t) *v, size_t k, uint64_t s, uint64_t e) {
+  if (!tk_vec_pfx(range)(v, &s, &e)) return;
+  if (k > e - s) k = e - s;
   tk_vec_ksmall(tk_vec_pfx(asc), e - s, v->a + s, k);
 }
 
 static inline void tk_vec_pfx(kdesc) (tk_vec_pfx(t) *v, size_t k, uint64_t s, uint64_t e) {
+  if (!tk_vec_pfx(range)(v, &s, &e)) return;
+  if (k > e - s) k = e - s;
   tk_vec_ksmall(tk_vec_pfx(desc), e - s, v->a + s, k);
 }
 
@@ -821,6 +834,8 @@ static inline int tk_vec_pfx(get_lua) (lua_State *L)
   lua_settop(L, 2);
   tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
   uint64_t i = tk_lua_checkunsigned(L, 2, "idx");
+  if (i >= m0->n)
+    tk_lua_verror(L, 2, "get", "index out of range");
   tk_vec_base x = tk_vec_pfx(get)(m0, i);
   tk_vec_pushbase(L, x);
   return 1;
@@ -1185,7 +1200,6 @@ static inline int tk_vec_pfx(max_lua) (lua_State *L)
   return 2;
 }
 
-
 static inline int tk_vec_pfx(cumsum_lua) (lua_State *L)
 {
   lua_settop(L, 1);
@@ -1526,7 +1540,6 @@ static luaL_Reg tk_vec_pfx(lua_fns)[] =
 
 static inline void tk_vec_pfx(suppress_unused_lua_fns) (void)
   { (void) tk_vec_pfx(lua_fns); }
-
 
 #define TK_GENERATE_SINGLE
 #include <santoku/parallel/tpl.h>

@@ -5,7 +5,7 @@ static inline int tk_pvec_get_lua (lua_State *L) {
   lua_settop(L, 2);
   tk_pvec_t *P = tk_pvec_peek(L, 1, "pvec");
   uint64_t i = tk_lua_checkunsigned(L, 2, "idx");
-  if (i > P->n)
+  if (i >= P->n)
     return 0;
   lua_pushinteger(L, P->a[i].i);
   lua_pushinteger(L, P->a[i].p);
@@ -18,7 +18,8 @@ static inline int tk_pvec_set_lua (lua_State *L) {
   uint64_t i = tk_lua_checkunsigned(L, 2, "idx");
   int64_t a = tk_lua_checkinteger(L, 3, "i");
   int64_t b = tk_lua_checkinteger(L, 4, "p");
-  tk_pvec_ensure(P, i + 1);
+  if (tk_pvec_ensure(P, i + 1) != 0)
+    tk_lua_verror(L, 2, "set", "unable to grow vector");
   P->a[i] = (tk_pair_t) { a, b };
   return 0;
 }
