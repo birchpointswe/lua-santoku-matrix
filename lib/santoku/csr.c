@@ -130,7 +130,6 @@ static int tk_csr_create_lua (lua_State *L)
   return 1;
 }
 
-
 static int tk_csr_from_classes_lua (lua_State *L)
 {
   int t = lua_gettop(L);
@@ -156,7 +155,6 @@ static int tk_csr_from_classes_lua (lua_State *L)
   return 1;
 }
 
-
 static int tk_csr_from_mask_lua (lua_State *L)
 {
   lua_settop(L, 1);
@@ -174,7 +172,6 @@ static int tk_csr_from_mask_lua (lua_State *L)
   tk_csr_push(L, TK_TAG_NONE, TK_TAG_I64, 1, io, off, in_, nbr, 0, NULL);
   return 1;
 }
-
 
 static int tk_csr_from_bits_lua (lua_State *L)
 {
@@ -399,7 +396,6 @@ static int tk_csr_rows_lua (lua_State *L)
   return 1;
 }
 
-
 static int tk_csr_append_lua (lua_State *L)
 {
   lua_settop(L, 2);
@@ -429,7 +425,6 @@ static int tk_csr_append_lua (lua_State *L)
   lua_settop(L, 1);
   return 1;
 }
-
 
 static int tk_csr_clone_lua (lua_State *L)
 {
@@ -515,7 +510,6 @@ static int tk_csr_select_lua (lua_State *L)
   lua_remove(L, imap);
   return 1;
 }
-
 
 static int tk_csr_hcat_lua (lua_State *L)
 {
@@ -611,7 +605,6 @@ static int tk_csr_transpose_lua (lua_State *L)
   tk_csr_push(L, X->tag, TK_TAG_I64, n_rows, io, off, in_, nbr, iv, vals);
   return 1;
 }
-
 
 static inline void tk_csr_materialize (lua_State *L, tk_csr_t *X, int ix)
 {
@@ -795,10 +788,6 @@ static inline double tk_csr_bns_score (double N, double C, double P, double A)
   return fabs(tk_csr_probit(tpr) - tk_csr_probit(fpr));
 }
 
-
-
-
-
 static int tk_csr_bns_lua (lua_State *L)
 {
   lua_settop(L, 3);
@@ -888,11 +877,6 @@ static int tk_csr_bns_lua (lua_State *L)
 }
 
 #define TK_CSR_AUC_EPS 1e-4
-
-
-
-
-
 
 static int tk_csr_auc_spearman (lua_State *L, tk_csr_t *X, tk_dvec_t *Yt)
 {
@@ -1009,14 +993,6 @@ static int tk_csr_auc_spearman (lua_State *L, tk_csr_t *X, tk_dvec_t *Yt)
   return 1;
 }
 
-
-
-
-
-
-
-
-
 static int tk_csr_auc_lua (lua_State *L)
 {
   lua_settop(L, 2);
@@ -1130,9 +1106,6 @@ static int tk_csr_auc_lua (lua_State *L)
   return 1;
 }
 
-
-
-
 static int tk_csr_standardize_lua (lua_State *L)
 {
   lua_settop(L, 2);
@@ -1171,9 +1144,6 @@ static int tk_csr_standardize_lua (lua_State *L)
   tk_csr_scale_by_cols(X, w, NULL);
   return 1;
 }
-
-
-
 
 static int tk_csr_idf_lua (lua_State *L)
 {
@@ -1334,10 +1304,105 @@ static int tk_csr_i32_lua (lua_State *L)
   return 1;
 }
 
+static int tk_csr_fuse_lua (lua_State *L)
+{
+  lua_settop(L, 3);
+  tk_csr_t *A = tk_csr_peek(L, 1, "csr");
+  tk_csr_t *B = tk_csr_peek(L, 2, "other");
+  uint64_t n_rows = tk_csr_rows(A);
+  if (n_rows != tk_csr_rows(B))
+    return tk_lua_verror(L, 2, "csr", "fuse requires matching row counts");
+  if (A->tag == TK_TAG_NONE || B->tag == TK_TAG_NONE)
+    return tk_lua_verror(L, 2, "csr", "fuse requires values on both inputs");
+  double wa = 1.0, wb = 1.0, rrf_k = 60.0;
+  uint64_t topk = 0;
+  bool rrf = false;
+  if (!lua_isnil(L, 3)) {
+    luaL_checktype(L, 3, LUA_TTABLE);
+    lua_getfield(L, 3, "weights");
+    if (!lua_isnil(L, -1)) {
+      if (lua_type(L, -1) != LUA_TTABLE)
+        return tk_lua_verror(L, 3, "csr", "weights", "expected a table of two numbers");
+      lua_rawgeti(L, -1, 1);
+      lua_rawgeti(L, -2, 2);
+      if (lua_type(L, -2) != LUA_TNUMBER || lua_type(L, -1) != LUA_TNUMBER)
+        return tk_lua_verror(L, 3, "csr", "weights", "expected a table of two numbers");
+      wa = lua_tonumber(L, -2);
+      wb = lua_tonumber(L, -1);
+      lua_pop(L, 2);
+    }
+    lua_pop(L, 1);
+    const char *mode = tk_lua_foptstring(L, 3, "csr", "mode", "sum");
+    if (strcmp(mode, "rrf") == 0)
+      rrf = true;
+    else if (strcmp(mode, "sum") != 0)
+      return tk_lua_verror(L, 3, "csr", "mode", "expected sum or rrf");
+    topk = tk_lua_foptunsigned(L, 3, "csr", "k", 0);
+    rrf_k = tk_lua_foptnumber(L, 3, "csr", "rrf_k", 60.0);
+  }
+  uint64_t cap = tk_csr_nnz(A) + tk_csr_nnz(B);
+  tk_iumap_t *acc = tk_iumap_create(L, 0);
+  if (!acc)
+    return tk_lua_verror(L, 2, "csr", "allocation failed");
+  int imap = lua_gettop(L);
+  tk_rvec_t *tmp = tk_rvec_create(L, 0);
+  int itmp = lua_gettop(L);
+  tk_ivec_t *off = tk_ivec_create(L, n_rows + 1);
+  int io = lua_gettop(L);
+  tk_tag_t ntag = A->ntag == TK_TAG_I32 && B->ntag == TK_TAG_I32 ? TK_TAG_I32 : TK_TAG_I64;
+  void *nbr = tk_csr_new_nbr(L, ntag, cap);
+  int in_ = lua_gettop(L);
+  tk_dvec_t *vals = (tk_dvec_t *) tk_csr_new_values(L, TK_TAG_F64, cap);
+  int iv = lua_gettop(L);
+  off->a[0] = 0;
+  uint64_t pos = 0;
+  for (uint64_t r = 0; r < n_rows; r ++) {
+    tk_iumap_clear(acc);
+    tk_rvec_clear(tmp);
+    for (int s = 0; s < 2; s ++) {
+      tk_csr_t *X = s == 0 ? A : B;
+      double w = s == 0 ? wa : wb;
+      int64_t lo = X->offsets->a[r], hi = X->offsets->a[r + 1];
+      for (int64_t j = lo; j < hi; j ++) {
+        int64_t id = tk_csr_nbr(X, (uint64_t) j);
+        double c = rrf
+          ? w / (rrf_k + (double) (j - lo))
+          : w * tk_csr_val1(X, (uint64_t) j);
+        int kha;
+        uint32_t khi = tk_iumap_put(acc, id, &kha);
+        if (kha < 0)
+          return tk_lua_verror(L, 2, "csr", "allocation failed");
+        if (kha) {
+          tk_iumap_setval(acc, khi, (int64_t) tmp->n);
+          if (tk_rvec_push(tmp, tk_rank(id, c)) != 0)
+            return tk_lua_verror(L, 2, "csr", "allocation failed");
+        } else {
+          tmp->a[tk_iumap_val(acc, khi)].d += c;
+        }
+      }
+    }
+    tk_rvec_desc(tmp, 0, tmp->n);
+    uint64_t rn = topk > 0 && topk < tmp->n ? topk : tmp->n;
+    for (uint64_t t = 0; t < rn; t ++) {
+      tk_nbr_set(nbr, ntag, pos, tmp->a[t].i);
+      vals->a[pos] = tmp->a[t].d;
+      pos ++;
+    }
+    off->a[r + 1] = (int64_t) pos;
+  }
+  tk_nbr_setn(nbr, ntag, pos);
+  vals->n = pos;
+  tk_iumap_destroy(acc);
+  uint64_t n_cols = A->n_cols > B->n_cols ? A->n_cols : B->n_cols;
+  tk_csr_push(L, TK_TAG_F64, ntag, n_cols, io, off, in_, nbr, iv, vals);
+  lua_remove(L, itmp);
+  lua_remove(L, imap);
+  return 1;
+}
+
 static int tk_csr_clear_lua (lua_State *L)
 {
   tk_csr_t *X = tk_csr_peek(L, 1, "csr");
-
 
   if (X->offsets->m >= 1) { X->offsets->a[0] = 0; X->offsets->n = 1; }
   else X->offsets->n = 0;
@@ -1390,6 +1455,7 @@ static luaL_Reg tk_csr_module_fns[] = {
   { "from_classes", tk_csr_from_classes_lua },
   { "from_mask", tk_csr_from_mask_lua },
   { "from_bits", tk_csr_from_bits_lua },
+  { "fuse", tk_csr_fuse_lua },
   { "load", tk_csr_load_lua },
   { NULL, NULL }
 };

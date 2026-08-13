@@ -315,3 +315,141 @@ test("csr: idf fit", function ()
   assert(math.abs(w:get(1) - math.log(2.5 / 1.5)) < 1e-5)
 end)
 
+test("csr.fuse: union with weighted sum, sorted descending", function ()
+  local A = csr.create({
+    offsets = ivec.create({ 0, 2 }),
+    neighbors = ivec.create({ 10, 20 }),
+    values = fvec.create({ 0.9, 0.5 }),
+    n_cols = 100,
+  })
+  local B = csr.create({
+    offsets = ivec.create({ 0, 2 }),
+    neighbors = ivec.create({ 20, 30 }),
+    values = fvec.create({ 0.8, 0.4 }),
+    n_cols = 100,
+  })
+  local Y = csr.fuse(A, B)
+  assert(Y:type() == "f64")
+  assert(teq(Y:offsets():table(), { 0, 3 }))
+  assert(teq(Y:neighbors():table(), { 20, 10, 30 }))
+  local v = Y:values()
+  assert(math.abs(v:get(0) - 1.3) < 1e-6)
+  assert(math.abs(v:get(1) - 0.9) < 1e-6)
+  assert(math.abs(v:get(2) - 0.4) < 1e-6)
+  for i = 1, Y:nnz() - 1 do
+    assert(v:get(i - 1) >= v:get(i))
+  end
+end)
+
+test("csr.fuse: weights change ordering", function ()
+  local A = csr.create({
+    offsets = ivec.create({ 0, 2 }),
+    neighbors = ivec.create({ 10, 20 }),
+    values = fvec.create({ 0.9, 0.5 }),
+    n_cols = 100,
+  })
+  local B = csr.create({
+    offsets = ivec.create({ 0, 2 }),
+    neighbors = ivec.create({ 20, 30 }),
+    values = fvec.create({ 0.8, 0.4 }),
+    n_cols = 100,
+  })
+  local Y = csr.fuse(A, B, { weights = { 1, 10 } })
+  assert(teq(Y:neighbors():table(), { 20, 30, 10 }))
+  local v = Y:values()
+  assert(math.abs(v:get(0) - 8.5) < 1e-5)
+  assert(math.abs(v:get(1) - 4.0) < 1e-5)
+  assert(math.abs(v:get(2) - 0.9) < 1e-5)
+end)
+
+test("csr.fuse: k keeps top k", function ()
+  local A = csr.create({
+    offsets = ivec.create({ 0, 2 }),
+    neighbors = ivec.create({ 10, 20 }),
+    values = fvec.create({ 0.9, 0.5 }),
+    n_cols = 100,
+  })
+  local B = csr.create({
+    offsets = ivec.create({ 0, 2 }),
+    neighbors = ivec.create({ 20, 30 }),
+    values = fvec.create({ 0.8, 0.4 }),
+    n_cols = 100,
+  })
+  local Y = csr.fuse(A, B, { k = 2 })
+  assert(Y:nnz() == 2)
+  assert(teq(Y:offsets():table(), { 0, 2 }))
+  assert(teq(Y:neighbors():table(), { 20, 10 }))
+end)
+
+test("csr.fuse: rrf ranks are 0-based row positions, rows assumed pre-ranked, missing side adds nothing", function ()
+  local A = csr.create({
+    offsets = ivec.create({ 0, 2 }),
+    neighbors = ivec.create({ 1, 2 }),
+    values = fvec.create({ 100, 99 }),
+    n_cols = 10,
+  })
+  local B = csr.create({
+    offsets = ivec.create({ 0, 2 }),
+    neighbors = ivec.create({ 2, 3 }),
+    values = fvec.create({ 0.5, 0.4 }),
+    n_cols = 10,
+  })
+  local S = csr.fuse(A, B)
+  assert(S:neighbors():get(0) == 1)
+  local Y = csr.fuse(A, B, { mode = "rrf", rrf_k = 1 })
+  assert(teq(Y:neighbors():table(), { 2, 1, 3 }))
+  local v = Y:values()
+  assert(math.abs(v:get(0) - 1.5) < 1e-9)
+  assert(math.abs(v:get(1) - 1.0) < 1e-9)
+  assert(math.abs(v:get(2) - 0.5) < 1e-9)
+end)
+
+test("csr.fuse: multi-row with a row empty on one side", function ()
+  local A = csr.create({
+    offsets = ivec.create({ 0, 2, 2 }),
+    neighbors = ivec.create({ 1, 2 }),
+    values = fvec.create({ 0.9, 0.5 }),
+    n_cols = 10,
+  })
+  local B = csr.create({
+    offsets = ivec.create({ 0, 1, 3 }),
+    neighbors = ivec.create({ 2, 5, 6 }),
+    values = fvec.create({ 0.8, 0.3, 0.7 }),
+    n_cols = 10,
+  })
+  local Y = csr.fuse(A, B)
+  local r, c = Y:shape()
+  assert(r == 2 and c == 10)
+  assert(teq(Y:offsets():table(), { 0, 2, 4 }))
+  assert(teq(Y:neighbors():table(), { 2, 1, 6, 5 }))
+  local v = Y:values()
+  assert(math.abs(v:get(0) - 1.3) < 1e-6)
+  assert(math.abs(v:get(1) - 0.9) < 1e-6)
+  assert(math.abs(v:get(2) - 0.7) < 1e-6)
+  assert(math.abs(v:get(3) - 0.3) < 1e-6)
+end)
+
+test("csr.fuse: errors on mismatched rows and on valueless input", function ()
+  local A = csr.create({
+    offsets = ivec.create({ 0, 1 }),
+    neighbors = ivec.create({ 0 }),
+    values = fvec.create({ 1 }),
+    n_cols = 2,
+  })
+  local B = csr.create({
+    offsets = ivec.create({ 0, 1, 2 }),
+    neighbors = ivec.create({ 0, 1 }),
+    values = fvec.create({ 1, 1 }),
+    n_cols = 2,
+  })
+  assert(not pcall(function () csr.fuse(A, B) end))
+  local C = csr.create({
+    offsets = ivec.create({ 0, 1 }),
+    neighbors = ivec.create({ 1 }),
+    n_cols = 2,
+  })
+  assert(not pcall(function () csr.fuse(A, C) end))
+  assert(not pcall(function () csr.fuse(C, A) end))
+  assert(not pcall(function () csr.fuse(A, A, { mode = "product" }) end))
+end)
+
