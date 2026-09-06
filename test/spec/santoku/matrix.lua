@@ -7,6 +7,9 @@ local svec = require("santoku.svec")
 local rvec = require("santoku.rvec")
 local pvec = require("santoku.pvec")
 local tbl = require("santoku.table")
+local num = require("santoku.num")
+local fs = require("santoku.fs")
+local arr = require("santoku.array")
 local teq = tbl.equals
 
 test("ivec/dvec/svec: create and basic operations", function ()
@@ -105,7 +108,7 @@ test("ivec/dvec/svec: shuffle (whole)", function ()
     assert(#shuffled == 10)
     local sorted = {}
     for i = 1, 10 do sorted[i] = shuffled[i] end
-    table.sort(sorted)
+    arr.sort(sorted)
     assert(teq(sorted, { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 }))
   end
 end)
@@ -118,7 +121,7 @@ test("ivec/dvec/svec: shuffle with range", function ()
     assert(v:get(1) == 2)
     assert(v:get(5) == 6)
     local vals = { v:get(2), v:get(3), v:get(4) }
-    table.sort(vals)
+    arr.sort(vals)
     assert(teq(vals, { 3, 4, 5 }))
   end
 end)
@@ -315,7 +318,7 @@ end)
 test("ivec/dvec/svec: magnitude", function ()
   for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 3, 4 })
-    assert(math.abs(v:magnitude() - 5) < 1e-10)
+    assert(num.abs(v:magnitude() - 5) < 1e-10)
   end
 end)
 
@@ -336,8 +339,8 @@ test("ivec/dvec/svec: ieach iterator", function ()
     local indices = {}
     local values = {}
     for i, val in v:ieach() do
-      table.insert(indices, i)
-      table.insert(values, val)
+      arr.push(indices, i)
+      arr.push(values, val)
     end
     assert(teq(indices, { 0, 1, 2 }))
     assert(teq(values, { 10, 20, 30 }))
@@ -352,28 +355,20 @@ test("ivec/dvec/svec: find", function ()
   end
 end)
 
-
-
-
-
-
-
-
-
 test("dvec: exp", function ()
   local v = dvec.create({ 0, 1, 2 })
   v:exp()
-  assert(math.abs(v:get(0) - 1) < 1e-10)
-  assert(math.abs(v:get(1) - math.exp(1)) < 1e-10)
-  assert(math.abs(v:get(2) - math.exp(2)) < 1e-10)
+  assert(num.abs(v:get(0) - 1) < 1e-10)
+  assert(num.abs(v:get(1) - num.exp(1)) < 1e-10)
+  assert(num.abs(v:get(2) - num.exp(2)) < 1e-10)
 end)
 
 test("dvec: log", function ()
-  local v = dvec.create({ 1, math.exp(1), math.exp(2) })
+  local v = dvec.create({ 1, num.exp(1), num.exp(2) })
   v:log()
-  assert(math.abs(v:get(0) - 0) < 1e-10)
-  assert(math.abs(v:get(1) - 1) < 1e-10)
-  assert(math.abs(v:get(2) - 2) < 1e-10)
+  assert(num.abs(v:get(0) - 0) < 1e-10)
+  assert(num.abs(v:get(1) - 1) < 1e-10)
+  assert(num.abs(v:get(2) - 2) < 1e-10)
 end)
 
 test("dvec: pow", function ()
@@ -387,10 +382,6 @@ test("dvec: abs", function ()
   v:abs()
   assert(teq(v:table(), { 1, 2, 3 }))
 end)
-
-
-
-
 
 test("dvec: round", function ()
   local v = dvec.create({ 1.4, 1.5, 1.6, -1.4, -1.5, -1.6 })
@@ -515,7 +506,7 @@ test("ivec: set operations (jaccard)", function ()
   local v0 = ivec.create({ 1, 2, 3, 4 })
   local v1 = ivec.create({ 3, 4, 5, 6 })
   local j = v0:set_jaccard(v1)
-  assert(math.abs(j - 1/3) < 1e-10)
+  assert(num.abs(j - 1/3) < 1e-10)
 end)
 
 test("ivec: set operations (overlap)", function ()
@@ -557,7 +548,6 @@ test("ivec: lookup", function ()
   indices:lookup(source)
   assert(teq(indices:table(), { 300, 100, 200, 300 }))
 end)
-
 
 test("ivec/svec: index (value -> position iumap)", function ()
   for _, vec in ipairs({ ivec, svec }) do
@@ -651,7 +641,7 @@ test("ivec/dvec/svec: persist and load", function ()
     local loaded = vec.load(tmp)
     assert(teq(v:table(), loaded:table()))
   end
-  os.remove(tmp)
+  fs.rm(tmp, true)
 end)
 
 test("ivec/dvec/svec: raw", function ()
@@ -695,8 +685,6 @@ test("iumap: create and operations", function ()
   m:destroy()
 end)
 
-
-
 test("dvec: fill_indices", function ()
   local v = dvec.create(5)
   v:fill_indices()
@@ -708,18 +696,6 @@ test("ivec: fill_indices", function ()
   v:fill_indices()
   assert(teq(v:table(), { 0, 1, 2, 3, 4 }))
 end)
-
-
-
-
-
-
-
-
-
-
-
-
 
 test("ivec: set_find (binary search)", function ()
   local v = ivec.create({ 10, 20, 30, 40, 50 })
@@ -749,16 +725,11 @@ test("ivec/dvec/svec: copy_indexed", function ()
   end
 end)
 
-
-
-
-
-
 test("svec: set operations (jaccard)", function ()
   local v0 = svec.create({ 1, 2, 3, 4 })
   local v1 = svec.create({ 3, 4, 5, 6 })
   local j = v0:set_jaccard(v1)
-  assert(math.abs(j - 1/3) < 1e-10)
+  assert(num.abs(j - 1/3) < 1e-10)
 end)
 
 test("svec: set operations (overlap)", function ()
@@ -800,7 +771,6 @@ test("svec: lookup", function ()
   indices:lookup(source)
   assert(teq(indices:table(), { 300, 100, 200, 300 }))
 end)
-
 
 test("svec: set_find (binary search)", function ()
   local v = svec.create({ 10, 20, 30, 40, 50 })
@@ -853,15 +823,12 @@ test("svec: fill_indices", function ()
   assert(teq(v:table(), { 0, 1, 2, 3, 4 }))
 end)
 
-
-
-
 test("ivec: bincount", function ()
   local v = ivec.create({ 0, 2, 2, 1, 2 })
   assert(teq(v:bincount(3):table(), { 1, 1, 3 }))
   local w = dvec.create({ 1, 0.5, 0.5, 2, 1 })
   local b = v:bincount(3, w)
-  assert(math.abs(b:get(0) - 1) < 1e-10)
-  assert(math.abs(b:get(1) - 2) < 1e-10)
-  assert(math.abs(b:get(2) - 2) < 1e-10)
+  assert(num.abs(b:get(0) - 1) < 1e-10)
+  assert(num.abs(b:get(1) - 2) < 1e-10)
+  assert(num.abs(b:get(2) - 2) < 1e-10)
 end)

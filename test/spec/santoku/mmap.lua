@@ -5,11 +5,14 @@ local dvec = require("santoku.dvec")
 local ivec = require("santoku.ivec")
 local fvec = require("santoku.fvec")
 local tbl = require("santoku.table")
+local fs = require("santoku.fs")
+local env = require("santoku.env")
 local teq = tbl.equals
 
 if not ivec.mmap_create then return end
 
-local tmp = os.getenv("PREFIX") and (os.getenv("PREFIX") .. "/tmp") or "/tmp"
+local prefix = env.var("PREFIX", nil)
+local tmp = prefix and (prefix .. "/tmp") or "/tmp"
 
 test("ivec/dvec/fvec: mmap_create and basic access", function ()
   for i, vec in ipairs({ ivec, dvec, fvec }) do
@@ -25,7 +28,7 @@ test("ivec/dvec/fvec: mmap_create and basic access", function ()
     assert(v:get(0) == 10)
     assert(v:get(2) == 30)
     assert(v:get(4) == 50)
-    os.remove(path)
+    fs.rm(path, true)
   end
 end)
 
@@ -47,7 +50,7 @@ test("ivec/dvec/fvec: mmap_create, sync, and mmap_open", function ()
     assert(loaded:get(1) == 2)
     assert(loaded:get(2) == 3)
     assert(loaded:get(3) == 4)
-    os.remove(path)
+    fs.rm(path, true)
   end
 end)
 
@@ -66,7 +69,7 @@ test("ivec/dvec: mmap table roundtrip", function ()
     collectgarbage()
     local loaded = vec.mmap_open(path)
     assert(teq(loaded:table(), { 10, 20, 30, 40, 50 }))
-    os.remove(path)
+    fs.rm(path, true)
   end
 end)
 
@@ -81,7 +84,7 @@ test("ivec/dvec: mmap_open empty file", function ()
     collectgarbage()
     local loaded = vec.mmap_open(path)
     assert(loaded:size() == 0)
-    os.remove(path)
+    fs.rm(path, true)
   end
 end)
 
@@ -97,7 +100,7 @@ test("ivec/dvec: mmap copy to regular vec", function ()
     assert(teq(regular:table(), { 100, 200, 300 }))
     regular:push(400)
     assert(regular:size() == 4)
-    os.remove(path)
+    fs.rm(path, true)
   end
 end)
 
@@ -115,7 +118,7 @@ test("ivec/dvec: mmap fill and scale", function ()
     collectgarbage()
     local loaded = vec.mmap_open(path)
     assert(teq(loaded:table(), { 15, 15, 15, 15 }))
-    os.remove(path)
+    fs.rm(path, true)
   end
 end)
 
@@ -127,8 +130,8 @@ test("dvec: mmap dot product", function ()
   v1:set(0, 1) v1:set(1, 2) v1:set(2, 3)
   v2:set(0, 4) v2:set(1, 5) v2:set(2, 6)
   assert(v1:dot(v2) == 32)
-  os.remove(p1)
-  os.remove(p2)
+  fs.rm(p1, true)
+  fs.rm(p2, true)
 end)
 
 test("dvec: mmap addv between mmap and regular", function ()
@@ -138,5 +141,5 @@ test("dvec: mmap addv between mmap and regular", function ()
   local v2 = dvec.create({ 10, 20, 30 })
   v1:addv(v2)
   assert(teq(v1:table(), { 11, 22, 33 }))
-  os.remove(path)
+  fs.rm(path, true)
 end)

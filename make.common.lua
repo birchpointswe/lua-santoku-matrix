@@ -30,6 +30,9 @@ local env = {
     },
   },
   test = {
+    dependencies = {
+      "santoku-fs >= 2.0.0, < 3.0.0",
+    },
     wasm = {
       ldflags = {
         "-sWASM_BIGINT",
