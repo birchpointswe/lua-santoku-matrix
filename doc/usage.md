@@ -35,6 +35,8 @@ Weight / shape features (the fit/apply transforms; binary csr auto-materializes 
 ```lua
 local w = X:idf()            -- or X:bns(labels_csr), X:standardize()  -- fit -> weights
 Y:idf(w)                     -- apply the same weights to held-out data
+local w, avgdl = X:bm25()    -- fts5-matching BM25 (k1=1.2, b=0.75, idf floor 1e-6)
+Y:bm25(w, avgdl)             -- apply: recomputes row lengths, reuses fitted idf + avgdl
 X:normalize()                -- L2 per row, returns self
 X:hcat(other)                -- concat feature blocks in place (shifts other's column ids)
 local ss = X:sumsq_cols(ivec.create({ 0, b1, n_cols }))   -- per-block sums (for block scaling)

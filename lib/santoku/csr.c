@@ -1178,6 +1178,70 @@ static int tk_csr_idf_lua (lua_State *L)
   return 1;
 }
 
+static inline void tk_csr_bm25_scale (tk_csr_t *X, tk_fvec_t *wf, tk_dvec_t *wd, double avgdl, double k1, double b)
+{
+  uint64_t n_rows = tk_csr_rows(X);
+  #pragma omp parallel for schedule(static)
+  for (uint64_t r = 0; r < n_rows; r ++) {
+    int64_t lo = X->offsets->a[r], hi = X->offsets->a[r + 1];
+    double dl = 0.0;
+    for (int64_t j = lo; j < hi; j ++)
+      dl += tk_csr_val1(X, (uint64_t) j);
+    double d = k1 * (1.0 - b + (avgdl > 0.0 ? b * dl / avgdl : 0.0));
+    for (int64_t j = lo; j < hi; j ++) {
+      int64_t c = tk_csr_nbr(X, (uint64_t) j);
+      double w = wf != NULL ? (double) wf->a[c] : wd->a[c];
+      double v = tk_csr_val1(X, (uint64_t) j);
+      tk_csr_setval1(X, (uint64_t) j, w * v * (k1 + 1.0) / (v + d));
+    }
+  }
+}
+
+static int tk_csr_bm25_lua (lua_State *L)
+{
+  lua_settop(L, 5);
+  tk_csr_t *X = tk_csr_peek(L, 1, "csr");
+  tk_fvec_t *wf = tk_fvec_peekopt(L, 2);
+  tk_dvec_t *wd = wf == NULL ? tk_dvec_peekopt(L, 2) : NULL;
+  tk_csr_materialize(L, X, 1);
+  if (wf != NULL || wd != NULL) {
+    uint64_t wn = wf != NULL ? wf->n : wd->n;
+    if (wn < X->n_cols)
+      return tk_lua_verror(L, 2, "csr", "bm25: weights shorter than n_cols");
+    double avgdl = luaL_checknumber(L, 3);
+    double k1 = luaL_optnumber(L, 4, 1.2);
+    double b = luaL_optnumber(L, 5, 0.75);
+    tk_csr_bm25_scale(X, wf, wd, avgdl, k1, b);
+    lua_pushvalue(L, 2);
+    lua_pushnumber(L, avgdl);
+    return 2;
+  }
+  double k1 = luaL_optnumber(L, 2, 1.2);
+  double b = luaL_optnumber(L, 3, 0.75);
+  uint64_t nc = X->n_cols, n_rows = tk_csr_rows(X);
+  uint32_t *df = (uint32_t *) calloc(nc, sizeof(uint32_t));
+  if (!df) return tk_lua_verror(L, 2, "csr", "bm25: alloc failed");
+  uint64_t nn = tk_csr_nbr_n(X);
+  double total = 0.0;
+  for (uint64_t i = 0; i < nn; i ++) {
+    df[tk_csr_nbr(X, i)] ++;
+    total += tk_csr_val1(X, i);
+  }
+  tk_fvec_t *w = tk_fvec_create(L, nc);
+  w->n = nc;
+  double N = (double) n_rows;
+  for (uint64_t c = 0; c < nc; c ++) {
+    double d = (double) df[c];
+    double idf = log((N - d + 0.5) / (d + 0.5));
+    w->a[c] = (float) (idf <= 0.0 ? 1e-6 : idf);
+  }
+  free(df);
+  double avgdl = n_rows > 0 ? total / N : 0.0;
+  tk_csr_bm25_scale(X, w, NULL, avgdl, k1, b);
+  lua_pushnumber(L, avgdl);
+  return 2;
+}
+
 static int tk_csr_eq_lua (lua_State *L)
 {
   lua_settop(L, 2);
@@ -1440,6 +1504,7 @@ static luaL_Reg tk_csr_mt_fns[] = {
   { "nnz_cols", tk_csr_nnz_cols_lua },
   { "standardize", tk_csr_standardize_lua },
   { "idf", tk_csr_idf_lua },
+  { "bm25", tk_csr_bm25_lua },
   { "bns", tk_csr_bns_lua },
   { "auc", tk_csr_auc_lua },
   { "to_bits", tk_csr_to_bits_lua },

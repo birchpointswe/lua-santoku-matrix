@@ -317,6 +317,45 @@ test("csr: idf fit", function ()
   assert(num.abs(w:get(1) - num.log(2.5 / 1.5)) < 1e-5)
 end)
 
+test("csr: bm25 fit/apply", function ()
+  local function make ()
+    return csr.create({
+      offsets = ivec.create({ 0, 2, 4, 7, 9, 9 }),
+      neighbors = ivec.create({ 0, 3, 1, 3, 1, 2, 3, 2, 3 }),
+      values = fvec.create({ 2, 1, 3, 1, 1, 2, 1, 3, 1 }),
+      n_cols = 4,
+    })
+  end
+  local X = make()
+  local w, avgdl = X:bm25()
+  assert(num.abs(avgdl - 3) < 1e-9)
+  assert(num.abs(w:get(0) - num.log(3)) < 1e-5)
+  assert(num.abs(w:get(1) - num.log(1.4)) < 1e-5)
+  assert(num.abs(w:get(2) - num.log(1.4)) < 1e-5)
+  assert(w:get(3) > 0 and w:get(3) < 1e-5)
+  local v = X:values()
+  assert(num.abs(v:get(0) - num.log(3) * 2 * 2.2 / 3.2) < 1e-5)
+  assert(num.abs(v:get(1) - 1e-6) < 1e-8)
+  assert(num.abs(v:get(2) - num.log(1.4) * 6.6 / 4.5) < 1e-5)
+  assert(num.abs(v:get(4) - num.log(1.4) * 2.2 / 2.5) < 1e-5)
+  assert(num.abs(v:get(5) - num.log(1.4) * 4.4 / 3.5) < 1e-5)
+  assert(num.abs(v:get(7) - num.log(1.4) * 6.6 / 4.5) < 1e-5)
+  local Y = csr.create({
+    offsets = ivec.create({ 0, 1 }),
+    neighbors = ivec.create({ 0 }),
+    values = fvec.create({ 1 }),
+    n_cols = 4,
+  })
+  local w2, avgdl2 = Y:bm25(w, avgdl)
+  assert(w2 == w)
+  assert(num.abs(avgdl2 - 3) < 1e-9)
+  assert(num.abs(Y:values():get(0) - num.log(3) * 2.2 / 1.6) < 1e-5)
+  local X2 = make()
+  local _, avgdl3 = X2:bm25(2.0, 0.0)
+  assert(num.abs(avgdl3 - 3) < 1e-9)
+  assert(num.abs(X2:values():get(0) - num.log(3) * 2 * 3 / 4) < 1e-5)
+end)
+
 test("csr.fuse: union with weighted sum, sorted descending", function ()
   local A = csr.create({
     offsets = ivec.create({ 0, 2 }),
