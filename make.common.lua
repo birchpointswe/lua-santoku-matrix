@@ -1,13 +1,15 @@
+local rock = require("santoku.make.rock")
+
 local env = {
   name = "santoku-matrix",
-  version = "2.1.0-1",
+  version = "2.1.1-1",
   variable_prefix = "TK_MATRIX",
   license = "MIT",
   public = true,
   cflags = {
     "-std=gnu11", "-D_GNU_SOURCE", "-Wall", "-Wextra",
     "-Wstrict-overflow", "-Wsign-conversion", "-Wsign-compare",
-    "-I$(shell luarocks show santoku --rock-dir)/include/",
+    rock.include("santoku"),
   },
   ldflags = {
     "-lm",
