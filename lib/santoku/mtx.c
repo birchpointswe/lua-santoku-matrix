@@ -23,11 +23,6 @@ static inline bool tk_mtx_axis_row (lua_State *L, int i)
   return true;
 }
 
-
-
-
-
-
 static inline tk_tag_t tk_mtx_tag_of_vec (lua_State *L, int i, void **child)
 {
   void *p;
@@ -391,7 +386,6 @@ static int tk_mtx_row_lua (lua_State *L)
   return 1;
 }
 
-
 static int tk_mtx_hcat_lua (lua_State *L)
 {
   lua_settop(L, 2);
@@ -574,6 +568,130 @@ static int tk_mtx_sign_lua (lua_State *L)
   return 1;
 }
 
+static inline int64_t tk_mtx_itq_orth (float *X, uint64_t r, uint64_t c, float *G, float *T)
+{
+  double nrm = 0.0;
+  for (uint64_t i = 0; i < r * c; i ++)
+    nrm += (double) X[i] * (double) X[i];
+  nrm = sqrt(nrm);
+  if (nrm < 1e-30)
+    return -1;
+  float inv = (float) (1.0 / nrm);
+  for (uint64_t i = 0; i < r * c; i ++)
+    X[i] *= inv;
+  int64_t s = 0;
+  for (; s < 200; s ++) {
+    tk_fvec_gemm(true, false, c, c, r, 1.0f, X, X, 0.0f, G);
+    double e = 0.0;
+    for (uint64_t i = 0; i < c; i ++)
+      for (uint64_t j = 0; j < c; j ++) {
+        double d = (double) G[i * c + j] - (i == j ? 1.0 : 0.0);
+        e += d * d;
+      }
+    if (sqrt(e / (double) c) < 1e-3)
+      break;
+    memcpy(T, X, r * c * sizeof(float));
+    tk_fvec_gemm(false, false, r, c, c, -0.5f, T, G, 1.5f, X);
+  }
+  return s;
+}
+
+static int tk_mtx_itq_lua (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_mtx_t *M = tk_mtx_peek(L, 1, "mtx");
+  if (M->tag != TK_TAG_F32)
+    return tk_lua_verror(L, 2, "mtx", "itq requires f32");
+  uint64_t n = M->n_rows, k = M->n_cols;
+  uint64_t iters = lua_isnil(L, 2) ? 50 : tk_lua_foptunsigned(L, 2, "itq", "iterations", 50);
+  uint64_t c = lua_isnil(L, 2) ? k : tk_lua_foptunsigned(L, 2, "itq", "bits", (unsigned int) k);
+  bool rotate = lua_isnil(L, 2) ? true : tk_lua_foptboolean(L, 2, "itq", "rotate", true);
+  if (n == 0 || k == 0 || c == 0 || c > k)
+    return tk_lua_verror(L, 2, "mtx", "itq needs rows, columns, and 0 < bits <= columns");
+  if (!rotate)
+    iters = 0;
+  float *V = ((tk_fvec_t *) M->v)->a;
+  tk_mtx_t *Wm = tk_mtx_push_new(L, TK_TAG_F32, k, c);
+  float *W = ((tk_fvec_t *) Wm->v)->a;
+  tk_dvec_t *obj = tk_dvec_create(L, iters);
+  tk_ivec_t *steps = tk_ivec_create(L, iters);
+  obj->n = iters;
+  steps->n = iters;
+  bool pca = c < k;
+  float *Cv = pca ? (float *) malloc(k * k * sizeof(float)) : NULL;
+  float *Q = pca ? (float *) malloc(k * c * sizeof(float)) : NULL;
+  float *Qn = pca ? (float *) malloc(k * c * sizeof(float)) : NULL;
+  float *Tq = pca ? (float *) malloc(k * c * sizeof(float)) : NULL;
+  float *Vp = pca ? (float *) malloc(n * c * sizeof(float)) : NULL;
+  float *P = iters > 0 ? (float *) malloc(n * c * sizeof(float)) : NULL;
+  float *X = (float *) malloc(c * c * sizeof(float));
+  float *R = (float *) malloc(c * c * sizeof(float));
+  float *G = (float *) malloc(c * c * sizeof(float));
+  float *T = (float *) malloc(c * c * sizeof(float));
+  if ((pca && (!Cv || !Q || !Qn || !Tq || !Vp)) || (iters > 0 && !P) || !X || !R || !G || !T) {
+    free(Cv); free(Q); free(Qn); free(Tq); free(Vp); free(P); free(X); free(R); free(G); free(T);
+    return tk_lua_verror(L, 2, "mtx", "itq: alloc failed");
+  }
+  double kept = 1.0;
+  if (pca) {
+    tk_fvec_gemm(true, false, k, k, n, 1.0f, V, V, 0.0f, Cv);
+    uint64_t st = 0x9e3779b97f4a7c15ULL;
+    for (uint64_t i = 0; i < k * c; i ++) {
+      st ^= st << 13; st ^= st >> 7; st ^= st << 17;
+      Q[i] = (float) ((double) (st >> 11) / 9007199254740992.0 * 2.0 - 1.0);
+    }
+    tk_mtx_itq_orth(Q, k, c, G, Tq);
+    for (int it = 0; it < 30; it ++) {
+      tk_fvec_gemm(false, false, k, c, k, 1.0f, Cv, Q, 0.0f, Qn);
+      float *sw = Q; Q = Qn; Qn = sw;
+      tk_mtx_itq_orth(Q, k, c, G, Tq);
+    }
+    tk_fvec_gemm(false, false, k, c, k, 1.0f, Cv, Q, 0.0f, Qn);
+    double num = 0.0, den = 0.0;
+    for (uint64_t i = 0; i < k * c; i ++)
+      num += (double) Q[i] * (double) Qn[i];
+    for (uint64_t i = 0; i < k; i ++)
+      den += (double) Cv[i * k + i];
+    kept = den > 0.0 ? num / den : 0.0;
+    tk_fvec_gemm(false, false, n, c, k, 1.0f, V, Q, 0.0f, Vp);
+  }
+  float *U = pca ? Vp : V;
+  for (uint64_t i = 0; i < c; i ++)
+    for (uint64_t j = 0; j < c; j ++)
+      R[i * c + j] = i == j ? 1.0f : 0.0f;
+  double vss = 0.0;
+  #pragma omp parallel for schedule(static) reduction(+:vss)
+  for (uint64_t i = 0; i < n * c; i ++)
+    vss += (double) U[i] * (double) U[i];
+  for (uint64_t it = 0; it < iters; it ++) {
+    tk_fvec_gemm(false, false, n, c, c, 1.0f, U, R, 0.0f, P);
+    double sabs = 0.0;
+    #pragma omp parallel for schedule(static) reduction(+:sabs)
+    for (uint64_t i = 0; i < n * c; i ++) {
+      sabs += P[i] >= 0.0f ? (double) P[i] : -(double) P[i];
+      P[i] = P[i] >= 0.0f ? 1.0f : -1.0f;
+    }
+    obj->a[it] = ((double) n * (double) c + vss - 2.0 * sabs) / (double) n;
+    tk_fvec_gemm(true, false, c, c, n, 1.0f, U, P, 0.0f, X);
+    int64_t s = tk_mtx_itq_orth(X, c, c, G, T);
+    if (s < 0) {
+      obj->n = it + 1;
+      steps->n = it + 1;
+      steps->a[it] = 0;
+      break;
+    }
+    steps->a[it] = s;
+    memcpy(R, X, c * c * sizeof(float));
+  }
+  if (pca)
+    tk_fvec_gemm(false, false, k, c, c, 1.0f, Q, R, 0.0f, W);
+  else
+    memcpy(W, R, c * c * sizeof(float));
+  free(Cv); free(Q); free(Qn); free(Tq); free(Vp); free(P); free(X); free(R); free(G); free(T);
+  lua_pushnumber(L, kept);
+  return 4;
+}
+
 static int tk_mtx_normalize_lua (lua_State *L)
 {
   lua_settop(L, 2);
@@ -669,7 +787,6 @@ static int tk_mtx_multiplyv_lua (lua_State *L)
   }
   return 1;
 }
-
 
 static int tk_mtx_from_pairs_lua (lua_State *L)
 {
@@ -784,7 +901,6 @@ static int tk_mtx_flip_interleave_lua (lua_State *L)
   lua_settop(L, 1);
   return 1;
 }
-
 
 static int tk_mtx_topk_lua (lua_State *L)
 {
@@ -940,6 +1056,7 @@ static luaL_Reg tk_mtx_mt_fns[] = {
   { "standardize", tk_mtx_standardize_lua },
   { "median", tk_mtx_median_lua },
   { "sign", tk_mtx_sign_lua },
+  { "itq", tk_mtx_itq_lua },
   { "normalize", tk_mtx_normalize_lua },
   { "multiply", tk_mtx_multiply_lua },
   { "multiplyv", tk_mtx_multiplyv_lua },

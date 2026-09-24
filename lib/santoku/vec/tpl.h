@@ -89,6 +89,12 @@ static inline void tk_vec_pfx(destroy) (tk_vec_pfx(t) *r)
     tk_vec_destroy_item(r->a[i]);
 #endif
   bool lua_managed = r->lua_managed;
+  if (r->lua_managed == 3) {
+    r->a = NULL;
+    r->n = r->m = 0;
+    r->lua_managed = -1;
+    return;
+  }
 #if !defined(__EMSCRIPTEN__)
   if (r->lua_managed == 2) {
     if (r->a) munmap(r->a, r->m * sizeof(tk_vec_base));
@@ -124,7 +130,7 @@ static inline int tk_vec_pfx(resize) (
   size_t m,
   bool setn
 ) {
-  if (m0->lua_managed == 2)
+  if (m0->lua_managed >= 2)
     return -1;
   tk_vec_pfx(t) v = *m0;
   if (m == 0) {
@@ -246,7 +252,7 @@ static inline int64_t tk_vec_pfx(find) (tk_vec_pfx(t) *v, tk_vec_base x) {
   return -1;
 }
 static inline int tk_vec_pfx(push) (tk_vec_pfx(t) *v, tk_vec_base x) {
-  if (v->lua_managed == 2)
+  if (v->lua_managed >= 2)
     return -1;
   tk_vec_pfx(t) v0 = *v;
   int rc = kv_push(tk_vec_base, v0, x);
@@ -1420,6 +1426,14 @@ static inline tk_vec_pfx(t) *tk_vec_pfx(create) (lua_State *L, size_t n)
   tk_vec_pfx(t) v0 = *v;
   bool lua_managed = L != NULL;
   kv_init(v0, lua_managed);
+  *v = v0;
+  if (L != NULL) {
+    size_t kb = (n * sizeof(tk_vec_base)) >> 10;
+    if (kb > (size_t) lua_gc(L, LUA_GCCOUNT, 0))
+      lua_gc(L, LUA_GCCOLLECT, 0);
+    else if (kb > 0)
+      lua_gc(L, LUA_GCSTEP, (int) kb);
+  }
   if (kv_resize(tk_vec_base, v0, n) != 0) {
     if (L)
       tk_error(L, "vec_create resize", ENOMEM);
@@ -1526,10 +1540,67 @@ static inline int tk_vec_pfx(mmap_open_lua) (lua_State *L)
 
 #endif
 
+static inline tk_vec_pfx(t) *tk_vec_pfx(map) (lua_State *L, const char *path)
+{
+#if !defined(__EMSCRIPTEN__)
+  int fd = open(path, O_RDONLY);
+  if (fd < 0)
+    return (tk_vec_pfx(t) *)(intptr_t) tk_vec_err(L, map, 1, strerror(errno));
+  struct stat st;
+  if (fstat(fd, &st) != 0) {
+    close(fd);
+    return (tk_vec_pfx(t) *)(intptr_t) tk_vec_err(L, map, 1, strerror(errno));
+  }
+  size_t map_len = (size_t) st.st_size;
+  tk_vec_pfx(t) *v = tk_lua_newuserdata(L, tk_vec_pfx(t), tk_vec_mt, tk_vec_pfx(lua_mt_fns), tk_vec_pfx(gc_lua));
+#ifdef tk_vec_module
+  tk_vec_pfx(ensure_init)(L);
+#endif
+  v->lua_managed = 2;
+  v->a = NULL;
+  if (map_len > 0) {
+    void *p = mmap(NULL, map_len, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+    if (p == MAP_FAILED) {
+      close(fd);
+      return (tk_vec_pfx(t) *)(intptr_t) tk_vec_err(L, map, 1, strerror(errno));
+    }
+    v->a = (tk_vec_base *) p;
+  }
+  close(fd);
+  v->n = map_len / sizeof(tk_vec_base);
+  v->m = v->n;
+  return v;
+#else
+  FILE *fh = fopen(path, "rb");
+  if (!fh)
+    return (tk_vec_pfx(t) *)(intptr_t) tk_vec_err(L, map, 1, "cannot open file");
+  fseek(fh, 0, SEEK_END);
+  long len = ftell(fh);
+  fseek(fh, 0, SEEK_SET);
+  size_t n = len > 0 ? (size_t) len / sizeof(tk_vec_base) : 0;
+  tk_vec_pfx(t) *v = tk_vec_pfx(create)(L, n);
+  if (n > 0 && fread(v->a, sizeof(tk_vec_base), n, fh) != n) {
+    fclose(fh);
+    return (tk_vec_pfx(t) *)(intptr_t) tk_vec_err(L, map, 1, "short read");
+  }
+  fclose(fh);
+  v->n = n;
+  return v;
+#endif
+}
+
+static inline int tk_vec_pfx(map_lua) (lua_State *L)
+{
+  lua_settop(L, 1);
+  tk_vec_pfx(map)(L, luaL_checkstring(L, 1));
+  return 1;
+}
+
 static luaL_Reg tk_vec_pfx(lua_fns)[] =
 {
   { "create", tk_vec_pfx(create_lua) },
   { "load", tk_vec_pfx(load_lua) },
+  { "map", tk_vec_pfx(map_lua) },
   { "from_raw", tk_vec_pfx(from_raw_lua) },
 #if !defined(__EMSCRIPTEN__)
   { "mmap_create", tk_vec_pfx(mmap_create_lua) },

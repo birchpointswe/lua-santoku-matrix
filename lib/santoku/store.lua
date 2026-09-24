@@ -1,0 +1,6 @@
+require("santoku.fvec")
+require("santoku.dvec")
+require("santoku.ivec")
+require("santoku.svec")
+require("santoku.cvec")
+return require("santoku.store.capi")

@@ -71,7 +71,7 @@ static inline void tk_fvec_gemv(
   float alpha, float *A, float *x, float beta, float *y
 ) {
   uint64_t out_len = transpose ? cols : rows;
-  for (uint64_t i = 0; i < out_len; i++) y[i] *= beta;
+  for (uint64_t i = 0; i < out_len; i++) y[i] = beta == 0.0f ? 0.0f : y[i] * beta;
   if (!transpose) {
     for (uint64_t r = 0; r < rows; r++)
       for (uint64_t c = 0; c < cols; c++)
@@ -88,7 +88,7 @@ static inline void tk_fvec_gemm(
   uint64_t m, uint64_t n, uint64_t k,
   float alpha, float *A, float *B, float beta, float *C
 ) {
-  for (uint64_t i = 0; i < m * n; i++) C[i] *= beta;
+  for (uint64_t i = 0; i < m * n; i++) C[i] = beta == 0.0f ? 0.0f : C[i] * beta;
   for (uint64_t i = 0; i < m; i++)
     for (uint64_t j = 0; j < n; j++)
       for (uint64_t l = 0; l < k; l++)
@@ -327,7 +327,6 @@ static inline void tk_fvec_mtx_threshold_raw (
     }
   }
 }
-
 
 static inline tk_cvec_t *tk_fvec_mtx_median (
   lua_State *L, tk_fvec_t *codes, uint64_t n_dims, tk_fvec_t **medians_out

@@ -1,0 +1,47 @@
+local test = require("santoku.test")
+local err = require("santoku.error")
+local assert = err.assert
+local store = require("santoku.store")
+local mtx = require("santoku.mtx")
+local fvec = require("santoku.fvec")
+
+test("store: views are empty until open, sized after, empty after close", function ()
+  local s = store.create()
+  local a = s:fvec(10)
+  local b = s:ivec(5)
+  local c = s:cvec(3)
+  assert(a:size() == 0 and b:size() == 0 and c:size() == 0)
+  s:open()
+  assert(a:size() == 10 and b:size() == 5 and c:size() == 3)
+  assert(not s:on_disk())
+  assert(s:bytes() >= 10 * 4 + 5 * 8 + 3)
+  for i = 0, 9 do assert(a:get(i) == 0) end
+  a:set(3, 2.5)
+  b:set(4, 7)
+  assert(a:get(3) == 2.5 and b:get(4) == 7)
+  for i = 0, 4 do if i ~= 4 then assert(b:get(i) == 0) end end
+  s:close()
+  assert(a:size() == 0 and b:size() == 0 and c:size() == 0)
+end)
+
+test("store: disk store maps a spill file on native, RAM on wasm", function ()
+  local s = store.create({ disk = true })
+  local d = s:dvec(1000)
+  local f = s:fvec(1000)
+  s:open()
+  assert(s:on_disk() == (fvec.mmap_create ~= nil))
+  for i = 0, 999 do d:set(i, i * 0.5); f:set(i, i) end
+  for i = 0, 999 do assert(d:get(i) == i * 0.5 and f:get(i) == i) end
+  s:close()
+  assert(d:size() == 0)
+end)
+
+test("store: an mtx can sit on a view", function ()
+  local s = store.create()
+  local v = s:fvec(6)
+  s:open()
+  local M = mtx.create({ data = v, n_rows = 2, n_cols = 3 })
+  v:set(5, 9)
+  assert(M:get(1, 2) == 9)
+  s:close()
+end)

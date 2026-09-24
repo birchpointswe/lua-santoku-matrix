@@ -832,3 +832,20 @@ test("ivec: bincount", function ()
   assert(num.abs(b:get(1) - 2) < 1e-10)
   assert(num.abs(b:get(2) - 2) < 1e-10)
 end)
+
+test("fvec/dvec/ivec: map raw file, private copy-on-write", function ()
+  local fvec = require("santoku.fvec")
+  for _, vec in ipairs({ fvec, dvec, ivec }) do
+    local src = vec.create({ 1, 2, 3, 4 })
+    local path = ".map_test.raw"
+    fs.writefile(path, src:raw())
+    local m = vec.map(path)
+    assert(m:size() == 4)
+    assert(m:get(0) == 1 and m:get(3) == 4)
+    m:set(0, 9)
+    assert(m:get(0) == 9)
+    local again = vec.map(path)
+    assert(again:get(0) == 1)
+    fs.rm(path, true)
+  end
+end)

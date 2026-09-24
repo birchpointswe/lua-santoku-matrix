@@ -73,7 +73,7 @@ static inline void tk_dvec_gemv(
   double alpha, double *A, double *x, double beta, double *y
 ) {
   uint64_t out_len = transpose ? cols : rows;
-  for (uint64_t i = 0; i < out_len; i++) y[i] *= beta;
+  for (uint64_t i = 0; i < out_len; i++) y[i] = beta == 0.0 ? 0.0 : y[i] * beta;
   if (!transpose) {
     for (uint64_t r = 0; r < rows; r++)
       for (uint64_t c = 0; c < cols; c++)
@@ -90,7 +90,7 @@ static inline void tk_dvec_gemm(
   uint64_t m, uint64_t n, uint64_t k,
   double alpha, double *A, double *B, double beta, double *C
 ) {
-  for (uint64_t i = 0; i < m * n; i++) C[i] *= beta;
+  for (uint64_t i = 0; i < m * n; i++) C[i] = beta == 0.0 ? 0.0 : C[i] * beta;
   for (uint64_t i = 0; i < m; i++)
     for (uint64_t j = 0; j < n; j++)
       for (uint64_t l = 0; l < k; l++)
@@ -356,7 +356,6 @@ static inline void tk_dvec_mtx_threshold_raw (
     }
   }
 }
-
 
 static inline tk_cvec_t *tk_dvec_mtx_median (
   lua_State *L,

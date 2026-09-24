@@ -176,6 +176,73 @@ test("mtx: sign/median produce bitmaps", function ()
   assert(bits2 ~= nil and medians ~= nil)
 end)
 
+local function itq_data (n, k)
+  local fvec = require("santoku.fvec")
+  local x, vals = 12345, {}
+  for i = 1, n do
+    for j = 1, k do
+      x = (x * 1103515245 + 12345) % 2147483648
+      vals[(i - 1) * k + j] = (x / 2147483648 - 0.5) / j
+    end
+  end
+  local M = mtx.create({ data = fvec.create(vals), n_rows = n, n_cols = k })
+  M:center()
+  return M
+end
+
+local function orthonormal_cols (W, tol)
+  local _, c = W:shape()
+  local G = W:multiply(W, true, false)
+  for i = 0, c - 1 do
+    for j = 0, c - 1 do
+      local want = i == j and 1 or 0
+      if num.abs(G:get(i, j) - want) > tol then return false end
+    end
+  end
+  return true
+end
+
+test("mtx: itq full width rotation is orthonormal and lowers quantization error", function ()
+  local M = itq_data(200, 16)
+  local W, obj, steps, kept = M:itq({ iterations = 30 })
+  local r, c = W:shape()
+  assert(r == 16 and c == 16)
+  assert(kept == 1)
+  assert(orthonormal_cols(W, 1e-2))
+  assert(obj:size() == 30 and steps:size() == 30)
+  for i = 1, obj:size() - 1 do
+    assert(obj:get(i) <= obj:get(i - 1) + 1e-6 * num.abs(obj:get(i - 1)))
+  end
+  assert(obj:get(obj:size() - 1) < obj:get(0))
+end)
+
+test("mtx: itq reduced width keeps top variance and orthonormal columns", function ()
+  local M = itq_data(200, 16)
+  local W, obj, _, kept = M:itq({ bits = 4, iterations = 20 })
+  local r, c = W:shape()
+  assert(r == 16 and c == 4)
+  assert(kept > 0.5 and kept < 1)
+  assert(orthonormal_cols(W, 1e-2))
+  assert(obj:get(obj:size() - 1) <= obj:get(0))
+  local Wp, objp, _, keptp = M:itq({ bits = 4, rotate = false })
+  assert(objp:size() == 0)
+  assert(num.abs(keptp - kept) < 1e-6)
+  assert(orthonormal_cols(Wp, 1e-2))
+end)
+
+test("mtx: itq bits feed exhaustive hamming topk", function ()
+  local M = itq_data(200, 16)
+  local W = M:itq({ iterations = 20 })
+  local F = M:multiply(W)
+  local r, c = F:shape()
+  local B = mtx.create({ data = F:sign(), n_rows = r, n_cols = c, bits = true })
+  local P = B:topk(B, 3)
+  local off, dist = P:offsets(), P:values()
+  for q = 0, r - 1 do
+    assert(dist:get(off:get(q)) == 0)
+  end
+end)
+
 test("mtx.from_pairs: counts and weights", function ()
   local i = ivec.create({ 0, 0, 1, 2, 2, 2 })
   local j = ivec.create({ 0, 1, 1, 0, 0, 1 })

@@ -69,7 +69,10 @@ Retrieval and binary layouts:
 
 ```lua
 local P = corpus:topk(queries, k)     -- brute-force top-k -> P csr (neighbors=ids, values=scores)
-local bits = M:sign()                 -- f-matrix -> sign bitmap (bits-tagged mtx)
+local raw = M:sign()                  -- f-matrix -> sign bitmap as a raw cvec
+local bits = mtx.create({ data = raw, n_rows = r, n_cols = c, bits = true })  -- wrap as a bits mtx
+local W = M:itq({ bits = 256 })       -- PCA + ITQ projection (center M first); M:multiply(W):sign() -> balanced bits
+local H = bits:topk(query_bits, k)    -- exhaustive Hamming top-k (values = distances)
 -- a bits mtx supports :popcount / :hamming / :band / :transpose
 ```
 
@@ -122,6 +125,7 @@ For arrays too big for RAM, or to persist large results:
 local v = fvec.mmap_create(path, n)   -- zeroed, on disk
 v:set(0, 1.0); v:mmap_sync()          -- flush to disk
 local w = fvec.mmap_open(path)        -- reopen later
+local r = fvec.map(path)              -- raw file, read-only copy-on-write (wasm: read into RAM)
 ```
 
 An mmap vec can back an `mtx` (`mtx.create({ data = v, ... })`) so a big encode writes straight
