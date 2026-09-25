@@ -305,18 +305,6 @@ test("csr: bns fit/apply", function ()
   assert(teq(Z:values():table(), { w0, 0 }))
 end)
 
-test("csr: idf fit", function ()
-  local X = csr.create({
-    offsets = ivec.create({ 0, 1, 2, 4 }),
-    neighbors = ivec.create({ 0, 0, 0, 1 }),
-    values = fvec.create({ 1, 1, 1, 1 }),
-    n_cols = 2,
-  })
-  local w = X:idf()
-  assert(num.abs(w:get(0) - num.log(0.5 / 3.5)) < 1e-5)
-  assert(num.abs(w:get(1) - num.log(2.5 / 1.5)) < 1e-5)
-end)
-
 test("csr: bm25 fit/apply", function ()
   local function make ()
     return csr.create({

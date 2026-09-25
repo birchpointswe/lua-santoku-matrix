@@ -1145,39 +1145,6 @@ static int tk_csr_standardize_lua (lua_State *L)
   return 1;
 }
 
-static int tk_csr_idf_lua (lua_State *L)
-{
-  lua_settop(L, 2);
-  tk_csr_t *X = tk_csr_peek(L, 1, "csr");
-  tk_fvec_t *wf = tk_fvec_peekopt(L, 2);
-  tk_dvec_t *wd = wf == NULL ? tk_dvec_peekopt(L, 2) : NULL;
-  tk_csr_materialize(L, X, 1);
-  if (wf != NULL || wd != NULL) {
-    uint64_t wn = wf != NULL ? wf->n : wd->n;
-    if (wn < X->n_cols)
-      return tk_lua_verror(L, 2, "csr", "idf: weights shorter than n_cols");
-    tk_csr_scale_by_cols(X, wf, wd);
-    lua_pushvalue(L, 2);
-    return 1;
-  }
-  uint64_t nc = X->n_cols, n_rows = tk_csr_rows(X);
-  uint32_t *df = (uint32_t *) calloc(nc, sizeof(uint32_t));
-  if (!df) return tk_lua_verror(L, 2, "csr", "idf: alloc failed");
-  uint64_t nn = tk_csr_nbr_n(X);
-  for (uint64_t i = 0; i < nn; i ++)
-    df[tk_csr_nbr(X, i)] ++;
-  tk_fvec_t *w = tk_fvec_create(L, nc);
-  w->n = nc;
-  double N = (double) n_rows;
-  for (uint64_t c = 0; c < nc; c ++) {
-    double d = (double) df[c];
-    w->a[c] = (float) log((N - d + 0.5) / (d + 0.5));
-  }
-  free(df);
-  tk_csr_scale_by_cols(X, w, NULL);
-  return 1;
-}
-
 static inline void tk_csr_bm25_scale (tk_csr_t *X, tk_fvec_t *wf, tk_dvec_t *wd, double avgdl, double k1, double b)
 {
   uint64_t n_rows = tk_csr_rows(X);
@@ -1503,7 +1470,6 @@ static luaL_Reg tk_csr_mt_fns[] = {
   { "sumsq_cols", tk_csr_sumsq_cols_lua },
   { "nnz_cols", tk_csr_nnz_cols_lua },
   { "standardize", tk_csr_standardize_lua },
-  { "idf", tk_csr_idf_lua },
   { "bm25", tk_csr_bm25_lua },
   { "bns", tk_csr_bns_lua },
   { "auc", tk_csr_auc_lua },

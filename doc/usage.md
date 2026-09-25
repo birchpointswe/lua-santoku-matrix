@@ -33,8 +33,8 @@ B:push(0, 1.5):push(2, 2.5):row()                      -- :push(col[, val]); :ro
 Weight / shape features (the fit/apply transforms; binary csr auto-materializes values):
 
 ```lua
-local w = X:idf()            -- or X:bns(labels_csr), X:standardize()  -- fit -> weights
-Y:idf(w)                     -- apply the same weights to held-out data
+local w = X:bns(labels_csr) -- or X:standardize()  -- fit -> weights
+Y:bns(w)                     -- apply the same weights to held-out data
 local w, avgdl = X:bm25()    -- fts5-matching BM25 (k1=1.2, b=0.75, idf floor 1e-6)
 Y:bm25(w, avgdl)             -- apply: recomputes row lengths, reuses fitted idf + avgdl
 X:normalize()                -- L2 per row, returns self

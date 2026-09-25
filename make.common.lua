@@ -2,7 +2,7 @@ local rock = require("santoku.make.rock")
 
 local env = {
   name = "santoku-matrix",
-  version = "2.2.0-1",
+  version = "2.3.0-1",
   variable_prefix = "TK_MATRIX",
   license = "MIT",
   public = true,
