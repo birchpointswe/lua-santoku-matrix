@@ -4,17 +4,6 @@
 #include <santoku/dvec.h>
 #include <math.h>
 
-
-
-
-
-
-
-
-
-
-
-
 static inline int tk_dvec_round_lua (lua_State *L)
 {
   int t = lua_gettop(L);
@@ -75,21 +64,6 @@ static inline int tk_dvec_to_fvec_lua (lua_State *L)
   tk_dvec_to_fvec(L, v, out);
   return out == NULL ? 1 : 0;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 static inline int tk_dvec_group_gauge_lua (lua_State *L)
 {
@@ -170,8 +144,53 @@ static inline int tk_dvec_group_gauge_lua (lua_State *L)
   return 1;
 }
 
+static inline int tk_dvec_paired_test_lua (lua_State *L)
+{
+  lua_settop(L, 4);
+  tk_dvec_t *a = tk_dvec_peek(L, 1, "dvec");
+  tk_dvec_t *b = tk_dvec_peek(L, 2, "other");
+  uint64_t iters = tk_lua_optunsigned(L, 3, "iters", 10000);
+  uint64_t state = tk_lua_optunsigned(L, 4, "seed", 1);
+  if (a->n != b->n)
+    return tk_lua_verror(L, 2, "dvec", "paired_test: lengths differ");
+  uint64_t n = a->n;
+  if (n == 0) {
+    lua_pushnumber(L, 0.0);
+    lua_pushnumber(L, 1.0);
+    return 2;
+  }
+  tk_dvec_t *d = tk_dvec_create(L, n);
+  double mean = 0.0;
+  for (uint64_t i = 0; i < n; i ++) {
+    d->a[i] = b->a[i] - a->a[i];
+    mean += d->a[i];
+  }
+  mean /= (double) n;
+  uint64_t extreme = 0, bits = 0;
+  int left = 0;
+  for (uint64_t it = 0; it < iters; it ++) {
+    double s = 0.0;
+    for (uint64_t i = 0; i < n; i ++) {
+      if (left == 0) {
+        state += 0x9E3779B97F4A7C15ULL;
+        bits = tk_hash_mix(state);
+        left = 64;
+      }
+      s += (bits & 1) ? d->a[i] : -d->a[i];
+      bits >>= 1;
+      left --;
+    }
+    if (fabs(s / (double) n) >= fabs(mean))
+      extreme ++;
+  }
+  lua_pushnumber(L, mean);
+  lua_pushnumber(L, ((double) extreme + 1.0) / ((double) iters + 1.0));
+  return 2;
+}
+
 static luaL_Reg tk_dvec_lua_mt_ext2_fns[] =
 {
+  { "paired_test", tk_dvec_paired_test_lua },
   { "group_gauge", tk_dvec_group_gauge_lua },
   { "round", tk_dvec_round_lua },
   { "trunc", tk_dvec_trunc_lua },

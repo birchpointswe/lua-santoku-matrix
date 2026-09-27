@@ -519,3 +519,125 @@ test("csr.fuse: errors on mismatched rows and on valueless input", function ()
   assert(not pcall(function () csr.fuse(A, A, { mode = "product" }) end))
 end)
 
+test("csr: topk scores queries against docs by sparse dot product", function ()
+  local X = csr.create({
+    offsets = ivec.create({ 0, 2, 3, 4 }),
+    neighbors = ivec.create({ 0, 1, 1, 0 }),
+    values = fvec.create({ 1, 2, 1, 3 }),
+    n_cols = 2,
+  })
+  local Q = csr.create({
+    offsets = ivec.create({ 0, 1, 2, 3, 3 }),
+    neighbors = ivec.create({ 0, 1, 5 }),
+    values = fvec.create({ 1, 2, 1 }),
+    n_cols = 6,
+  })
+  local P = X:topk(Q, 2)
+  local r, c = P:shape()
+  assert(r == 4 and c == 3)
+  assert(teq(P:offsets():table(), { 0, 2, 4, 4, 4 }))
+  assert(teq(P:neighbors():table(), { 2, 0, 0, 1 }))
+  assert(teq(P:values():table(), { 3, 1, 4, 2 }))
+  local P1 = X:topk(Q, 1)
+  assert(teq(P1:neighbors():table(), { 2, 0 }))
+  local Bad = csr.create({
+    offsets = ivec.create({ 0, 1 }),
+    neighbors = ivec.create({ -1 }),
+    n_cols = 1,
+  })
+  assert(not pcall(function () X:topk(Bad, 1) end))
+end)
+
+test("csr: ndcg, recall and mrr against graded judgments", function ()
+  local R = csr.create({
+    offsets = ivec.create({ 0, 3, 5, 6 }),
+    neighbors = ivec.create({ 5, 3, 9, 1, 2, 7 }),
+    values = fvec.create({ 3, 2, 1, 2, 1, 1 }),
+    n_cols = 10,
+  })
+  local J = csr.create({
+    offsets = ivec.create({ 0, 3, 4, 4 }),
+    neighbors = ivec.create({ 3, 9, 4, 7 }),
+    values = fvec.create({ 2, 1, 1, 1 }),
+    n_cols = 10,
+  })
+  local function log2 (x) return num.log(x) / num.log(2) end
+  local nd0 = (2 / log2(3) + 1 / log2(4)) / (2 + 1 / log2(3) + 1 / log2(4))
+  local nd, ndm = R:ndcg(J, 3)
+  assert(nd:size() == 3)
+  assert(num.abs(nd:get(0) - nd0) < 1e-9)
+  assert(nd:get(1) == 0 and nd:get(2) == 0)
+  assert(num.abs(ndm - nd0 / 2) < 1e-9)
+  local rc, rcm = R:recall(J, 3)
+  assert(num.abs(rc:get(0) - 2 / 3) < 1e-9)
+  assert(num.abs(rcm - 1 / 3) < 1e-9)
+  local mr, mrm = R:mrr(J, 3)
+  assert(mr:get(0) == 0.5 and mr:get(1) == 0)
+  assert(mrm == 0.25)
+  local _, cut = R:recall(J, 1)
+  assert(cut == 0)
+  assert(not pcall(function () R:rows(ivec.create({ 0 })):ndcg(J, 3) end))
+end)
+
+test("csr: spearman compares two rankings of the same candidates per row", function ()
+  local off = ivec.create({ 0, 4, 7, 8, 11 })
+  local nbr = ivec.create({ 0, 1, 2, 3, 0, 1, 2, 5, 0, 1, 2 })
+  local A = csr.create({ offsets = off, neighbors = nbr, n_cols = 6,
+    values = fvec.create({ 1, 2, 3, 4, 1, 2, 3, 7, 1, 1, 2 }) })
+  local B = csr.create({ offsets = off:clone(), neighbors = nbr:clone(), n_cols = 6,
+    values = fvec.create({ 10, 20, 30, 40, 3, 2, 1, 9, 1, 2, 3 }) })
+  local rho = A:spearman(B)
+  assert(rho:size() == 4)
+  assert(num.abs(rho:get(0) - 1) < 1e-12)
+  assert(num.abs(rho:get(1) + 1) < 1e-12)
+  assert(rho:get(2) == 0)
+  assert(num.abs(rho:get(3) - 1.5 / num.sqrt(3)) < 1e-12)
+  local share = A:overlap(B, 2)
+  assert(share:get(0) == 1)
+  assert(share:get(1) == 0.5)
+  assert(share:get(2) == 1)
+  local C = csr.create({ offsets = off:clone(), n_cols = 6,
+    neighbors = ivec.create({ 0, 1, 2, 4, 0, 1, 2, 5, 0, 1, 2 }) })
+  assert(not pcall(function () A:spearman(C) end))
+end)
+
+test("csr: unique_cols returns first-seen ids and a remapped copy", function ()
+  local X = csr.create({
+    offsets = ivec.create({ 0, 2, 4 }),
+    neighbors = ivec.create({ 7, 3, 7, 9 }),
+    values = fvec.create({ 1, 2, 3, 4 }),
+    n_cols = 10,
+  })
+  local ids, Xc = X:unique_cols()
+  assert(teq(ids:table(), { 7, 3, 9 }))
+  assert(teq(Xc:neighbors():table(), { 0, 1, 0, 2 }))
+  assert(teq(Xc:values():table(), { 1, 2, 3, 4 }))
+  assert(teq(Xc:offsets():table(), { 0, 2, 4 }))
+  local _, c = Xc:shape()
+  assert(c == 3)
+  for j = 0, 3 do
+    assert(ids:get(Xc:neighbors():get(j)) == X:neighbors():get(j))
+  end
+  assert(teq(X:neighbors():table(), { 7, 3, 7, 9 }))
+end)
+
+test("csr: auc against a regression target ranks each column", function ()
+  local y = { 3, 1, 4, 1.5, 5 }
+  local vals = {}
+  for d = 1, #y do
+    vals[#vals + 1] = y[d]
+    vals[#vals + 1] = -y[d]
+    vals[#vals + 1] = 1
+  end
+  local X = csr.create({
+    offsets = ivec.create({ 0, 3, 6, 9, 12, 15 }),
+    neighbors = ivec.create({ 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2 }),
+    values = fvec.create(vals),
+    n_cols = 3,
+  })
+  local w = X:auc(dvec.create(y))
+  assert(w:get(0) > 5)
+  assert(num.abs(w:get(0) - w:get(1)) < 1e-5)
+  assert(w:get(2) == 0)
+end)
+

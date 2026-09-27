@@ -38,6 +38,21 @@ test("ivec/dvec/svec: create from table", function ()
   end
 end)
 
+test("dvec: paired_test gives the mean difference and a sign-flip p", function ()
+  local a = dvec.create({ 1, 2, 3, 4 })
+  local b = dvec.create({ 2, 3, 4, 5 })
+  local delta, p = a:paired_test(b, 1000, 7)
+  assert(delta == 1)
+  assert(p > 0.05 and p < 0.25)
+  local delta2, p2 = a:paired_test(b, 1000, 7)
+  assert(delta2 == delta and p2 == p)
+  local d0, p0 = a:paired_test(a:clone())
+  assert(d0 == 0 and p0 == 1)
+  local de, pe = dvec.create():paired_test(dvec.create())
+  assert(de == 0 and pe == 1)
+  assert(not pcall(function () a:paired_test(dvec.create({ 1 })) end))
+end)
+
 test("ivec/dvec/svec: clone copies and stays independent", function ()
   for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 1, 2, 3 })

@@ -620,6 +620,318 @@ static inline void tk_csr_materialize (lua_State *L, tk_csr_t *X, int ix)
   lua_pop(L, 1);
 }
 
+static int tk_csr_topk_lua (lua_State *L)
+{
+  lua_settop(L, 3);
+  tk_csr_t *X = tk_csr_peek(L, 1, "csr");
+  tk_csr_t *Q = tk_csr_peek(L, 2, "queries");
+  uint64_t k = tk_lua_checkunsigned(L, 3, "k");
+  uint64_t n_docs = tk_csr_rows(X), n_q = tk_csr_rows(Q);
+  uint64_t xn = tk_csr_nbr_n(X), qn = tk_csr_nbr_n(Q);
+  uint64_t n_terms = 0;
+  for (uint64_t i = 0; i < xn; i ++) {
+    int64_t t = tk_csr_nbr(X, i);
+    if (t < 0)
+      return tk_lua_verror(L, 2, "csr", "topk: negative term id in corpus");
+    if ((uint64_t) t + 1 > n_terms) n_terms = (uint64_t) t + 1;
+  }
+  for (uint64_t i = 0; i < qn; i ++)
+    if (tk_csr_nbr(Q, i) < 0)
+      return tk_lua_verror(L, 2, "csr", "topk: negative term id in queries");
+  tk_ivec_t *poff = tk_ivec_create(L, n_terms + 1);
+  tk_ivec_t *pdoc = tk_ivec_create(L, xn);
+  tk_dvec_t *pval = tk_dvec_create(L, xn);
+  tk_ivec_t *cur = tk_ivec_create(L, n_terms);
+  for (uint64_t t = 0; t <= n_terms; t ++) poff->a[t] = 0;
+  for (uint64_t i = 0; i < xn; i ++) poff->a[tk_csr_nbr(X, i) + 1] ++;
+  for (uint64_t t = 0; t < n_terms; t ++) {
+    poff->a[t + 1] += poff->a[t];
+    cur->a[t] = poff->a[t];
+  }
+  for (uint64_t d = 0; d < n_docs; d ++)
+    for (int64_t j = X->offsets->a[d]; j < X->offsets->a[d + 1]; j ++) {
+      int64_t t = tk_csr_nbr(X, (uint64_t) j);
+      int64_t p = cur->a[t] ++;
+      pdoc->a[p] = (int64_t) d;
+      pval->a[p] = tk_csr_val1(X, (uint64_t) j);
+    }
+  tk_ivec_t *cnt = tk_ivec_create(L, n_q);
+  tk_ivec_t *off = tk_ivec_create(L, n_q + 1);
+  int io = lua_gettop(L);
+  tk_ivec_t *ids = (tk_ivec_t *) tk_csr_new_nbr(L, TK_TAG_I64, n_q * k);
+  int in_ = lua_gettop(L);
+  tk_dvec_t *scores = (tk_dvec_t *) tk_csr_new_values(L, TK_TAG_F64, n_q * k);
+  int iv = lua_gettop(L);
+  int oom = 0;
+  #pragma omp parallel
+  {
+    double *acc = (double *) calloc(n_docs ? n_docs : 1, sizeof(double));
+    unsigned char *mark = (unsigned char *) calloc(n_docs ? n_docs : 1, 1);
+    int64_t *touched = (int64_t *) malloc((n_docs ? n_docs : 1) * sizeof(int64_t));
+    tk_rvec_t *heap = tk_rvec_create(NULL, k ? k : 1);
+    if (!acc || !mark || !touched || !heap) {
+      #pragma omp atomic write
+      oom = 1;
+    } else {
+      #pragma omp for schedule(dynamic, 16)
+      for (uint64_t q = 0; q < n_q; q ++) {
+        uint64_t nt = 0;
+        for (int64_t j = Q->offsets->a[q]; j < Q->offsets->a[q + 1]; j ++) {
+          uint64_t t = (uint64_t) tk_csr_nbr(Q, (uint64_t) j);
+          if (t >= n_terms) continue;
+          double w = tk_csr_val1(Q, (uint64_t) j);
+          for (int64_t p = poff->a[t]; p < poff->a[t + 1]; p ++) {
+            int64_t d = pdoc->a[p];
+            if (!mark[d]) { mark[d] = 1; touched[nt ++] = d; }
+            acc[d] += w * pval->a[p];
+          }
+        }
+        tk_rvec_clear(heap);
+        for (uint64_t i = 0; i < nt; i ++) {
+          int64_t d = touched[i];
+          tk_rvec_hmin(heap, k, tk_rank(d, acc[d]));
+          acc[d] = 0.0;
+          mark[d] = 0;
+        }
+        tk_rvec_desc(heap, 0, heap->n);
+        for (uint64_t h = 0; h < heap->n; h ++) {
+          ids->a[q * k + h] = heap->a[h].i;
+          scores->a[q * k + h] = heap->a[h].d;
+        }
+        cnt->a[q] = (int64_t) heap->n;
+      }
+    }
+    free(acc);
+    free(mark);
+    free(touched);
+    if (heap) tk_rvec_destroy(heap);
+  }
+  if (oom)
+    return tk_lua_verror(L, 2, "csr", "topk: allocation failed");
+  uint64_t pos = 0;
+  off->a[0] = 0;
+  for (uint64_t q = 0; q < n_q; q ++) {
+    for (int64_t h = 0; h < cnt->a[q]; h ++) {
+      ids->a[pos] = ids->a[q * k + (uint64_t) h];
+      scores->a[pos] = scores->a[q * k + (uint64_t) h];
+      pos ++;
+    }
+    off->a[q + 1] = (int64_t) pos;
+  }
+  ids->n = pos;
+  scores->n = pos;
+  tk_csr_push(L, TK_TAG_F64, TK_TAG_I64, n_docs, io, off, in_, ids, iv, scores);
+  return 1;
+}
+
+static int tk_csr_ir (lua_State *L, int metric)
+{
+  lua_settop(L, 3);
+  tk_csr_t *P = tk_csr_peek(L, 1, "ranked");
+  tk_csr_t *J = tk_csr_peek(L, 2, "qrels");
+  uint64_t k = tk_lua_checkunsigned(L, 3, "k");
+  uint64_t n = tk_csr_rows(J);
+  if (tk_csr_rows(P) < n)
+    return tk_lua_verror(L, 2, "csr", "ranked has fewer rows than qrels");
+  uint64_t maxj = 0;
+  for (uint64_t q = 0; q < n; q ++) {
+    uint64_t len = (uint64_t) (J->offsets->a[q + 1] - J->offsets->a[q]);
+    if (len > maxj) maxj = len;
+  }
+  tk_dvec_t *grades = tk_dvec_create(L, maxj ? maxj : 1);
+  tk_dvec_t *out = tk_dvec_create(L, n);
+  int iout = lua_gettop(L);
+  double sum = 0.0;
+  uint64_t used = 0;
+  for (uint64_t q = 0; q < n; q ++) {
+    int64_t jlo = J->offsets->a[q], jhi = J->offsets->a[q + 1];
+    uint64_t nrel = 0;
+    for (int64_t j = jlo; j < jhi; j ++) {
+      double g = tk_csr_val1(J, (uint64_t) j);
+      if (g > 0.0) grades->a[nrel ++] = g;
+    }
+    double dcg = 0.0, rr = 0.0;
+    uint64_t hits = 0;
+    int64_t plo = P->offsets->a[q], phi = P->offsets->a[q + 1];
+    for (int64_t j = plo; j < phi && (uint64_t) (j - plo) < k; j ++) {
+      uint64_t rank = (uint64_t) (j - plo) + 1;
+      int64_t id = tk_csr_nbr(P, (uint64_t) j);
+      double g = 0.0;
+      for (int64_t i = jlo; i < jhi; i ++)
+        if (tk_csr_nbr(J, (uint64_t) i) == id) { g = tk_csr_val1(J, (uint64_t) i); break; }
+      if (g > 0.0) {
+        dcg += g / log2((double) rank + 1.0);
+        hits ++;
+        if (rr == 0.0) rr = 1.0 / (double) rank;
+      }
+    }
+    double v = 0.0;
+    if (nrel > 0) {
+      if (metric == 0) {
+        tk_dvec_desc(grades, 0, nrel);
+        double idcg = 0.0;
+        for (uint64_t i = 0; i < nrel && i < k; i ++)
+          idcg += grades->a[i] / log2((double) i + 2.0);
+        v = idcg > 0.0 ? dcg / idcg : 0.0;
+      } else if (metric == 1) {
+        v = (double) hits / (double) nrel;
+      } else {
+        v = rr;
+      }
+      sum += v;
+      used ++;
+    }
+    out->a[q] = v;
+  }
+  lua_pushvalue(L, iout);
+  lua_pushnumber(L, used > 0 ? sum / (double) used : 0.0);
+  return 2;
+}
+
+static int tk_csr_ndcg_lua (lua_State *L) { return tk_csr_ir(L, 0); }
+static int tk_csr_recall_lua (lua_State *L) { return tk_csr_ir(L, 1); }
+static int tk_csr_mrr_lua (lua_State *L) { return tk_csr_ir(L, 2); }
+
+static void tk_csr_row_ranks (tk_rvec_t *tmp, double *ranks)
+{
+  tk_rvec_asc(tmp, 0, tmp->n);
+  uint64_t i = 0;
+  while (i < tmp->n) {
+    uint64_t e = i;
+    while (e + 1 < tmp->n && tmp->a[e + 1].d == tmp->a[i].d) e ++;
+    double r = ((double) i + (double) e) / 2.0 + 1.0;
+    for (uint64_t t = i; t <= e; t ++) ranks[tmp->a[t].i] = r;
+    i = e + 1;
+  }
+}
+
+static int tk_csr_spearman_lua (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_csr_t *A = tk_csr_peek(L, 1, "csr");
+  tk_csr_t *B = tk_csr_peek(L, 2, "other");
+  uint64_t n = tk_csr_rows(A);
+  if (tk_csr_rows(B) != n)
+    return tk_lua_verror(L, 2, "csr", "spearman: row counts differ");
+  uint64_t maxr = 0;
+  for (uint64_t r = 0; r < n; r ++) {
+    if (A->offsets->a[r + 1] != B->offsets->a[r + 1])
+      return tk_lua_verror(L, 2, "csr", "spearman: patterns differ");
+    for (int64_t j = A->offsets->a[r]; j < A->offsets->a[r + 1]; j ++)
+      if (tk_csr_nbr(A, (uint64_t) j) != tk_csr_nbr(B, (uint64_t) j))
+        return tk_lua_verror(L, 2, "csr", "spearman: patterns differ");
+    uint64_t len = (uint64_t) (A->offsets->a[r + 1] - A->offsets->a[r]);
+    if (len > maxr) maxr = len;
+  }
+  tk_rvec_t *tmp = tk_rvec_create(L, maxr ? maxr : 1);
+  tk_dvec_t *ra = tk_dvec_create(L, maxr ? maxr : 1);
+  tk_dvec_t *rb = tk_dvec_create(L, maxr ? maxr : 1);
+  tk_dvec_t *out = tk_dvec_create(L, n);
+  for (uint64_t r = 0; r < n; r ++) {
+    int64_t lo = A->offsets->a[r];
+    uint64_t len = (uint64_t) (A->offsets->a[r + 1] - lo);
+    double rho = 0.0;
+    if (len >= 2) {
+      tmp->n = len;
+      for (uint64_t i = 0; i < len; i ++) tmp->a[i] = tk_rank((int64_t) i, tk_csr_val1(A, (uint64_t) lo + i));
+      tk_csr_row_ranks(tmp, ra->a);
+      tmp->n = len;
+      for (uint64_t i = 0; i < len; i ++) tmp->a[i] = tk_rank((int64_t) i, tk_csr_val1(B, (uint64_t) lo + i));
+      tk_csr_row_ranks(tmp, rb->a);
+      double mean = ((double) len + 1.0) / 2.0, sab = 0.0, saa = 0.0, sbb = 0.0;
+      for (uint64_t i = 0; i < len; i ++) {
+        double x = ra->a[i] - mean, y = rb->a[i] - mean;
+        sab += x * y;
+        saa += x * x;
+        sbb += y * y;
+      }
+      rho = saa > 0.0 && sbb > 0.0 ? sab / sqrt(saa * sbb) : 0.0;
+    }
+    out->a[r] = rho;
+  }
+  return 1;
+}
+
+static int tk_csr_overlap_lua (lua_State *L)
+{
+  lua_settop(L, 3);
+  tk_csr_t *A = tk_csr_peek(L, 1, "csr");
+  tk_csr_t *B = tk_csr_peek(L, 2, "other");
+  uint64_t k = tk_lua_checkunsigned(L, 3, "k");
+  uint64_t n = tk_csr_rows(A);
+  if (tk_csr_rows(B) != n)
+    return tk_lua_verror(L, 2, "csr", "overlap: row counts differ");
+  tk_rvec_t *ta = tk_rvec_create(L, k ? k : 1);
+  tk_rvec_t *tb = tk_rvec_create(L, k ? k : 1);
+  tk_dvec_t *out = tk_dvec_create(L, n);
+  for (uint64_t r = 0; r < n; r ++) {
+    tk_rvec_clear(ta);
+    tk_rvec_clear(tb);
+    for (int64_t j = A->offsets->a[r]; j < A->offsets->a[r + 1]; j ++)
+      tk_rvec_hmin(ta, k, tk_rank(tk_csr_nbr(A, (uint64_t) j), tk_csr_val1(A, (uint64_t) j)));
+    for (int64_t j = B->offsets->a[r]; j < B->offsets->a[r + 1]; j ++)
+      tk_rvec_hmin(tb, k, tk_rank(tk_csr_nbr(B, (uint64_t) j), tk_csr_val1(B, (uint64_t) j)));
+    uint64_t common = 0;
+    for (uint64_t i = 0; i < ta->n; i ++)
+      for (uint64_t t = 0; t < tb->n; t ++)
+        if (ta->a[i].i == tb->a[t].i) { common ++; break; }
+    uint64_t denom = ta->n > tb->n ? ta->n : tb->n;
+    out->a[r] = denom > 0 ? (double) common / (double) denom : 0.0;
+  }
+  return 1;
+}
+
+static int tk_csr_unique_cols_lua (lua_State *L)
+{
+  lua_settop(L, 1);
+  tk_csr_t *X = tk_csr_peek(L, 1, "csr");
+  uint64_t nn = tk_csr_nbr_n(X);
+  tk_iumap_t *seen = tk_iumap_create(L, 0);
+  int imap = lua_gettop(L);
+  tk_ivec_t *ids = tk_ivec_create(L, 0);
+  int iids = lua_gettop(L);
+  uint64_t no = X->offsets->n;
+  tk_ivec_t *off = tk_ivec_create(L, no);
+  int io = lua_gettop(L);
+  memcpy(off->a, X->offsets->a, no * sizeof(int64_t));
+  tk_ivec_t *nbr = (tk_ivec_t *) tk_csr_new_nbr(L, TK_TAG_I64, nn);
+  int in_ = lua_gettop(L);
+  for (uint64_t i = 0; i < nn; i ++) {
+    int64_t id = tk_csr_nbr(X, i);
+    int kha;
+    uint32_t khi = tk_iumap_put(seen, id, &kha);
+    if (kha < 0)
+      return tk_lua_verror(L, 2, "csr", "allocation failed");
+    if (kha) {
+      tk_iumap_setval(seen, khi, (int64_t) ids->n);
+      if (tk_ivec_push(ids, id) != 0)
+        return tk_lua_verror(L, 2, "csr", "allocation failed");
+    }
+    nbr->a[i] = tk_iumap_val(seen, khi);
+  }
+  nbr->n = nn;
+  void *vals = NULL;
+  int iv = 0;
+  if (X->tag != TK_TAG_NONE) {
+    vals = tk_csr_new_values(L, X->tag, nn);
+    iv = lua_gettop(L);
+    char *vdst;
+    switch (X->tag) {
+      case TK_TAG_I32: vdst = (char *) ((tk_svec_t *) vals)->a; break;
+      case TK_TAG_I64: vdst = (char *) ((tk_ivec_t *) vals)->a; break;
+      case TK_TAG_F32: vdst = (char *) ((tk_fvec_t *) vals)->a; break;
+      case TK_TAG_F64: vdst = (char *) ((tk_dvec_t *) vals)->a; break;
+      default: vdst = ((tk_cvec_t *) vals)->a; break;
+    }
+    memcpy(vdst, tk_csr_val_ptr(X), nn * tk_tag_size(X->tag));
+  }
+  tk_csr_push(L, X->tag, TK_TAG_I64, ids->n, io, off, in_, nbr, iv, vals);
+  lua_pushvalue(L, iids);
+  lua_insert(L, -2);
+  lua_remove(L, imap);
+  return 2;
+}
+
 static int tk_csr_dots_lua (lua_State *L)
 {
   lua_settop(L, 3);
@@ -992,20 +1304,10 @@ static int tk_csr_auc_spearman (lua_State *L, tk_csr_t *X, tk_dvec_t *Yt)
       val_of[p] = has_vals ? (float) tk_csr_val1(X, (uint64_t) j) : 1.0f;
     }
   tk_rvec_t *Sy = tk_rvec_create(L, n_rows ? n_rows : 1);
+  tk_rvec_clear(Sy);
   for (uint64_t d = 0; d < n_rows; d ++)
     tk_rvec_push(Sy, tk_rank((int64_t) d, Yt->a[d]));
-  tk_rvec_asc(Sy, 0, Sy->n);
-  {
-    uint64_t p = 0;
-    while (p < n_rows) {
-      double v = Sy->a[p].d;
-      uint64_t q = p;
-      while (q + 1 < n_rows && Sy->a[q + 1].d == v) q ++;
-      double mr = ((double) (p + 1) + (double) (q + 1)) / 2.0;
-      for (uint64_t t = p; t <= q; t ++) yrk[Sy->a[t].i] = mr;
-      p = q + 1;
-    }
-  }
+  tk_csr_row_ranks(Sy, yrk);
   double mean = (N + 1.0) / 2.0;
   double Sy_sum = N * (N + 1.0) / 2.0;
   double Syy = 0.0;
@@ -1548,6 +1850,13 @@ static luaL_Reg tk_csr_mt_fns[] = {
   { "transpose", tk_csr_transpose_lua },
   { "normalize", tk_csr_normalize_lua },
   { "dots", tk_csr_dots_lua },
+  { "topk", tk_csr_topk_lua },
+  { "ndcg", tk_csr_ndcg_lua },
+  { "recall", tk_csr_recall_lua },
+  { "mrr", tk_csr_mrr_lua },
+  { "spearman", tk_csr_spearman_lua },
+  { "overlap", tk_csr_overlap_lua },
+  { "unique_cols", tk_csr_unique_cols_lua },
   { "scale_cols", tk_csr_scale_cols_lua },
   { "sumsq_cols", tk_csr_sumsq_cols_lua },
   { "nnz_cols", tk_csr_nnz_cols_lua },
