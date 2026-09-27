@@ -38,6 +38,19 @@ test("ivec/dvec/svec: create from table", function ()
   end
 end)
 
+test("ivec/dvec/svec: clone copies and stays independent", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
+    local v = vec.create({ 1, 2, 3 })
+    local c = v:clone()
+    assert(c:size() == 3)
+    assert(teq(c:table(), { 1, 2, 3 }))
+    c:set(0, 9)
+    assert(v:get(0) == 1)
+    assert(c:get(0) == 9)
+    assert(vec.create():clone():size() == 0)
+  end
+end)
+
 test("ivec/dvec/svec: resize and setn", function ()
   for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 1, 2, 3 })

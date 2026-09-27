@@ -209,6 +209,43 @@ test("csr: normalize materializes values on binary", function ()
   assert(num.abs(v:get(2) - 1) < 1e-6)
 end)
 
+test("csr: normalize max divides each row by its max", function ()
+  local X = csr.create({
+    offsets = ivec.create({ 0, 2, 4, 5 }),
+    neighbors = ivec.create({ 0, 1, 0, 1, 1 }),
+    values = fvec.create({ 2, 4, -3, -1, 0 }),
+    n_cols = 2,
+  })
+  assert(X:normalize("max") == X)
+  assert(teq(X:values():table(), { 0.5, 1, -3, -1, 0 }))
+  assert(not pcall(function () X:normalize("l1") end))
+end)
+
+test("csr: dots writes sampled pair products in place", function ()
+  local Q = mtx.create({ data = fvec.create({ 1, 0, 0, 1 }), n_rows = 2, n_cols = 2 })
+  local D = mtx.create({ data = fvec.create({ 1, 2, 3, 4, 5, 6 }), n_rows = 3, n_cols = 2 })
+  local X = csr.create({
+    offsets = ivec.create({ 0, 2, 3 }),
+    neighbors = ivec.create({ 2, 0, 1 }),
+    values = fvec.create({ 9, 9, 9 }),
+    n_cols = 3,
+  })
+  assert(X:dots(Q, D) == X)
+  assert(teq(X:neighbors():table(), { 2, 0, 1 }))
+  assert(teq(X:values():table(), { 5, 1, 4 }))
+  local B = csr.create({ offsets = ivec.create({ 0, 1 }), neighbors = ivec.create({ 1 }), n_cols = 3 })
+  B:dots(Q, D)
+  assert(B:type() == "f32" and B:values():get(0) == 3)
+  local Q64 = mtx.create({ data = dvec.create({ 1, 1 }), n_rows = 1, n_cols = 2 })
+  local D64 = mtx.create({ data = dvec.create({ 2, 3 }), n_rows = 1, n_cols = 2 })
+  local C = csr.create({ offsets = ivec.create({ 0, 1 }), neighbors = ivec.create({ 0 }), n_cols = 1 })
+  C:dots(Q64, D64)
+  assert(C:type() == "f64" and C:values():get(0) == 5)
+  assert(not pcall(function () X:dots(Q64, D) end))
+  local bad = csr.create({ offsets = ivec.create({ 0, 1 }), neighbors = ivec.create({ 3 }), n_cols = 4 })
+  assert(not pcall(function () bad:dots(Q, D) end))
+end)
+
 test("csr: scale_cols", function ()
   local X = csr.create({
     offsets = ivec.create({ 0, 2, 3 }),

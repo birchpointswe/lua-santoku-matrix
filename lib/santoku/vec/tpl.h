@@ -1301,6 +1301,15 @@ static inline int tk_vec_pfx(raw_lua) (lua_State *L)
   return 1;
 }
 
+static inline int tk_vec_pfx(clone_lua) (lua_State *L)
+{
+  lua_settop(L, 1);
+  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
+  tk_vec_pfx(t) *m1 = tk_vec_pfx(create)(L, m0->n);
+  tk_vec_pfx(copy)(m1, m0, 0, (int64_t) m0->n, 0);
+  return 1;
+}
+
 #if !defined(__EMSCRIPTEN__)
 static inline int tk_vec_pfx(mmap_sync_lua) (lua_State *L)
 {
@@ -1317,6 +1326,7 @@ static inline int tk_vec_pfx(mmap_sync_lua) (lua_State *L)
 static luaL_Reg tk_vec_pfx(lua_mt_fns)[] =
 {
   { "copy", tk_vec_pfx(copy_lua) },
+  { "clone", tk_vec_pfx(clone_lua) },
   { "reverse", tk_vec_pfx(reverse_lua) },
   { "destroy", tk_vec_pfx(destroy_lua) },
   { "size", tk_vec_pfx(size_lua) },

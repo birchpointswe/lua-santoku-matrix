@@ -620,12 +620,93 @@ static inline void tk_csr_materialize (lua_State *L, tk_csr_t *X, int ix)
   lua_pop(L, 1);
 }
 
+static int tk_csr_dots_lua (lua_State *L)
+{
+  lua_settop(L, 3);
+  tk_csr_t *X = tk_csr_peek(L, 1, "csr");
+  tk_mtx_t *Q = tk_mtx_peek(L, 2, "queries");
+  tk_mtx_t *D = tk_mtx_peek(L, 3, "docs");
+  if (Q->tag != D->tag || (Q->tag != TK_TAG_F32 && Q->tag != TK_TAG_F64))
+    return tk_lua_verror(L, 2, "csr", "dots: queries and docs must both be f32 or both f64");
+  if (Q->n_cols != D->n_cols)
+    return tk_lua_verror(L, 2, "csr", "dots: queries and docs must have equal n_cols");
+  uint64_t n_rows = tk_csr_rows(X);
+  if (n_rows > Q->n_rows)
+    return tk_lua_verror(L, 2, "csr", "dots: csr has more rows than queries");
+  uint64_t nn = tk_csr_nbr_n(X);
+  for (uint64_t i = 0; i < nn; i ++) {
+    int64_t c = tk_csr_nbr(X, i);
+    if (c < 0 || (uint64_t) c >= D->n_rows)
+      return tk_lua_verror(L, 2, "csr", "dots: neighbor out of range of docs");
+  }
+  if (X->tag == TK_TAG_NONE) {
+    if (Q->tag == TK_TAG_F64) {
+      tk_dvec_t *vals = tk_dvec_create(L, nn);
+      X->tag = TK_TAG_F64;
+      X->values = vals;
+      tk_eph_anchor(L, 1, lua_gettop(L), vals);
+      lua_pop(L, 1);
+    } else {
+      tk_csr_materialize(L, X, 1);
+    }
+  }
+  if (X->tag != TK_TAG_F32 && X->tag != TK_TAG_F64)
+    return tk_lua_verror(L, 2, "csr", "dots: csr values must be f32 or f64");
+  uint64_t k = Q->n_cols;
+  bool f64 = Q->tag == TK_TAG_F64;
+  void *qa = tk_mtx_ptr(Q);
+  void *da = tk_mtx_ptr(D);
+  #pragma omp parallel for schedule(static)
+  for (uint64_t r = 0; r < n_rows; r ++) {
+    int64_t lo = X->offsets->a[r], hi = X->offsets->a[r + 1];
+    for (int64_t j = lo; j < hi; j ++) {
+      uint64_t c = (uint64_t) tk_csr_nbr(X, (uint64_t) j);
+      double s = 0.0;
+      if (f64) {
+        const double *q = (const double *) qa + r * k;
+        const double *d = (const double *) da + c * k;
+        for (uint64_t t = 0; t < k; t ++) s += q[t] * d[t];
+      } else {
+        const float *q = (const float *) qa + r * k;
+        const float *d = (const float *) da + c * k;
+        for (uint64_t t = 0; t < k; t ++) s += (double) q[t] * (double) d[t];
+      }
+      tk_csr_setval1(X, (uint64_t) j, s);
+    }
+  }
+  lua_settop(L, 1);
+  return 1;
+}
+
 static int tk_csr_normalize_lua (lua_State *L)
 {
-  lua_settop(L, 1);
+  lua_settop(L, 2);
   tk_csr_t *X = tk_csr_peek(L, 1, "csr");
+  const char *mode = luaL_optstring(L, 2, "l2");
+  bool max_mode = strcmp(mode, "max") == 0;
+  if (!max_mode && strcmp(mode, "l2") != 0)
+    return tk_lua_verror(L, 2, "csr", "normalize: mode must be l2 or max");
   tk_csr_materialize(L, X, 1);
   uint64_t n_rows = tk_csr_rows(X);
+  if (max_mode) {
+    for (uint64_t r = 0; r < n_rows; r ++) {
+      int64_t lo = X->offsets->a[r], hi = X->offsets->a[r + 1];
+      if (hi <= lo)
+        continue;
+      double mx = tk_csr_val1(X, (uint64_t) lo);
+      for (int64_t j = lo + 1; j < hi; j ++) {
+        double v = tk_csr_val1(X, (uint64_t) j);
+        if (v > mx) mx = v;
+      }
+      if (mx > 0.0) {
+        double inv = 1.0 / mx;
+        for (int64_t j = lo; j < hi; j ++)
+          tk_csr_setval1(X, (uint64_t) j, tk_csr_val1(X, (uint64_t) j) * inv);
+      }
+    }
+    lua_settop(L, 1);
+    return 1;
+  }
   for (uint64_t r = 0; r < n_rows; r ++) {
     int64_t lo = X->offsets->a[r], hi = X->offsets->a[r + 1];
     double ss = 0.0;
@@ -1466,6 +1547,7 @@ static luaL_Reg tk_csr_mt_fns[] = {
   { "hcat", tk_csr_hcat_lua },
   { "transpose", tk_csr_transpose_lua },
   { "normalize", tk_csr_normalize_lua },
+  { "dots", tk_csr_dots_lua },
   { "scale_cols", tk_csr_scale_cols_lua },
   { "sumsq_cols", tk_csr_sumsq_cols_lua },
   { "nnz_cols", tk_csr_nnz_cols_lua },
