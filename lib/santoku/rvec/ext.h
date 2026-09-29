@@ -12,16 +12,6 @@
 #include <santoku/dvec/base.h>
 #include <math.h>
 
-static inline tk_rvec_t *tk_rvec_from_dvec (
-  lua_State *L,
-  tk_dvec_t *D
-) {
-  tk_rvec_t *R = tk_rvec_create(L, D->n);
-  for (int64_t i = 0; i < (int64_t) D->n; i ++)
-    R->a[i] = tk_rank(i, D->a[i]);
-  return R;
-}
-
 static inline int tk_rvec_split (
   tk_rvec_t *P,
   tk_ivec_t *K,

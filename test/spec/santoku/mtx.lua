@@ -4,6 +4,7 @@ local assert = err.assert
 local mtx = require("santoku.mtx")
 local ivec = require("santoku.ivec")
 local dvec = require("santoku.dvec")
+local fvec = require("santoku.fvec")
 local tbl = require("santoku.table")
 local num = require("santoku.num")
 local fs = require("santoku.fs")
@@ -113,6 +114,41 @@ test("mtx: hcat in place", function ()
   assert(teq(B:data():table(), { 3, 7 }))
 end)
 
+test("mtx: clone is independent", function ()
+  local M = mtx.create({ data = dvec.create({ 1, 2, 3, 4 }), n_rows = 2, n_cols = 2 })
+  local C = M:clone()
+  assert(C ~= M)
+  assert(C:data() ~= M:data())
+  assert(C:eq(M))
+  assert(C:type() == "f64")
+  local r, c = C:shape()
+  assert(r == 2 and c == 2)
+  C:set(0, 0, 9)
+  assert(M:get(0, 0) == 1)
+  assert(C:get(0, 0) == 9)
+  local I = mtx.create({ data = ivec.create({ 5, 6 }), n_rows = 1, n_cols = 2 })
+  local IC = I:clone()
+  assert(IC:type() == "i64")
+  assert(teq(IC:data():table(), { 5, 6 }))
+end)
+
+test("mtx: append rows in place", function ()
+  local A = mtx.create({ data = dvec.create({ 1, 2, 3, 4 }), n_rows = 2, n_cols = 2 })
+  local B = mtx.create({ data = dvec.create({ 5, 6 }), n_rows = 1, n_cols = 2 })
+  assert(A:append(B) == A)
+  local r, c = A:shape()
+  assert(r == 3 and c == 2)
+  assert(teq(A:data():table(), { 1, 2, 3, 4, 5, 6 }))
+  assert(teq(B:data():table(), { 5, 6 }))
+  assert(A:get(2, 1) == 6)
+  local F = mtx.create({ data = fvec.create({ 5, 6 }), n_rows = 1, n_cols = 2 })
+  assert(not err.pcall(function () A:append(F) end))
+  local W = mtx.create({ data = dvec.create({ 5, 6, 7 }), n_rows = 1, n_cols = 3 })
+  assert(not err.pcall(function () A:append(W) end))
+  local r2 = A:shape()
+  assert(r2 == 3)
+end)
+
 test("mtx: persist/load roundtrip", function ()
   local tmp = ".mtx_test.bin"
   local M = mtx.create({ data = dvec.create({ 1.5, 2.5, 3.5, 4.5 }), n_rows = 2, n_cols = 2 })
@@ -134,21 +170,80 @@ test("mtx: center fit/apply", function ()
   assert(teq(N:data():table(), { 0, 0 }))
 end)
 
-test("mtx: standardize fit returns means + inv_std", function ()
-  local M = mtx.create({ data = dvec.create({ 1, 10, 3, 20 }), n_rows = 2, n_cols = 2 })
-  local means, istds = M:standardize()
-  assert(means and istds)
-  local sums = M:sums("col")
-  assert(num.abs(sums:get(0)) < 1e-9)
-  assert(num.abs(sums:get(1)) < 1e-9)
+local function near (M, want, eps)
+  local got = M:data():table()
+  if #got ~= #want then return false end
+  for i = 1, #want do
+    if num.abs(got[i] - want[i]) > eps then return false end
+  end
+  return true
+end
+
+test("mtx: standardize scales columns to unit sd and returns w", function ()
+  local M = mtx.create({ data = dvec.create({ 1, 5, 2, 5, 3, 5 }), n_rows = 3, n_cols = 2 })
+  local w, extra = M:standardize()
+  assert(extra == nil)
+  assert(w:size() == 2)
+  local w0 = num.sqrt(1.5)
+  assert(num.abs(w:get(0) - w0) < 1e-12)
+  assert(w:get(1) == 0)
+  assert(near(M, { w0, 0, 2 * w0, 0, 3 * w0, 0 }, 1e-12))
+  local mu = (w0 + 2 * w0 + 3 * w0) / 3
+  local var = ((w0 - mu) ^ 2 + (2 * w0 - mu) ^ 2 + (3 * w0 - mu) ^ 2) / 3
+  assert(num.abs(var - 1) < 1e-12)
 end)
 
-test("mtx: normalize row", function ()
+test("mtx: standardize f32 w applies to a copy through scale_cols", function ()
+  local M = mtx.create({ data = fvec.create({ 1, -2, 4, 0, 7, 2 }), n_rows = 3, n_cols = 2 })
+  local C = M:clone()
+  local w = M:standardize()
+  assert(C:scale_cols(w) == C)
+  assert(C:eq(M, 1e-6))
+end)
+
+test("mtx: standardize rms", function ()
+  local M = mtx.create({ data = dvec.create({ 3, 0, 1, 4, 0, -1 }), n_rows = 2, n_cols = 3 })
+  local w = M:standardize("rms")
+  local w0 = num.sqrt(2) / 5
+  assert(num.abs(w:get(0) - w0) < 1e-12)
+  assert(w:get(1) == 0)
+  assert(num.abs(w:get(2) - 1) < 1e-12)
+  assert(near(M, { 3 * w0, 0, 1, 4 * w0, 0, -1 }, 1e-12))
+  assert(not err.pcall(function () M:standardize("l2") end))
+  assert(not err.pcall(function () M:standardize("sd") end))
+end)
+
+test("mtx: normalize l2 default", function ()
   local M = mtx.create({ data = dvec.create({ 3, 4, 0, 0, 5, 12 }), n_rows = 2, n_cols = 3 })
-  assert(M:normalize("row") == M)
-  local m = M:mags("row")
-  assert(num.abs(m:get(0) - 1) < 1e-10)
-  assert(num.abs(m:get(1) - 1) < 1e-10)
+  assert(M:normalize() == M)
+  assert(near(M, { 0.6, 0.8, 0, 0, 5 / 13, 12 / 13 }, 1e-12))
+  local N = mtx.create({ data = dvec.create({ 0, 0, 6, 8 }), n_rows = 2, n_cols = 2 })
+  N:normalize("l2")
+  assert(near(N, { 0, 0, 0.6, 0.8 }, 1e-12))
+end)
+
+test("mtx: normalize max", function ()
+  local M = mtx.create({
+    data = dvec.create({ 2, 4, 1, 0, 0, 0, -1, -3, -2, 2, -4, 1 }),
+    n_rows = 4, n_cols = 3 })
+  assert(M:normalize("max") == M)
+  assert(near(M, { 0.5, 1, 0.25, 0, 0, 0, -1, -3, -2, 1, -2, 0.5 }, 1e-12))
+end)
+
+test("mtx: normalize rejects other modes", function ()
+  local M = mtx.create({ data = dvec.create({ 1, 2 }), n_rows = 1, n_cols = 2 })
+  assert(not err.pcall(function () M:normalize("row") end))
+  assert(not err.pcall(function () M:normalize("l1") end))
+end)
+
+test("mtx: scale_cols", function ()
+  local M = mtx.create({ data = dvec.create({ 1, 2, 3, 4, 5, 6 }), n_rows = 2, n_cols = 3 })
+  assert(M:scale_cols(dvec.create({ 2, 0.5, -1 })) == M)
+  assert(teq(M:data():table(), { 2, 1, -3, 8, 2.5, -6 }))
+  local F = mtx.create({ data = fvec.create({ 1, 2, 3, 4 }), n_rows = 2, n_cols = 2 })
+  F:scale_cols(fvec.create({ 2, 3 }))
+  assert(teq(F:data():table(), { 2, 6, 6, 12 }))
+  assert(not err.pcall(function () M:scale_cols(dvec.create({ 1, 2 })) end))
 end)
 
 test("mtx: multiply", function ()
@@ -177,7 +272,6 @@ test("mtx: sign/median produce bitmaps", function ()
 end)
 
 local function itq_data (n, k)
-  local fvec = require("santoku.fvec")
   local x, vals = 12345, {}
   for i = 1, n do
     for j = 1, k do
@@ -230,70 +324,15 @@ test("mtx: itq reduced width keeps top variance and orthonormal columns", functi
   assert(orthonormal_cols(Wp, 1e-2))
 end)
 
-test("mtx: itq bits feed exhaustive hamming topk", function ()
-  local M = itq_data(200, 16)
-  local W = M:itq({ iterations = 20 })
-  local F = M:multiply(W)
-  local r, c = F:shape()
-  local B = mtx.create({ data = F:sign(), n_rows = r, n_cols = c, bits = true })
-  local P = B:topk(B, 3)
-  local off, dist = P:offsets(), P:values()
-  for q = 0, r - 1 do
-    assert(dist:get(off:get(q)) == 0)
-  end
-end)
-
-test("mtx.from_pairs: counts and weights", function ()
-  local i = ivec.create({ 0, 0, 1, 2, 2, 2 })
-  local j = ivec.create({ 0, 1, 1, 0, 0, 1 })
-  local M = mtx.from_pairs(i, j, 3, 2)
-  assert(teq(M:data():table(), { 1, 1, 0, 1, 2, 1 }))
-  local W = mtx.from_pairs(i, j, 3, 2, require("santoku.dvec").create({ 0.5, 0.5, 1, 2, 2, 3 }))
-  assert(teq(W:data():table(), { 0.5, 0.5, 0, 1, 4, 3 }))
-end)
-
-test("mtx: bits layout, popcount/hamming/ops", function ()
-  local csr = require("santoku.csr")
-  local ivec2 = require("santoku.ivec")
-  local A = csr.create({
-    offsets = ivec2.create({ 0, 2, 3 }),
-    neighbors = ivec2.create({ 0, 2, 1 }),
-    n_cols = 4,
-  })
-  local B = csr.create({
-    offsets = ivec2.create({ 0, 1, 3 }),
-    neighbors = ivec2.create({ 0, 1, 3 }),
-    n_cols = 4,
-  })
-  local MA = mtx.create({ data = A:to_bits(), n_rows = 2, n_cols = 4, bits = true })
-  local MB = mtx.create({ data = B:to_bits(), n_rows = 2, n_cols = 4, bits = true })
-  assert(MA:type() == "bits")
-  assert(MA:popcount() == 3)
-  assert(MB:popcount() == 3)
-  assert(MA:hamming(MB) == 2)
-  local T = MA:transpose()
-  local r, c = T:shape()
-  assert(r == 4 and c == 2)
-  assert(T:popcount() == 3)
-  MA:band(MB)
-  assert(MA:popcount() == 2)
-end)
-
-test("mtx: bits eq and persist roundtrip", function ()
-  local csr = require("santoku.csr")
-  local ivec2 = require("santoku.ivec")
-  local X = csr.create({
-    offsets = ivec2.create({ 0, 2, 3 }),
-    neighbors = ivec2.create({ 0, 2, 1 }),
-    n_cols = 4,
-  })
-  local M = mtx.create({ data = X:to_bits(), n_rows = 2, n_cols = 4, bits = true })
-  local tmp = ".mtx_bits_test.bin"
-  M:persist(tmp)
-  local M2 = mtx.load(tmp)
-  fs.rm(tmp, true)
-  assert(M2:type() == "bits")
-  assert(M:eq(M2))
+test("mtx: bits layout, zscore and from_pairs are gone", function ()
+  local M = mtx.create({ n_rows = 1, n_cols = 1 })
+  assert(M.zscore == nil)
+  assert(M.popcount == nil)
+  assert(M.hamming == nil)
+  assert(M.band == nil)
+  assert(M.flip_interleave == nil)
+  assert(mtx.from_pairs == nil)
+  assert(not err.pcall(function () mtx.create({ n_rows = 1, n_cols = 8, type = "bits" }) end))
 end)
 
 test("mtx: topk returns csr", function ()
@@ -344,22 +383,4 @@ test("mtx: maxs on all-negative rows (rmaxs init regression)", function ()
   assert(teq(M:maxs("row"):table(), { -1, -5 }))
   local I = mtx.create({ data = ivec.create({ -3, -1, -2, -9, -6, -5 }), n_rows = 2, n_cols = 3 })
   assert(teq(I:maxs("row"):table(), { -1, -5 }))
-end)
-
-test("mtx: bits transpose exact positions (port of cvec bits_transpose test)", function ()
-  local csr = require("santoku.csr")
-  local A = csr.create({
-    offsets = ivec.create({ 0, 2, 4, 6 }),
-    neighbors = ivec.create({ 0, 2, 1, 3, 0, 1 }),
-    n_cols = 4,
-  })
-  local M = mtx.create({ data = A:to_bits(), n_rows = 3, n_cols = 4, bits = true })
-  local T = M:transpose()
-  local X = csr.from_bits(T:data(), 4, 3)
-  local expected = csr.create({
-    offsets = ivec.create({ 0, 2, 4, 5, 6 }),
-    neighbors = ivec.create({ 0, 2, 1, 2, 0, 1 }),
-    n_cols = 3,
-  })
-  assert(X:eq(expected))
 end)

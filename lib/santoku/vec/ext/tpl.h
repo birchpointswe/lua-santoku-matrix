@@ -26,7 +26,6 @@
   tk_lua_verror((L), ((n) + 1), tk_pp_xstr(tk_vec_pfx(name)), __VA_ARGS__)
 #endif
 
-
 static inline void tk_vec_pfx(copy_indexed) (tk_vec_pfx(t) *m0, tk_vec_pfx(t) *m1, tk_ivec_t *indices);
 static inline void tk_vec_pfx(scatter_indexed) (tk_vec_pfx(t) *m0, tk_vec_pfx(t) *m1, tk_ivec_t *indices);
 #ifndef tk_vec_limited
@@ -41,7 +40,6 @@ static inline tk_ivec_t *tk_vec_pfx(rmaxargs) (lua_State *L, tk_vec_pfx(t) *m0, 
 static inline tk_ivec_t *tk_vec_pfx(cminargs) (lua_State *L, tk_vec_pfx(t) *m0, uint64_t cols);
 static inline tk_ivec_t *tk_vec_pfx(rminargs) (lua_State *L, tk_vec_pfx(t) *m0, uint64_t cols);
 #endif
-
 
 static inline int tk_vec_pfx(copy_indexed_lua) (lua_State *L)
 {
@@ -65,91 +63,6 @@ static inline int tk_vec_pfx(copy_indexed_lua) (lua_State *L)
 
 #ifndef tk_vec_limited
 
-static inline int tk_vec_pfx(rmagnitudes_lua) (lua_State *L) {
-  lua_settop(L, 2);
-  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
-  uint64_t cols = tk_lua_checkunsigned(L, 2, "cols");
-  tk_vec_pfx(rmagnitudes)(L, m0, cols);
-  return 1;
-}
-
-static inline int tk_vec_pfx(cmagnitudes_lua) (lua_State *L) {
-  lua_settop(L, 2);
-  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
-  uint64_t cols = tk_lua_checkunsigned(L, 2, "cols");
-  tk_vec_pfx(cmagnitudes)(L, m0, cols);
-  return 1;
-}
-
-static inline int tk_vec_pfx(rminargs_lua) (lua_State *L) {
-  lua_settop(L, 2);
-  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
-  uint64_t cols = tk_lua_checkunsigned(L, 2, "cols");
-  tk_vec_pfx(rminargs)(L, m0, cols);
-  return 1;
-}
-
-static inline int tk_vec_pfx(cminargs_lua) (lua_State *L) {
-  lua_settop(L, 2);
-  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
-  uint64_t cols = tk_lua_checkunsigned(L, 2, "cols");
-  tk_vec_pfx(cminargs)(L, m0, cols);
-  return 1;
-}
-
-static inline int tk_vec_pfx(rmaxargs_lua) (lua_State *L) {
-  lua_settop(L, 2);
-  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
-  uint64_t cols = tk_lua_checkunsigned(L, 2, "cols");
-  tk_vec_pfx(rmaxargs)(L, m0, cols);
-  return 1;
-}
-
-static inline int tk_vec_pfx(cmaxargs_lua) (lua_State *L) {
-  lua_settop(L, 2);
-  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
-  uint64_t cols = tk_lua_checkunsigned(L, 2, "cols");
-  tk_vec_pfx(cmaxargs)(L, m0, cols);
-  return 1;
-}
-
-static inline int tk_vec_pfx(rasc_lua) (lua_State *L)
-{
-  lua_settop(L, 2);
-  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
-  uint64_t cols = tk_lua_checkunsigned(L, 2, "cols");
-  tk_vec_pfx(rasc)(L, m0, cols);
-  return 1;
-}
-
-static inline int tk_vec_pfx(rdesc_lua) (lua_State *L)
-{
-  lua_settop(L, 2);
-  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
-  uint64_t cols = tk_lua_checkunsigned(L, 2, "cols");
-  tk_vec_pfx(rdesc)(L, m0, cols);
-  return 1;
-}
-
-static inline int tk_vec_pfx(casc_lua) (lua_State *L)
-{
-  lua_settop(L, 2);
-  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
-  uint64_t cols = tk_lua_checkunsigned(L, 2, "cols");
-  tk_vec_pfx(casc)(L, m0, cols);
-  return 1;
-}
-
-static inline int tk_vec_pfx(cdesc_lua) (lua_State *L)
-{
-  lua_settop(L, 2);
-  tk_vec_pfx(t) *m0 = tk_vec_pfx(peek)(L, 1, "vector");
-  uint64_t cols = tk_lua_checkunsigned(L, 2, "cols");
-  tk_vec_pfx(cdesc)(L, m0, cols);
-  return 1;
-}
-
-
 static inline int tk_vec_pfx(argsort_lua) (lua_State *L)
 {
   lua_settop(L, 1);
@@ -159,7 +72,6 @@ static inline int tk_vec_pfx(argsort_lua) (lua_State *L)
   return 1;
 }
 
-
 static inline int tk_vec_pfx(argsort_desc_lua) (lua_State *L)
 {
   lua_settop(L, 1);
@@ -168,7 +80,6 @@ static inline int tk_vec_pfx(argsort_desc_lua) (lua_State *L)
   tk_vec_pfx(rdesc)(L, m0, m0->n);
   return 1;
 }
-
 
 static inline int tk_vec_pfx(quantile_bins_lua) (lua_State *L)
 {
@@ -352,11 +263,8 @@ static luaL_Reg tk_vec_pfx(lua_mt_ext_fns)[] =
 static inline void tk_vec_pfx(suppress_unused_lua_mt_ext_fns) (void)
   { (void) tk_vec_pfx(lua_mt_ext_fns); }
 
-
-
 #include <santoku/parallel/tpl.h>
 #include <santoku/vec/ext/tpl_para.h>
-
 
 #define TK_GENERATE_SINGLE
 #include <santoku/parallel/tpl.h>

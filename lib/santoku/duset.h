@@ -12,6 +12,6 @@
 #define tk_umap_hash(a) (tk_hash_double(a))
 #include <santoku/umap/ext/tpl.h>
 
-#include <santoku/duset/ext.h>
+#include <santoku/dvec.h>
 
 #endif

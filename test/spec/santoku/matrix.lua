@@ -141,6 +141,33 @@ test("ivec/dvec/svec: shuffle (whole)", function ()
   end
 end)
 
+test("ivec/dvec/svec: shuffle with a seed is reproducible", function ()
+  for _, vec in ipairs({ ivec, dvec, svec }) do
+    local a = vec.create({ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 })
+    local b = a:clone()
+    a:shuffle(7)
+    b:shuffle(7)
+    assert(teq(a:table(), b:table()))
+    local c = vec.create({ 1, 2, 3, 4, 5, 6 })
+    local d = c:clone()
+    c:shuffle(2, 5, 3)
+    d:shuffle(2, 5, 3)
+    assert(teq(c:table(), d:table()))
+    assert(c:get(0) == 1 and c:get(1) == 2 and c:get(5) == 6)
+  end
+end)
+
+test("ivec: random.fast_seed reaches an unseeded shuffle", function ()
+  local random = require("santoku.random")
+  local a = ivec.create({ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 })
+  local b = a:clone()
+  random.fast_seed(11)
+  a:shuffle()
+  random.fast_seed(11)
+  b:shuffle()
+  assert(teq(a:table(), b:table()))
+end)
+
 test("ivec/dvec/svec: shuffle with range", function ()
   for _, vec in ipairs({ ivec, dvec, svec }) do
     local v = vec.create({ 1, 2, 3, 4, 5, 6 })

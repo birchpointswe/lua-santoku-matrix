@@ -7,8 +7,6 @@ static inline uint64_t tk_mtx_checkidx (lua_State *L, tk_mtx_t *M, int ir, int i
 {
   uint64_t r = tk_lua_checkunsigned(L, ir, "row");
   uint64_t c = tk_lua_checkunsigned(L, ic, "col");
-  if (M->tag == TK_TAG_BITS)
-    tk_lua_verror(L, 2, "mtx", "get/set not supported for bits layout");
   if (r >= M->n_rows || c >= M->n_cols)
     tk_lua_verror(L, 2, "mtx", "index out of range");
   return r * M->n_cols + c;
@@ -57,16 +55,7 @@ static int tk_mtx_create_lua (lua_State *L)
       case TK_TAG_F64: n = ((tk_dvec_t *) child)->n; break;
       default: n = ((tk_cvec_t *) child)->n; break;
     }
-    lua_getfield(L, 1, "bits");
-    bool bits = lua_toboolean(L, -1);
-    lua_pop(L, 1);
-    if (bits) {
-      if (tag != TK_TAG_U8)
-        return tk_lua_verror(L, 3, "mtx", "bits", "bits layout requires a cvec data vector");
-      tag = TK_TAG_BITS;
-      if (n < rows * TK_CVEC_BITS_BYTES(cols))
-        return tk_lua_verror(L, 3, "mtx", "data", "vector shorter than packed bit matrix");
-    } else if (n < rows * cols)
+    if (n < rows * cols)
       return tk_lua_verror(L, 3, "mtx", "data", "vector shorter than n_rows * n_cols");
     tk_mtx_push(L, tag, rows, cols, lua_gettop(L), child);
     return 1;
@@ -76,7 +65,7 @@ static int tk_mtx_create_lua (lua_State *L)
   tk_tag_t tag = lua_isnil(L, -1) ? TK_TAG_F64 : tk_tag_from_string(luaL_checkstring(L, -1));
   lua_pop(L, 1);
   if (tag == TK_TAG_NONE)
-    return tk_lua_verror(L, 3, "mtx", "type", "expected one of u8, i32, i64, f32, f64, bits");
+    return tk_lua_verror(L, 3, "mtx", "type", "expected one of u8, i32, i64, f32, f64");
   tk_mtx_t *M = tk_mtx_push_new(L, tag, rows, cols);
   memset(tk_mtx_ptr(M), 0, tk_mtx_rowbytes(M) * rows);
   return 1;
@@ -130,8 +119,6 @@ static int tk_mtx_fill_lua (lua_State *L)
 {
   lua_settop(L, 2);
   tk_mtx_t *M = tk_mtx_peek(L, 1, "mtx");
-  if (M->tag == TK_TAG_BITS)
-    return tk_lua_verror(L, 2, "mtx", "fill not supported for bits layout");
   double x = luaL_checknumber(L, 2);
   uint64_t n = M->n_rows * M->n_cols;
   for (uint64_t i = 0; i < n; i ++)
@@ -152,7 +139,7 @@ static int tk_mtx_eq_lua (lua_State *L)
   }
   uint64_t n = a->n_rows * a->n_cols;
   bool r = true;
-  if (eps >= 0.0 && a->tag != TK_TAG_BITS) {
+  if (eps >= 0.0) {
     for (uint64_t i = 0; i < n; i ++)
       if (fabs(tk_mtx_get1(a, i) - tk_mtx_get1(b, i)) > eps) { r = false; break; }
   } else {
@@ -275,19 +262,6 @@ static int tk_mtx_transpose_lua (lua_State *L)
 {
   lua_settop(L, 1);
   tk_mtx_t *M = tk_mtx_peek(L, 1, "mtx");
-  if (M->tag == TK_TAG_BITS) {
-    uint64_t in_rb = TK_CVEC_BITS_BYTES(M->n_cols);
-    uint64_t out_rb = TK_CVEC_BITS_BYTES(M->n_rows);
-    tk_mtx_t *T = tk_mtx_push_new(L, TK_TAG_BITS, M->n_cols, M->n_rows);
-    uint8_t *out = (uint8_t *) tk_mtx_ptr(T);
-    const uint8_t *in = (const uint8_t *) tk_mtx_ptr(M);
-    memset(out, 0, out_rb * M->n_cols);
-    for (uint64_t row = 0; row < M->n_rows; row ++)
-      for (uint64_t col = 0; col < M->n_cols; col ++)
-        if (in[row * in_rb + col / CHAR_BIT] & (1u << (col % CHAR_BIT)))
-          out[col * out_rb + row / CHAR_BIT] |= (1u << (row % CHAR_BIT));
-    return 1;
-  }
   size_t esz = tk_tag_size(M->tag);
   tk_mtx_t *T = tk_mtx_push_new(L, M->tag, M->n_cols, M->n_rows);
   const char *src = (const char *) tk_mtx_ptr(M);
@@ -328,8 +302,6 @@ static int tk_mtx_cols_lua (lua_State *L)
 {
   lua_settop(L, 2);
   tk_mtx_t *M = tk_mtx_peek(L, 1, "mtx");
-  if (M->tag == TK_TAG_BITS)
-    return tk_lua_verror(L, 2, "mtx", "cols not supported for bits layout");
   tk_ivec_t *idx = tk_ivec_peek(L, 2, "ids");
   size_t esz = tk_tag_size(M->tag);
   tk_mtx_t *O = tk_mtx_push_new(L, M->tag, M->n_rows, idx->n);
@@ -353,15 +325,14 @@ static int tk_mtx_row_lua (lua_State *L)
   if (r >= M->n_rows)
     return tk_lua_verror(L, 2, "mtx", "row out of range");
   size_t rb = tk_mtx_rowbytes(M);
-  uint64_t outn = M->tag == TK_TAG_BITS ? rb : M->n_cols;
+  uint64_t outn = M->n_cols;
   void *child = NULL;
   if (!lua_isnil(L, 3)) {
-    tk_tag_t otag = M->tag == TK_TAG_BITS ? TK_TAG_U8 : M->tag;
     tk_tag_t got = tk_mtx_tag_of_vec(L, 3, &child);
-    if (got != otag)
+    if (got != M->tag)
       return tk_lua_verror(L, 2, "mtx", "row: out vector type mismatch");
     int rc;
-    switch (otag) {
+    switch (M->tag) {
       case TK_TAG_I32: rc = tk_svec_ensure((tk_svec_t *) child, outn); if (rc == 0) ((tk_svec_t *) child)->n = outn; break;
       case TK_TAG_I64: rc = tk_ivec_ensure((tk_ivec_t *) child, outn); if (rc == 0) ((tk_ivec_t *) child)->n = outn; break;
       case TK_TAG_F32: rc = tk_fvec_ensure((tk_fvec_t *) child, outn); if (rc == 0) ((tk_fvec_t *) child)->n = outn; break;
@@ -372,7 +343,7 @@ static int tk_mtx_row_lua (lua_State *L)
       return tk_lua_verror(L, 2, "mtx", "allocation failed");
     lua_settop(L, 3);
   } else {
-    child = tk_mtx_new_child(L, M->tag == TK_TAG_BITS ? TK_TAG_U8 : M->tag, outn);
+    child = tk_mtx_new_child(L, M->tag, outn);
   }
   char *dst;
   switch (M->tag) {
@@ -390,8 +361,6 @@ static int tk_mtx_hcat_lua (lua_State *L)
 {
   lua_settop(L, 2);
   tk_mtx_t *M = tk_mtx_peek(L, 1, "mtx");
-  if (M->tag == TK_TAG_BITS)
-    return tk_lua_verror(L, 2, "mtx", "hcat not supported for bits layout");
   tk_mtx_t *B = tk_mtx_peek(L, 2, "other");
   if (M->tag != B->tag)
     return tk_lua_verror(L, 2, "mtx", "hcat requires matching element types");
@@ -408,6 +377,33 @@ static int tk_mtx_hcat_lua (lua_State *L)
     memcpy(a + (i * nc + c1) * esz, b + i * c2 * esz, c2 * esz);
   }
   M->n_cols = nc;
+  lua_settop(L, 1);
+  return 1;
+}
+
+static int tk_mtx_clone_lua (lua_State *L)
+{
+  lua_settop(L, 1);
+  tk_mtx_t *M = tk_mtx_peek(L, 1, "mtx");
+  tk_mtx_t *O = tk_mtx_push_new(L, M->tag, M->n_rows, M->n_cols);
+  memcpy(tk_mtx_ptr(O), tk_mtx_ptr(M), tk_mtx_rowbytes(M) * M->n_rows);
+  return 1;
+}
+
+static int tk_mtx_append_lua (lua_State *L)
+{
+  lua_settop(L, 2);
+  tk_mtx_t *M = tk_mtx_peek(L, 1, "mtx");
+  tk_mtx_t *B = tk_mtx_peek(L, 2, "other");
+  if (M->tag != B->tag)
+    return tk_lua_verror(L, 2, "mtx", "append requires matching element types");
+  if (M->n_cols != B->n_cols)
+    return tk_lua_verror(L, 2, "mtx", "append requires matching n_cols");
+  uint64_t r1 = M->n_rows, r2 = B->n_rows;
+  size_t rb = tk_mtx_rowbytes(M);
+  tk_mtx_grow(L, M, (r1 + r2) * M->n_cols);
+  memcpy((char *) tk_mtx_ptr(M) + r1 * rb, tk_mtx_ptr(B), r2 * rb);
+  M->n_rows = r1 + r2;
   lua_settop(L, 1);
   return 1;
 }
@@ -446,6 +442,10 @@ static int tk_mtx_load_lua (lua_State *L)
   tk_lua_fread(L, (char *) &tag8, 1, 1, fh);
   tk_lua_fread(L, (char *) &rows, sizeof(uint64_t), 1, fh);
   tk_lua_fread(L, (char *) &cols, sizeof(uint64_t), 1, fh);
+  if (tk_tag_size((tk_tag_t) tag8) == 0) {
+    tk_lua_fclose(L, fh);
+    return tk_lua_verror(L, 2, "mtx", "load: unsupported element type");
+  }
   tk_mtx_t *M = tk_mtx_push_new(L, (tk_tag_t) tag8, rows, cols);
   tk_lua_fread(L, (char *) tk_mtx_ptr(M), tk_mtx_rowbytes(M) * M->n_rows, 1, fh);
   tk_lua_fclose(L, fh);
@@ -475,60 +475,49 @@ static int tk_mtx_center_lua (lua_State *L)
   return 1;
 }
 
-static int tk_mtx_zscore_lua (lua_State *L)
+static int tk_mtx_standardize_lua (lua_State *L)
 {
+  lua_settop(L, 2);
   tk_mtx_t *M = tk_mtx_peek(L, 1, "mtx");
-  bool apply = lua_gettop(L) >= 2 && !lua_isnil(L, 2);
-  switch (M->tag) {
-    case TK_TAG_F64:
-      if (apply) tk_dvec_mtx_zscore(L, (tk_dvec_t *) M->v, M->n_cols, tk_dvec_peek(L, 2, "inv_std"), NULL);
-      else { tk_dvec_t *is = NULL; tk_dvec_mtx_zscore(L, (tk_dvec_t *) M->v, M->n_cols, NULL, &is); }
-      break;
-    case TK_TAG_F32:
-      if (apply) tk_fvec_mtx_zscore(L, (tk_fvec_t *) M->v, M->n_cols, tk_fvec_peek(L, 2, "inv_std"), NULL);
-      else { tk_fvec_t *is = NULL; tk_fvec_mtx_zscore(L, (tk_fvec_t *) M->v, M->n_cols, NULL, &is); }
-      break;
-    default:
-      return tk_lua_verror(L, 2, "mtx", "zscore requires f32 or f64");
+  bool rms = false;
+  if (!lua_isnil(L, 2)) {
+    if (strcmp(luaL_checkstring(L, 2), "rms") != 0)
+      return tk_lua_verror(L, 2, "mtx", "standardize: mode must be rms");
+    rms = true;
   }
-  if (apply) {
-    lua_settop(L, 1);
-    return 1;
+  switch (M->tag) {
+    case TK_TAG_F64: tk_dvec_mtx_standardize(L, (tk_dvec_t *) M->v, M->n_rows, M->n_cols, rms); break;
+    case TK_TAG_F32: tk_fvec_mtx_standardize(L, (tk_fvec_t *) M->v, M->n_rows, M->n_cols, rms); break;
+    default: return tk_lua_verror(L, 2, "mtx", "standardize requires f32 or f64");
   }
   return 1;
 }
 
-static int tk_mtx_standardize_lua (lua_State *L)
+static int tk_mtx_scale_cols_lua (lua_State *L)
 {
+  lua_settop(L, 2);
   tk_mtx_t *M = tk_mtx_peek(L, 1, "mtx");
-  bool apply = lua_gettop(L) >= 3 && !lua_isnil(L, 2);
-  switch (M->tag) {
-    case TK_TAG_F64:
-      if (apply)
-        tk_dvec_mtx_standardize(L, (tk_dvec_t *) M->v, M->n_cols,
-          tk_dvec_peek(L, 2, "means"), tk_dvec_peek(L, 3, "inv_std"), NULL, NULL);
-      else {
-        tk_dvec_t *mu = NULL, *is = NULL;
-        tk_dvec_mtx_standardize(L, (tk_dvec_t *) M->v, M->n_cols, NULL, NULL, &mu, &is);
-      }
-      break;
-    case TK_TAG_F32:
-      if (apply)
-        tk_fvec_mtx_standardize(L, (tk_fvec_t *) M->v, M->n_cols,
-          tk_fvec_peek(L, 2, "means"), tk_fvec_peek(L, 3, "inv_std"), NULL, NULL);
-      else {
-        tk_fvec_t *mu = NULL, *is = NULL;
-        tk_fvec_mtx_standardize(L, (tk_fvec_t *) M->v, M->n_cols, NULL, NULL, &mu, &is);
-      }
-      break;
-    default:
-      return tk_lua_verror(L, 2, "mtx", "standardize requires f32 or f64");
+  if (M->tag != TK_TAG_F32 && M->tag != TK_TAG_F64)
+    return tk_lua_verror(L, 2, "mtx", "scale_cols requires f32 or f64");
+  tk_fvec_t *wf = tk_fvec_peekopt(L, 2);
+  tk_dvec_t *wd = wf == NULL ? tk_dvec_peek(L, 2, "weights") : NULL;
+  uint64_t wn = wf != NULL ? wf->n : wd->n;
+  if (wn < M->n_cols)
+    return tk_lua_verror(L, 2, "mtx", "scale_cols: weights shorter than n_cols");
+  uint64_t nr = M->n_rows, nc = M->n_cols;
+  if (M->tag == TK_TAG_F64) {
+    double *a = ((tk_dvec_t *) M->v)->a;
+    for (uint64_t r = 0; r < nr; r ++)
+      for (uint64_t c = 0; c < nc; c ++)
+        a[r * nc + c] *= wf != NULL ? (double) wf->a[c] : wd->a[c];
+  } else {
+    float *a = ((tk_fvec_t *) M->v)->a;
+    for (uint64_t r = 0; r < nr; r ++)
+      for (uint64_t c = 0; c < nc; c ++)
+        a[r * nc + c] *= wf != NULL ? wf->a[c] : (float) wd->a[c];
   }
-  if (apply) {
-    lua_settop(L, 1);
-    return 1;
-  }
-  return 2;
+  lua_settop(L, 1);
+  return 1;
 }
 
 static int tk_mtx_median_lua (lua_State *L)
@@ -696,12 +685,32 @@ static int tk_mtx_normalize_lua (lua_State *L)
 {
   lua_settop(L, 2);
   tk_mtx_t *M = tk_mtx_peek(L, 1, "mtx");
-  if (!tk_mtx_axis_row(L, 2))
-    return tk_lua_verror(L, 2, "mtx", "normalize supports axis \"row\" only");
-  switch (M->tag) {
-    case TK_TAG_F64: tk_dvec_rnorml2(((tk_dvec_t *) M->v)->a, M->n_rows, M->n_cols); break;
-    case TK_TAG_F32: tk_fvec_rnorml2(((tk_fvec_t *) M->v)->a, M->n_rows, M->n_cols); break;
-    default: return tk_lua_verror(L, 2, "mtx", "normalize requires f32 or f64");
+  const char *mode = luaL_optstring(L, 2, "l2");
+  bool max_mode = strcmp(mode, "max") == 0;
+  if (!max_mode && strcmp(mode, "l2") != 0)
+    return tk_lua_verror(L, 2, "mtx", "normalize: mode must be l2 or max");
+  if (M->tag != TK_TAG_F32 && M->tag != TK_TAG_F64)
+    return tk_lua_verror(L, 2, "mtx", "normalize requires f32 or f64");
+  if (!max_mode) {
+    if (M->tag == TK_TAG_F64)
+      tk_dvec_rnorml2(((tk_dvec_t *) M->v)->a, M->n_rows, M->n_cols);
+    else
+      tk_fvec_rnorml2(((tk_fvec_t *) M->v)->a, M->n_rows, M->n_cols);
+    lua_settop(L, 1);
+    return 1;
+  }
+  uint64_t nc = M->n_cols;
+  for (uint64_t r = 0; nc > 0 && r < M->n_rows; r ++) {
+    double mx = tk_mtx_get1(M, r * nc);
+    for (uint64_t c = 1; c < nc; c ++) {
+      double v = tk_mtx_get1(M, r * nc + c);
+      if (v > mx) mx = v;
+    }
+    if (mx > 0.0) {
+      double inv = 1.0 / mx;
+      for (uint64_t c = 0; c < nc; c ++)
+        tk_mtx_set1(M, r * nc + c, tk_mtx_get1(M, r * nc + c) * inv);
+    }
   }
   lua_settop(L, 1);
   return 1;
@@ -788,120 +797,6 @@ static int tk_mtx_multiplyv_lua (lua_State *L)
   return 1;
 }
 
-static int tk_mtx_from_pairs_lua (lua_State *L)
-{
-  int t = lua_gettop(L);
-  tk_ivec_t *is = tk_ivec_peek(L, 1, "i");
-  tk_ivec_t *js = tk_ivec_peek(L, 2, "j");
-  uint64_t ni = tk_lua_checkunsigned(L, 3, "n_i");
-  uint64_t nj = tk_lua_checkunsigned(L, 4, "n_j");
-  tk_dvec_t *w = t >= 5 && !lua_isnil(L, 5) ? tk_dvec_peek(L, 5, "weights") : NULL;
-  if (is->n != js->n || (w != NULL && w->n != is->n))
-    return tk_lua_verror(L, 2, "mtx", "from_pairs: input lengths differ");
-  tk_mtx_t *M = tk_mtx_push_new(L, TK_TAG_F64, ni, nj);
-  double *out = (double *) tk_mtx_ptr(M);
-  memset(out, 0, sizeof(double) * ni * nj);
-  for (uint64_t x = 0; x < is->n; x ++) {
-    int64_t i = is->a[x], j = js->a[x];
-    if (i < 0 || (uint64_t) i >= ni || j < 0 || (uint64_t) j >= nj)
-      return tk_lua_verror(L, 2, "mtx", "from_pairs: index out of range");
-    out[(uint64_t) i * nj + (uint64_t) j] += w ? w->a[x] : 1.0;
-  }
-  return 1;
-}
-
-static inline uint64_t tk_mtx_total_bits (tk_mtx_t *M)
-{
-
-  return M->n_rows * tk_mtx_rowbytes(M) * CHAR_BIT;
-}
-
-static inline tk_mtx_t *tk_mtx_check_bits_pair (lua_State *L, tk_mtx_t *M)
-{
-  tk_mtx_t *B = tk_mtx_peek(L, 2, "other");
-  if (M->tag != TK_TAG_BITS || B->tag != TK_TAG_BITS)
-    tk_lua_verror(L, 2, "mtx", "bit ops require bits layout");
-  if (M->n_rows != B->n_rows || M->n_cols != B->n_cols)
-    tk_lua_verror(L, 2, "mtx", "bit ops require matching shapes");
-  return B;
-}
-
-static int tk_mtx_popcount_lua (lua_State *L)
-{
-  lua_settop(L, 1);
-  tk_mtx_t *M = tk_mtx_peek(L, 1, "mtx");
-  if (M->tag != TK_TAG_BITS)
-    return tk_lua_verror(L, 2, "mtx", "popcount requires bits layout");
-  lua_pushinteger(L, (lua_Integer) tk_cvec_bits_popcount((const uint8_t *) tk_mtx_ptr(M), tk_mtx_total_bits(M)));
-  return 1;
-}
-
-static int tk_mtx_hamming_lua (lua_State *L)
-{
-  lua_settop(L, 2);
-  tk_mtx_t *M = tk_mtx_peek(L, 1, "mtx");
-  tk_mtx_t *B = tk_mtx_check_bits_pair(L, M);
-  lua_pushinteger(L, (lua_Integer) tk_cvec_bits_hamming(
-    (const uint8_t *) tk_mtx_ptr(M), (const uint8_t *) tk_mtx_ptr(B), tk_mtx_total_bits(M)));
-  return 1;
-}
-
-static int tk_mtx_band_lua (lua_State *L)
-{
-  lua_settop(L, 2);
-  tk_mtx_t *M = tk_mtx_peek(L, 1, "mtx");
-  tk_mtx_t *B = tk_mtx_check_bits_pair(L, M);
-  tk_cvec_bits_and((uint8_t *) tk_mtx_ptr(M), (const uint8_t *) tk_mtx_ptr(M),
-    (const uint8_t *) tk_mtx_ptr(B), tk_mtx_total_bits(M));
-  lua_settop(L, 1);
-  return 1;
-}
-
-static int tk_mtx_bor_lua (lua_State *L)
-{
-  lua_settop(L, 2);
-  tk_mtx_t *M = tk_mtx_peek(L, 1, "mtx");
-  tk_mtx_t *B = tk_mtx_check_bits_pair(L, M);
-  tk_cvec_bits_or((uint8_t *) tk_mtx_ptr(M), (const uint8_t *) tk_mtx_ptr(M),
-    (const uint8_t *) tk_mtx_ptr(B), tk_mtx_total_bits(M));
-  lua_settop(L, 1);
-  return 1;
-}
-
-static int tk_mtx_bxor_lua (lua_State *L)
-{
-  lua_settop(L, 2);
-  tk_mtx_t *M = tk_mtx_peek(L, 1, "mtx");
-  tk_mtx_t *B = tk_mtx_check_bits_pair(L, M);
-  tk_cvec_bits_xor((uint8_t *) tk_mtx_ptr(M), (const uint8_t *) tk_mtx_ptr(M),
-    (const uint8_t *) tk_mtx_ptr(B), tk_mtx_total_bits(M));
-  lua_settop(L, 1);
-  return 1;
-}
-
-static int tk_mtx_bandnot_lua (lua_State *L)
-{
-  lua_settop(L, 2);
-  tk_mtx_t *M = tk_mtx_peek(L, 1, "mtx");
-  tk_mtx_t *B = tk_mtx_check_bits_pair(L, M);
-  tk_cvec_bits_andnot((uint8_t *) tk_mtx_ptr(M), (const uint8_t *) tk_mtx_ptr(M),
-    (const uint8_t *) tk_mtx_ptr(B), tk_mtx_total_bits(M));
-  lua_settop(L, 1);
-  return 1;
-}
-
-static int tk_mtx_flip_interleave_lua (lua_State *L)
-{
-  lua_settop(L, 1);
-  tk_mtx_t *M = tk_mtx_peek(L, 1, "mtx");
-  if (M->tag != TK_TAG_BITS)
-    return tk_lua_verror(L, 2, "mtx", "flip_interleave requires bits layout");
-  tk_cvec_bits_flip_interleave((tk_cvec_t *) M->v, M->n_cols);
-  M->n_cols *= 2;
-  lua_settop(L, 1);
-  return 1;
-}
-
 static int tk_mtx_topk_lua (lua_State *L)
 {
   lua_settop(L, 3);
@@ -920,13 +815,9 @@ static int tk_mtx_topk_lua (lua_State *L)
     case TK_TAG_F32:
       tk_fvec_mtx_topk(L, (tk_fvec_t *) Q->v, (tk_fvec_t *) M->v, Q->n_rows, M->n_rows, M->n_cols, k);
       break;
-    case TK_TAG_BITS:
-      tk_cvec_bits_topk(L, (tk_cvec_t *) Q->v, (tk_cvec_t *) M->v, Q->n_rows, M->n_rows, M->n_cols, k);
-      break;
     default:
-      return tk_lua_verror(L, 2, "mtx", "topk requires f32, f64, or bits");
+      return tk_lua_verror(L, 2, "mtx", "topk requires f32 or f64");
   }
-
   int iv = lua_gettop(L), in_ = iv - 1, io = iv - 2;
   tk_ivec_t *off = tk_ivec_peek(L, io, "offsets");
   tk_ivec_t *ids = tk_ivec_peek(L, in_, "ids");
@@ -945,8 +836,6 @@ static int tk_mtx_to_sparse_lua (lua_State *L)
   lua_settop(L, 3);
   tk_mtx_t *M = tk_mtx_peek(L, 1, "mtx");
   double eps = lua_isnil(L, 2) ? 0.0 : luaL_checknumber(L, 2);
-  if (M->tag == TK_TAG_BITS)
-    return tk_lua_verror(L, 2, "mtx", "to_sparse not supported for bits layout");
   uint64_t n = M->n_rows * M->n_cols;
   uint64_t total = 0;
   for (uint64_t i = 0; i < n; i ++)
@@ -1050,10 +939,12 @@ static luaL_Reg tk_mtx_mt_fns[] = {
   { "cols", tk_mtx_cols_lua },
   { "row", tk_mtx_row_lua },
   { "hcat", tk_mtx_hcat_lua },
+  { "clone", tk_mtx_clone_lua },
+  { "append", tk_mtx_append_lua },
   { "persist", tk_mtx_persist_lua },
   { "center", tk_mtx_center_lua },
-  { "zscore", tk_mtx_zscore_lua },
   { "standardize", tk_mtx_standardize_lua },
+  { "scale_cols", tk_mtx_scale_cols_lua },
   { "median", tk_mtx_median_lua },
   { "sign", tk_mtx_sign_lua },
   { "itq", tk_mtx_itq_lua },
@@ -1061,13 +952,6 @@ static luaL_Reg tk_mtx_mt_fns[] = {
   { "multiply", tk_mtx_multiply_lua },
   { "multiplyv", tk_mtx_multiplyv_lua },
   { "to_sparse", tk_mtx_to_sparse_lua },
-  { "popcount", tk_mtx_popcount_lua },
-  { "hamming", tk_mtx_hamming_lua },
-  { "band", tk_mtx_band_lua },
-  { "bor", tk_mtx_bor_lua },
-  { "bxor", tk_mtx_bxor_lua },
-  { "bandnot", tk_mtx_bandnot_lua },
-  { "flip_interleave", tk_mtx_flip_interleave_lua },
   { "topk", tk_mtx_topk_lua },
   { NULL, NULL }
 };
@@ -1075,7 +959,6 @@ static luaL_Reg tk_mtx_mt_fns[] = {
 static luaL_Reg tk_mtx_fns[] = {
   { "create", tk_mtx_create_lua },
   { "load", tk_mtx_load_lua },
-  { "from_pairs", tk_mtx_from_pairs_lua },
   { NULL, NULL }
 };
 

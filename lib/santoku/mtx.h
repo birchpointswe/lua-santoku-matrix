@@ -7,7 +7,6 @@
 #include <santoku/dvec.h>
 #include <santoku/fvec.h>
 #include <santoku/cvec.h>
-#include <limits.h>
 
 #define TK_MTX_MT "tk_mtx_t"
 
@@ -26,19 +25,6 @@ static inline tk_mtx_t *tk_mtx_peek (lua_State *L, int i, const char *name)
   return M;
 }
 
-static inline tk_mtx_t *tk_mtx_peekopt (lua_State *L, int i)
-{
-  if (lua_type(L, i) != LUA_TUSERDATA)
-    return NULL;
-  void *p = lua_touserdata(L, i);
-  if (!lua_getmetatable(L, i))
-    return NULL;
-  luaL_getmetatable(L, TK_MTX_MT);
-  bool ok = lua_rawequal(L, -1, -2);
-  lua_pop(L, 2);
-  return ok ? (tk_mtx_t *) p : NULL;
-}
-
 static inline void *tk_mtx_ptr (tk_mtx_t *M)
 {
   switch (M->tag) {
@@ -50,26 +36,9 @@ static inline void *tk_mtx_ptr (tk_mtx_t *M)
   }
 }
 
-#ifndef TK_CVEC_BITS_BYTES
-#define TK_CVEC_BITS_BYTES(n) (((n) + CHAR_BIT - 1) / CHAR_BIT)
-#endif
-
 static inline uint64_t tk_mtx_rowbytes (tk_mtx_t *M)
 {
-  return M->tag == TK_TAG_BITS
-    ? TK_CVEC_BITS_BYTES(M->n_cols)
-    : tk_tag_size(M->tag) * M->n_cols;
-}
-
-static inline uint64_t tk_mtx_len (tk_mtx_t *M)
-{
-  switch (M->tag) {
-    case TK_TAG_I32: return ((tk_svec_t *) M->v)->n;
-    case TK_TAG_I64: return ((tk_ivec_t *) M->v)->n;
-    case TK_TAG_F32: return ((tk_fvec_t *) M->v)->n;
-    case TK_TAG_F64: return ((tk_dvec_t *) M->v)->n;
-    default: return ((tk_cvec_t *) M->v)->n;
-  }
+  return tk_tag_size(M->tag) * M->n_cols;
 }
 
 static inline double tk_mtx_get1 (tk_mtx_t *M, uint64_t i)
@@ -94,7 +63,6 @@ static inline void tk_mtx_set1 (tk_mtx_t *M, uint64_t i, double x)
   }
 }
 
-
 static inline void *tk_mtx_new_child (lua_State *L, tk_tag_t tag, uint64_t n)
 {
   switch (tag) {
@@ -103,14 +71,11 @@ static inline void *tk_mtx_new_child (lua_State *L, tk_tag_t tag, uint64_t n)
     case TK_TAG_F32: return tk_fvec_create(L, n);
     case TK_TAG_F64: return tk_dvec_create(L, n);
     case TK_TAG_U8: return tk_cvec_create(L, n);
-    case TK_TAG_BITS: return tk_cvec_create(L, n);
     default:
       tk_lua_verror(L, 2, "mtx", "unsupported element type");
       return NULL;
   }
 }
-
-
 
 static inline tk_mtx_t *tk_mtx_push (lua_State *L, tk_tag_t tag, uint64_t rows, uint64_t cols, int ic, void *child)
 {
@@ -140,19 +105,16 @@ static inline void tk_mtx_grow (lua_State *L, tk_mtx_t *M, uint64_t total)
     tk_lua_verror(L, 2, "mtx", "allocation failed");
 }
 
-
 static inline void tk_mtx_reshape (lua_State *L, tk_mtx_t *M, uint64_t rows, uint64_t cols)
 {
   M->n_rows = rows;
   M->n_cols = cols;
-  tk_mtx_grow(L, M, M->tag == TK_TAG_BITS ? rows * TK_CVEC_BITS_BYTES(cols) : rows * cols);
+  tk_mtx_grow(L, M, rows * cols);
 }
-
 
 static inline tk_mtx_t *tk_mtx_push_new (lua_State *L, tk_tag_t tag, uint64_t rows, uint64_t cols)
 {
-  uint64_t n = tag == TK_TAG_BITS ? rows * TK_CVEC_BITS_BYTES(cols) : rows * cols;
-  void *child = tk_mtx_new_child(L, tag, n);
+  void *child = tk_mtx_new_child(L, tag, rows * cols);
   int ic = lua_gettop(L);
   tk_mtx_t *M = tk_mtx_push(L, tag, rows, cols, ic, child);
   lua_remove(L, ic);

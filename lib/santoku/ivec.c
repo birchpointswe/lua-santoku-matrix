@@ -202,16 +202,10 @@ static luaL_Reg tk_ivec_lua_mt_ext2_fns[] =
   { NULL, NULL }
 };
 
-static luaL_Reg tk_ivec_lua_ext_fns[] =
-{
-  { NULL, NULL }
-};
-
 int luaopen_santoku_ivec (lua_State *L)
 {
   lua_newtable(L);
   luaL_register(L, NULL, tk_ivec_lua_fns);
-  luaL_register(L, NULL, tk_ivec_lua_ext_fns);
   tk_ivec_create(L, 0);
   luaL_getmetafield(L, -1, "__index");
   luaL_register(L, NULL, tk_ivec_lua_mt_fns);

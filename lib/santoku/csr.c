@@ -180,12 +180,15 @@ static int tk_csr_from_bits_lua (lua_State *L)
   uint64_t n_rows = tk_lua_checkunsigned(L, 2, "n_rows");
   uint64_t n_cols = tk_lua_checkunsigned(L, 3, "n_cols");
   uint64_t bps = TK_CVEC_BITS_BYTES(n_cols);
+  if (bitmap->n < n_rows * bps)
+    return tk_lua_verror(L, 2, "csr", "from_bits: bitmap shorter than n_rows * ceil(n_cols / 8) bytes");
   const uint8_t *data = (const uint8_t *) bitmap->a;
   uint64_t total = 0;
+  unsigned int tail = n_cols % CHAR_BIT ? (1u << (n_cols % CHAR_BIT)) - 1u : 0xFFu;
   for (uint64_t s = 0; s < n_rows; s ++) {
     const uint8_t *row = data + s * bps;
     for (uint64_t b = 0; b < bps; b ++)
-      total += (uint64_t) __builtin_popcount((unsigned int) row[b]);
+      total += (uint64_t) __builtin_popcount(b + 1 == bps ? (unsigned int) row[b] & tail : (unsigned int) row[b]);
   }
   tk_ivec_t *off = tk_ivec_create(L, n_rows + 1);
   int io = lua_gettop(L);
@@ -202,6 +205,72 @@ static int tk_csr_from_bits_lua (lua_State *L)
     off->a[s + 1] = (int64_t) pos;
   }
   tk_csr_push(L, TK_TAG_NONE, TK_TAG_I64, n_cols, io, off, in_, nbr, 0, NULL);
+  return 1;
+}
+
+static int tk_csr_pair_cmp (const void *a, const void *b)
+{
+  int64_t x = ((const tk_rank_t *) a)->i, y = ((const tk_rank_t *) b)->i;
+  return x < y ? -1 : x > y;
+}
+
+static int tk_csr_from_pairs_lua (lua_State *L)
+{
+  int t = lua_gettop(L);
+  tk_ivec_t *is = tk_ivec_peek(L, 1, "i");
+  tk_ivec_t *js = tk_ivec_peek(L, 2, "j");
+  uint64_t ni = tk_lua_checkunsigned(L, 3, "n_i");
+  uint64_t nj = tk_lua_checkunsigned(L, 4, "n_j");
+  tk_dvec_t *w = t >= 5 && !lua_isnil(L, 5) ? tk_dvec_peek(L, 5, "weights") : NULL;
+  if (is->n != js->n || (w != NULL && w->n != is->n))
+    return tk_lua_verror(L, 2, "csr", "from_pairs: input lengths differ");
+  uint64_t n = is->n;
+  for (uint64_t x = 0; x < n; x ++) {
+    int64_t i = is->a[x], j = js->a[x];
+    if (i < 0 || (uint64_t) i >= ni || j < 0 || (uint64_t) j >= nj)
+      return tk_lua_verror(L, 2, "csr", "from_pairs: index out of range");
+  }
+  tk_ivec_t *off = tk_ivec_create(L, ni + 1);
+  int io = lua_gettop(L);
+  tk_rvec_t *tmp = tk_rvec_create(L, n);
+  int itmp = lua_gettop(L);
+  tk_ivec_t *nbr = tk_ivec_create(L, n);
+  int in_ = lua_gettop(L);
+  tk_dvec_t *vals = tk_dvec_create(L, n);
+  int iv = lua_gettop(L);
+  memset(off->a, 0, (ni + 1) * sizeof(int64_t));
+  for (uint64_t x = 0; x < n; x ++)
+    off->a[is->a[x] + 1] ++;
+  for (uint64_t r = 0; r < ni; r ++)
+    off->a[r + 1] += off->a[r];
+  for (uint64_t x = 0; x < n; x ++) {
+    int64_t p = off->a[is->a[x]] ++;
+    tmp->a[p] = tk_rank(js->a[x], w != NULL ? w->a[x] : 1.0);
+  }
+  for (uint64_t r = ni; r > 0; r --)
+    off->a[r] = off->a[r - 1];
+  off->a[0] = 0;
+  uint64_t pos = 0;
+  for (uint64_t r = 0; r < ni; r ++) {
+    int64_t lo = off->a[r], hi = off->a[r + 1];
+    uint64_t start = pos;
+    qsort(tmp->a + lo, (size_t) (hi - lo), sizeof(tk_rank_t), tk_csr_pair_cmp);
+    for (int64_t p = lo; p < hi; p ++) {
+      if (pos > start && nbr->a[pos - 1] == tmp->a[p].i) {
+        vals->a[pos - 1] += tmp->a[p].d;
+      } else {
+        nbr->a[pos] = tmp->a[p].i;
+        vals->a[pos] = tmp->a[p].d;
+        pos ++;
+      }
+    }
+    off->a[r] = (int64_t) start;
+  }
+  off->a[ni] = (int64_t) pos;
+  nbr->n = pos;
+  vals->n = pos;
+  tk_csr_push(L, TK_TAG_F64, TK_TAG_I64, nj, io, off, in_, nbr, iv, vals);
+  lua_remove(L, itmp);
   return 1;
 }
 
@@ -255,7 +324,7 @@ static int tk_csr_to_dense_lua (lua_State *L)
         return tk_lua_verror(L, 2, "csr", "to_dense: out type mismatch");
     }
   }
-  if (tag == TK_TAG_NONE || tag == TK_TAG_BITS)
+  if (tag == TK_TAG_NONE)
     return tk_lua_verror(L, 2, "csr", "to_dense: bad element type");
   uint64_t n_rows = tk_csr_rows(X);
   tk_lua_require_mod(L, "santoku.mtx");
@@ -334,7 +403,7 @@ static int tk_csr_push_lua (lua_State *L)
   return 1;
 }
 
-static int tk_csr_row_lua (lua_State *L)
+static int tk_csr_endrow_lua (lua_State *L)
 {
   lua_settop(L, 1);
   tk_csr_t *X = tk_csr_peek(L, 1, "csr");
@@ -345,9 +414,10 @@ static int tk_csr_row_lua (lua_State *L)
 
 static int tk_csr_rows_lua (lua_State *L)
 {
-  lua_settop(L, 2);
+  lua_settop(L, 3);
   tk_csr_t *X = tk_csr_peek(L, 1, "csr");
   tk_ivec_t *ids = tk_ivec_peek(L, 2, "ids");
+  tk_csr_t *O = lua_isnil(L, 3) ? NULL : tk_csr_peek(L, 3, "out");
   uint64_t n_rows = tk_csr_rows(X);
   uint64_t total = 0;
   for (uint64_t i = 0; i < ids->n; i ++) {
@@ -356,43 +426,51 @@ static int tk_csr_rows_lua (lua_State *L)
       return tk_lua_verror(L, 2, "csr", "row id out of range");
     total += (uint64_t) (X->offsets->a[s + 1] - X->offsets->a[s]);
   }
-  tk_ivec_t *off = tk_ivec_create(L, ids->n + 1);
-  int io = lua_gettop(L);
-  void *nbr = tk_csr_new_nbr(L, X->ntag, total);
-  int in_ = lua_gettop(L);
-  tk_nbr_setn(nbr, X->ntag, total);
-  void *vals = NULL;
-  int iv = 0;
-  if (X->tag != TK_TAG_NONE) {
-    vals = tk_csr_new_values(L, X->tag, total);
-    iv = lua_gettop(L);
+  if (O != NULL) {
+    if (O == X)
+      return tk_lua_verror(L, 2, "csr", "rows: out must differ from the source");
+    if (O->tag != X->tag)
+      return tk_lua_verror(L, 2, "csr", "rows: out value type mismatch");
+    if (O->ntag != X->ntag)
+      return tk_lua_verror(L, 2, "csr", "rows: out neighbor type mismatch");
+    if (tk_ivec_ensure(O->offsets, ids->n + 1) != 0 || tk_csr_nbr_ensure(O, total) != 0)
+      return tk_lua_verror(L, 2, "csr", "allocation failed");
+    O->offsets->n = ids->n + 1;
+    tk_csr_nbr_setn(O, total);
+    if (O->tag != TK_TAG_NONE)
+      tk_csr_vals_grow(L, O, total);
+    O->n_cols = X->n_cols;
+    lua_settop(L, 3);
+  } else {
+    tk_ivec_t *off = tk_ivec_create(L, ids->n + 1);
+    int io = lua_gettop(L);
+    void *nbr = tk_csr_new_nbr(L, X->ntag, total);
+    int in_ = lua_gettop(L);
+    void *vals = NULL;
+    int iv = 0;
+    if (X->tag != TK_TAG_NONE) {
+      vals = tk_csr_new_values(L, X->tag, total);
+      iv = lua_gettop(L);
+    }
+    O = tk_csr_push(L, X->tag, X->ntag, X->n_cols, io, off, in_, nbr, iv, vals);
   }
   size_t esz = tk_tag_size(X->tag);
   size_t nesz = tk_nbr_esz(X->ntag);
-  char *ndst = (char *) tk_nbr_aptr(nbr, X->ntag);
+  char *ndst = (char *) tk_csr_nbr_ptr(O);
+  char *vdst = X->tag != TK_TAG_NONE ? (char *) tk_csr_val_ptr(O) : NULL;
   const char *nsrc = (const char *) tk_csr_nbr_ptr(X);
   const char *vsrc = X->tag != TK_TAG_NONE ? (const char *) tk_csr_val_ptr(X) : NULL;
   uint64_t pos = 0;
   for (uint64_t i = 0; i < ids->n; i ++) {
     int64_t s = ids->a[i];
     int64_t lo = X->offsets->a[s], hi = X->offsets->a[s + 1];
-    off->a[i] = (int64_t) pos;
+    O->offsets->a[i] = (int64_t) pos;
     memcpy(ndst + pos * nesz, nsrc + (uint64_t) lo * nesz, (size_t) (hi - lo) * nesz);
-    if (vsrc) {
-      char *vdst;
-      switch (X->tag) {
-        case TK_TAG_I32: vdst = (char *) ((tk_svec_t *) vals)->a; break;
-        case TK_TAG_I64: vdst = (char *) ((tk_ivec_t *) vals)->a; break;
-        case TK_TAG_F32: vdst = (char *) ((tk_fvec_t *) vals)->a; break;
-        case TK_TAG_F64: vdst = (char *) ((tk_dvec_t *) vals)->a; break;
-        default: vdst = ((tk_cvec_t *) vals)->a; break;
-      }
+    if (vsrc)
       memcpy(vdst + pos * esz, vsrc + (uint64_t) lo * esz, (size_t) (hi - lo) * esz);
-    }
     pos += (uint64_t) (hi - lo);
   }
-  off->a[ids->n] = (int64_t) pos;
-  tk_csr_push(L, X->tag, X->ntag, X->n_cols, io, off, in_, nbr, iv, vals);
+  O->offsets->a[ids->n] = (int64_t) pos;
   return 1;
 }
 
@@ -457,7 +535,7 @@ static int tk_csr_clone_lua (lua_State *L)
   return 1;
 }
 
-static int tk_csr_select_lua (lua_State *L)
+static int tk_csr_cols_lua (lua_State *L)
 {
   lua_settop(L, 2);
   tk_csr_t *X = tk_csr_peek(L, 1, "csr");
@@ -620,6 +698,50 @@ static inline void tk_csr_materialize (lua_State *L, tk_csr_t *X, int ix)
   lua_pop(L, 1);
 }
 
+static inline bool tk_csr_rank_worse (tk_rank_t a, tk_rank_t b)
+{
+  return a.d < b.d || (a.d == b.d && a.i > b.i);
+}
+
+static inline void tk_csr_rank_offer (tk_rvec_t *h, uint64_t k, tk_rank_t r)
+{
+  if (k == 0)
+    return;
+  if (h->n < k) {
+    uint64_t i = h->n ++;
+    h->a[i] = r;
+    while (i > 0) {
+      uint64_t p = (i - 1) / 2;
+      if (!tk_csr_rank_worse(h->a[i], h->a[p]))
+        break;
+      tk_rank_t t = h->a[i]; h->a[i] = h->a[p]; h->a[p] = t;
+      i = p;
+    }
+    return;
+  }
+  if (!tk_csr_rank_worse(h->a[0], r))
+    return;
+  h->a[0] = r;
+  uint64_t i = 0;
+  for (;;) {
+    uint64_t l = 2 * i + 1, m = i;
+    if (l < k && tk_csr_rank_worse(h->a[l], h->a[m])) m = l;
+    if (l + 1 < k && tk_csr_rank_worse(h->a[l + 1], h->a[m])) m = l + 1;
+    if (m == i)
+      break;
+    tk_rank_t t = h->a[i]; h->a[i] = h->a[m]; h->a[m] = t;
+    i = m;
+  }
+}
+
+static int tk_csr_rank_cmp (const void *a, const void *b)
+{
+  const tk_rank_t *x = (const tk_rank_t *) a, *y = (const tk_rank_t *) b;
+  if (x->d != y->d)
+    return x->d > y->d ? -1 : 1;
+  return x->i < y->i ? -1 : x->i > y->i;
+}
+
 static int tk_csr_topk_lua (lua_State *L)
 {
   lua_settop(L, 3);
@@ -689,11 +811,11 @@ static int tk_csr_topk_lua (lua_State *L)
         tk_rvec_clear(heap);
         for (uint64_t i = 0; i < nt; i ++) {
           int64_t d = touched[i];
-          tk_rvec_hmin(heap, k, tk_rank(d, acc[d]));
+          tk_csr_rank_offer(heap, k, tk_rank(d, acc[d]));
           acc[d] = 0.0;
           mark[d] = 0;
         }
-        tk_rvec_desc(heap, 0, heap->n);
+        qsort(heap->a, heap->n, sizeof(tk_rank_t), tk_csr_rank_cmp);
         for (uint64_t h = 0; h < heap->n; h ++) {
           ids->a[q * k + h] = heap->a[h].i;
           scores->a[q * k + h] = heap->a[h].d;
@@ -876,7 +998,7 @@ static int tk_csr_overlap_lua (lua_State *L)
       for (uint64_t t = 0; t < tb->n; t ++)
         if (ta->a[i].i == tb->a[t].i) { common ++; break; }
     uint64_t denom = ta->n > tb->n ? ta->n : tb->n;
-    out->a[r] = denom > 0 ? (double) common / (double) denom : 0.0;
+    out->a[r] = denom > 0 ? (double) common / (double) denom : 1.0;
   }
   return 1;
 }
@@ -1036,6 +1158,16 @@ static int tk_csr_normalize_lua (lua_State *L)
   return 1;
 }
 
+static inline void tk_csr_scale_by_cols (tk_csr_t *X, tk_fvec_t *wf, tk_dvec_t *wd)
+{
+  uint64_t nn = tk_csr_nbr_n(X);
+  for (uint64_t i = 0; i < nn; i ++) {
+    int64_t c = tk_csr_nbr(X, i);
+    double w = wf != NULL ? (double) wf->a[c] : wd->a[c];
+    tk_csr_setval1(X, i, tk_csr_val1(X, i) * w);
+  }
+}
+
 static int tk_csr_scale_cols_lua (lua_State *L)
 {
   lua_settop(L, 2);
@@ -1046,12 +1178,7 @@ static int tk_csr_scale_cols_lua (lua_State *L)
   if (wn < X->n_cols)
     return tk_lua_verror(L, 2, "csr", "scale_cols: weights shorter than n_cols");
   tk_csr_materialize(L, X, 1);
-  uint64_t nn = tk_csr_nbr_n(X);
-  for (uint64_t i = 0; i < nn; i ++) {
-    int64_t c = tk_csr_nbr(X, i);
-    double w = wf != NULL ? (double) wf->a[c] : wd->a[c];
-    tk_csr_setval1(X, i, tk_csr_val1(X, i) * w);
-  }
+  tk_csr_scale_by_cols(X, wf, wd);
   lua_settop(L, 1);
   return 1;
 }
@@ -1092,49 +1219,6 @@ static int tk_csr_sumsq_cols_lua (lua_State *L)
     }
   }
   return 1;
-}
-
-static int tk_csr_nnz_cols_lua (lua_State *L)
-{
-  lua_settop(L, 2);
-  tk_csr_t *X = tk_csr_peek(L, 1, "csr");
-  tk_ivec_t *bounds = lua_isnil(L, 2) ? NULL : tk_ivec_peek(L, 2, "bounds");
-  uint64_t nn = tk_csr_nbr_n(X);
-  if (bounds == NULL) {
-    tk_ivec_t *out = tk_ivec_create(L, X->n_cols);
-    memset(out->a, 0, X->n_cols * sizeof(int64_t));
-    #pragma omp parallel for schedule(static)
-    for (uint64_t i = 0; i < nn; i ++) {
-      int64_t c = tk_csr_nbr(X, i);
-      #pragma omp atomic
-      out->a[c] += 1;
-    }
-    return 1;
-  }
-  uint64_t nb = bounds->n > 0 ? bounds->n - 1 : 0;
-  tk_ivec_t *out = tk_ivec_create(L, nb);
-  memset(out->a, 0, nb * sizeof(int64_t));
-  for (uint64_t i = 0; i < nn; i ++) {
-    int64_t c = tk_csr_nbr(X, i);
-    uint64_t lo = 0, hi = nb;
-    while (lo + 1 < hi) {
-      uint64_t mid = (lo + hi) / 2;
-      if (bounds->a[mid] <= c) lo = mid; else hi = mid;
-    }
-    if (c >= bounds->a[lo] && c < bounds->a[lo + 1])
-      out->a[lo] += 1;
-  }
-  return 1;
-}
-
-static inline void tk_csr_scale_by_cols (tk_csr_t *X, tk_fvec_t *wf, tk_dvec_t *wd)
-{
-  uint64_t nn = tk_csr_nbr_n(X);
-  for (uint64_t i = 0; i < nn; i ++) {
-    int64_t c = tk_csr_nbr(X, i);
-    double w = wf != NULL ? (double) wf->a[c] : wd->a[c];
-    tk_csr_setval1(X, i, tk_csr_val1(X, i) * w);
-  }
 }
 
 static inline double tk_csr_probit (double p)
@@ -1187,18 +1271,8 @@ static int tk_csr_bns_lua (lua_State *L)
   int noscale = lua_toboolean(L, 3);
   lua_settop(L, 2);
   tk_csr_t *X = tk_csr_peek(L, 1, "csr");
-  tk_csr_t *Y = tk_csr_peekopt(L, 2);
+  tk_csr_t *Y = tk_csr_peek(L, 2, "labels");
   tk_csr_materialize(L, X, 1);
-  if (Y == NULL) {
-    tk_fvec_t *wf = tk_fvec_peekopt(L, 2);
-    tk_dvec_t *wd = wf == NULL ? tk_dvec_peek(L, 2, "weights") : NULL;
-    uint64_t wn = wf != NULL ? wf->n : wd->n;
-    if (wn < X->n_cols)
-      return tk_lua_verror(L, 2, "csr", "bns: weights shorter than n_cols");
-    tk_csr_scale_by_cols(X, wf, wd);
-    lua_pushvalue(L, 2);
-    return 1;
-  }
   uint64_t nc = X->n_cols, n_labels = Y->n_cols, n_rows = tk_csr_rows(X);
   if (Y->offsets->n != X->offsets->n)
     return tk_lua_verror(L, 2, "csr", "bns: labels row count mismatch");
@@ -1493,17 +1567,13 @@ static int tk_csr_standardize_lua (lua_State *L)
 {
   lua_settop(L, 2);
   tk_csr_t *X = tk_csr_peek(L, 1, "csr");
-  tk_fvec_t *wf = tk_fvec_peekopt(L, 2);
-  tk_dvec_t *wd = wf == NULL ? tk_dvec_peekopt(L, 2) : NULL;
-  tk_csr_materialize(L, X, 1);
-  if (wf != NULL || wd != NULL) {
-    uint64_t wn = wf != NULL ? wf->n : wd->n;
-    if (wn < X->n_cols)
-      return tk_lua_verror(L, 2, "csr", "standardize: weights shorter than n_cols");
-    tk_csr_scale_by_cols(X, wf, wd);
-    lua_pushvalue(L, 2);
-    return 1;
+  bool rms = false;
+  if (!lua_isnil(L, 2)) {
+    if (strcmp(luaL_checkstring(L, 2), "rms") != 0)
+      return tk_lua_verror(L, 2, "csr", "standardize: mode must be rms");
+    rms = true;
   }
+  tk_csr_materialize(L, X, 1);
   uint64_t nc = X->n_cols, n_rows = tk_csr_rows(X);
   double *sum = (double *) calloc(nc, sizeof(double));
   double *ssq = (double *) calloc(nc, sizeof(double));
@@ -1518,6 +1588,10 @@ static int tk_csr_standardize_lua (lua_State *L)
   w->n = nc;
   double n = (double) n_rows;
   for (uint64_t c = 0; c < nc; c ++) {
+    if (rms) {
+      w->a[c] = ssq[c] > 0.0 ? (float) sqrt(n / ssq[c]) : 0.0f;
+      continue;
+    }
     double mean = n > 0 ? sum[c] / n : 0.0;
     double var = n > 0 ? ssq[c] / n - mean * mean : 0.0;
     double sd = sqrt(var > 0.0 ? var : 0.0);
@@ -1594,15 +1668,23 @@ static int tk_csr_bm25_lua (lua_State *L)
 
 static int tk_csr_eq_lua (lua_State *L)
 {
-  lua_settop(L, 2);
+  lua_settop(L, 3);
   tk_csr_t *a = tk_csr_peek(L, 1, "csr");
   tk_csr_t *b = tk_csr_peek(L, 2, "other");
+  double eps = lua_isnil(L, 3) ? -1.0 : luaL_checknumber(L, 3);
   bool r = a->tag == b->tag && a->ntag == b->ntag && a->n_cols == b->n_cols
     && a->offsets->n == b->offsets->n && tk_csr_nbr_n(a) == tk_csr_nbr_n(b)
     && tk_ivec_eq(a->offsets, b->offsets, 0, a->offsets->n)
     && memcmp(tk_csr_nbr_ptr(a), tk_csr_nbr_ptr(b), tk_nbr_esz(a->ntag) * tk_csr_nbr_n(a)) == 0;
-  if (r && a->tag != TK_TAG_NONE)
-    r = memcmp(tk_csr_val_ptr(a), tk_csr_val_ptr(b), tk_tag_size(a->tag) * tk_csr_nbr_n(a)) == 0;
+  if (r && a->tag != TK_TAG_NONE) {
+    uint64_t nn = tk_csr_nbr_n(a);
+    if (eps >= 0.0) {
+      for (uint64_t i = 0; i < nn; i ++)
+        if (fabs(tk_csr_val1(a, i) - tk_csr_val1(b, i)) > eps) { r = false; break; }
+    } else {
+      r = memcmp(tk_csr_val_ptr(a), tk_csr_val_ptr(b), tk_tag_size(a->tag) * nn) == 0;
+    }
+  }
   lua_pushboolean(L, r);
   return 1;
 }
@@ -1637,17 +1719,16 @@ static int tk_csr_load_lua (lua_State *L)
   lua_settop(L, 1);
   FILE *fh = tk_lua_fopen(L, luaL_checkstring(L, 1), "r");
   char magic[4];
-  uint8_t version, tag8, ntag8 = (uint8_t) TK_TAG_I64;
+  uint8_t version, tag8, ntag8;
   uint64_t n_cols, no, nn;
   tk_lua_fread(L, magic, 4, 1, fh);
   if (memcmp(magic, "TKcs", 4) != 0)
     return tk_lua_verror(L, 2, "csr", "load: bad magic");
   tk_lua_fread(L, (char *) &version, 1, 1, fh);
-  if (version != 1 && version != 2)
+  if (version != 2)
     return tk_lua_verror(L, 2, "csr", "load: unsupported version");
   tk_lua_fread(L, (char *) &tag8, 1, 1, fh);
-  if (version >= 2)
-    tk_lua_fread(L, (char *) &ntag8, 1, 1, fh);
+  tk_lua_fread(L, (char *) &ntag8, 1, 1, fh);
   tk_lua_fread(L, (char *) &n_cols, sizeof(uint64_t), 1, fh);
   tk_lua_fread(L, (char *) &no, sizeof(uint64_t), 1, fh);
   tk_lua_fread(L, (char *) &nn, sizeof(uint64_t), 1, fh);
@@ -1728,11 +1809,17 @@ static int tk_csr_fuse_lua (lua_State *L)
     return tk_lua_verror(L, 2, "csr", "fuse requires matching row counts");
   if (A->tag == TK_TAG_NONE || B->tag == TK_TAG_NONE)
     return tk_lua_verror(L, 2, "csr", "fuse requires values on both inputs");
-  double wa = 1.0, wb = 1.0, rrf_k = 60.0;
+  double wa = 1.0, wb = 1.0;
   uint64_t topk = 0;
-  bool rrf = false;
   if (!lua_isnil(L, 3)) {
     luaL_checktype(L, 3, LUA_TTABLE);
+    lua_pushnil(L);
+    while (lua_next(L, 3)) {
+      lua_pop(L, 1);
+      const char *key = lua_type(L, -1) == LUA_TSTRING ? lua_tostring(L, -1) : NULL;
+      if (!key || (strcmp(key, "weights") != 0 && strcmp(key, "k") != 0))
+        return tk_lua_verror(L, 3, "csr", "fuse", "options take only weights and k");
+    }
     lua_getfield(L, 3, "weights");
     if (!lua_isnil(L, -1)) {
       if (lua_type(L, -1) != LUA_TTABLE)
@@ -1746,13 +1833,7 @@ static int tk_csr_fuse_lua (lua_State *L)
       lua_pop(L, 2);
     }
     lua_pop(L, 1);
-    const char *mode = tk_lua_foptstring(L, 3, "csr", "mode", "sum");
-    if (strcmp(mode, "rrf") == 0)
-      rrf = true;
-    else if (strcmp(mode, "sum") != 0)
-      return tk_lua_verror(L, 3, "csr", "mode", "expected sum or rrf");
     topk = tk_lua_foptunsigned(L, 3, "csr", "k", 0);
-    rrf_k = tk_lua_foptnumber(L, 3, "csr", "rrf_k", 60.0);
   }
   uint64_t cap = tk_csr_nnz(A) + tk_csr_nnz(B);
   tk_iumap_t *acc = tk_iumap_create(L, 0);
@@ -1779,9 +1860,7 @@ static int tk_csr_fuse_lua (lua_State *L)
       int64_t lo = X->offsets->a[r], hi = X->offsets->a[r + 1];
       for (int64_t j = lo; j < hi; j ++) {
         int64_t id = tk_csr_nbr(X, (uint64_t) j);
-        double c = rrf
-          ? w / (rrf_k + (double) (j - lo))
-          : w * tk_csr_val1(X, (uint64_t) j);
+        double c = w * tk_csr_val1(X, (uint64_t) j);
         int kha;
         uint32_t khi = tk_iumap_put(acc, id, &kha);
         if (kha < 0)
@@ -1841,11 +1920,11 @@ static luaL_Reg tk_csr_mt_fns[] = {
   { "neighbors", tk_csr_neighbors_lua },
   { "values", tk_csr_values_lua },
   { "push", tk_csr_push_lua },
-  { "row", tk_csr_row_lua },
+  { "endrow", tk_csr_endrow_lua },
   { "rows", tk_csr_rows_lua },
   { "append", tk_csr_append_lua },
   { "clone", tk_csr_clone_lua },
-  { "select", tk_csr_select_lua },
+  { "cols", tk_csr_cols_lua },
   { "hcat", tk_csr_hcat_lua },
   { "transpose", tk_csr_transpose_lua },
   { "normalize", tk_csr_normalize_lua },
@@ -1859,7 +1938,6 @@ static luaL_Reg tk_csr_mt_fns[] = {
   { "unique_cols", tk_csr_unique_cols_lua },
   { "scale_cols", tk_csr_scale_cols_lua },
   { "sumsq_cols", tk_csr_sumsq_cols_lua },
-  { "nnz_cols", tk_csr_nnz_cols_lua },
   { "standardize", tk_csr_standardize_lua },
   { "bm25", tk_csr_bm25_lua },
   { "bns", tk_csr_bns_lua },
@@ -1877,6 +1955,7 @@ static luaL_Reg tk_csr_module_fns[] = {
   { "from_classes", tk_csr_from_classes_lua },
   { "from_mask", tk_csr_from_mask_lua },
   { "from_bits", tk_csr_from_bits_lua },
+  { "from_pairs", tk_csr_from_pairs_lua },
   { "fuse", tk_csr_fuse_lua },
   { "load", tk_csr_load_lua },
   { NULL, NULL }

@@ -7,16 +7,6 @@
 #include <stdlib.h>
 #include <santoku/dumap.h>
 
-static inline tk_pvec_t *tk_pvec_from_ivec (
-  lua_State *L,
-  tk_ivec_t *ivec
-) {
-  tk_pvec_t *P = tk_pvec_create(L, ivec->n);
-  for (int64_t i = 0; i < (int64_t) ivec->n; i ++)
-    P->a[i] = tk_pair(i, ivec->a[i]);
-  return P;
-}
-
 static inline tk_ivec_t *tk_pvec_keys (
   lua_State *L,
   tk_pvec_t *P,

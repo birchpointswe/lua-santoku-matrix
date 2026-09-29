@@ -12,6 +12,6 @@
 #define tk_umap_hash(a) (kh_int64_hash_func((uint64_t) a))
 #include <santoku/umap/ext/tpl.h>
 
-#include <santoku/iuset/ext.h>
+#include <santoku/ivec/base.h>
 
 #endif

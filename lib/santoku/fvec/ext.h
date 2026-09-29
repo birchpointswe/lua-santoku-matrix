@@ -20,11 +20,6 @@ KSORT_INIT_GENERIC(float)
 
 static inline void tk_fvec_mtx_topk (lua_State *L, tk_fvec_t *queries, tk_fvec_t *corpus, uint64_t n_queries, uint64_t n_corpus, uint64_t d, uint64_t k);
 
-#define TK_GENERATE_SINGLE
-#include <santoku/parallel/tpl.h>
-#include <santoku/fvec/ext_tpl.h>
-#undef TK_GENERATE_SINGLE
-
 #include <santoku/parallel/tpl.h>
 #include <santoku/fvec/ext_tpl.h>
 
@@ -42,26 +37,6 @@ static inline void tk_fvec_gemm(
   float alpha, float *A, float *B, float beta, float *C
 ) {
   cblas_sgemm(CblasRowMajor, transpose_a ? CblasTrans : CblasNoTrans, transpose_b ? CblasTrans : CblasNoTrans, m, n, k, alpha, A, transpose_a ? m : k, B, transpose_b ? k : n, beta, C, n);
-}
-
-static inline float tk_fvec_blas_dot(float *x, float *y, uint64_t n) {
-  return cblas_sdot(n, x, 1, y, 1);
-}
-
-static inline void tk_fvec_blas_scal(float alpha, float *x, uint64_t n) {
-  cblas_sscal(n, alpha, x, 1);
-}
-
-static inline void tk_fvec_blas_axpy(float alpha, float *x, float *y, uint64_t n) {
-  cblas_saxpy(n, alpha, x, 1, y, 1);
-}
-
-static inline void tk_fvec_blas_copy(float *x, float *y, uint64_t n) {
-  cblas_scopy(n, x, 1, y, 1);
-}
-
-static inline float tk_fvec_blas_nrm2(float *x, uint64_t n) {
-  return cblas_snrm2(n, x, 1);
 }
 
 #else
@@ -97,108 +72,8 @@ static inline void tk_fvec_gemm(
           (transpose_b ? B[j * k + l] : B[l * n + j]);
 }
 
-static inline float tk_fvec_blas_dot(float *x, float *y, uint64_t n) {
-  float s = 0; for (uint64_t i = 0; i < n; i++) s += x[i] * y[i]; return s;
-}
-
-static inline void tk_fvec_blas_scal(float alpha, float *x, uint64_t n) {
-  for (uint64_t i = 0; i < n; i++) x[i] *= alpha;
-}
-
-static inline void tk_fvec_blas_axpy(float alpha, float *x, float *y, uint64_t n) {
-  for (uint64_t i = 0; i < n; i++) y[i] += alpha * x[i];
-}
-
-static inline void tk_fvec_blas_copy(float *x, float *y, uint64_t n) {
-  memcpy(y, x, n * sizeof(float));
-}
-
-static inline float tk_fvec_blas_nrm2(float *x, uint64_t n) {
-  float s = 0; for (uint64_t i = 0; i < n; i++) s += x[i] * x[i]; return sqrtf(s);
-}
-
 #endif
 
-static inline float tk_fvec_dot_override(tk_fvec_t *a, tk_fvec_t *b) {
-  uint64_t n = a->n < b->n ? a->n : b->n;
-  return tk_fvec_blas_dot(a->a, b->a, n);
-}
-
-static inline void tk_fvec_scale_override(tk_fvec_t *v, float scale, uint64_t start, uint64_t end) {
-  if (end > v->n) { tk_fvec_ensure(v, end); v->n = end; }
-  if (end <= start) return;
-  tk_fvec_blas_scal(scale, v->a + start, end - start);
-}
-
-static inline void tk_fvec_addv_override(tk_fvec_t *a, tk_fvec_t *b, uint64_t start, uint64_t end) {
-  if (end > a->n) { tk_fvec_ensure(a, end); a->n = end; }
-  if (end > b->n || end <= start) return;
-  tk_fvec_blas_axpy(1.0f, b->a + start, a->a + start, end - start);
-}
-
-static inline void tk_fvec_multiply_override(tk_fvec_t *a, tk_fvec_t *b, tk_fvec_t *c, uint64_t k, bool transpose_a, bool transpose_b) {
-  size_t m = transpose_a ? k : a->n / k;
-  size_t n = transpose_b ? k : b->n / k;
-  tk_fvec_ensure(c, m * n);
-  c->n = m * n;
-  tk_fvec_gemm(transpose_a, transpose_b, m, n, k, 1.0f, a->a, b->a, 0.0f, c->a);
-}
-
-static inline void tk_fvec_scale_overridev(tk_fvec_t *a, tk_fvec_t *b, uint64_t start, uint64_t end) {
-  if (end > a->n) { tk_fvec_ensure(a, end); a->n = end; }
-  if (end > b->n || end <= start) return;
-  for (size_t i = start; i < end; i++)
-    a->a[i] *= b->a[i];
-}
-
-static inline tk_fvec_t *tk_fvec_rmags_override(lua_State *L, tk_fvec_t *m0, uint64_t cols) {
-  uint64_t rows = m0->n / cols;
-  tk_fvec_t *out = tk_fvec_create(L, rows);
-  for (uint64_t r = 0; r < rows; r++)
-    out->a[r] = tk_fvec_blas_nrm2(m0->a + r * cols, cols);
-  out->n = rows;
-  return out;
-}
-
-static inline tk_fvec_t *tk_fvec_cmags_override(lua_State *L, tk_fvec_t *m0, uint64_t cols) {
-  uint64_t rows = m0->n / cols;
-  tk_fvec_t *out = tk_fvec_create(L, cols);
-  for (uint64_t c = 0; c < cols; c++) {
-    float s = 0;
-    for (uint64_t r = 0; r < rows; r++) {
-      float v = m0->a[r * cols + c];
-      s += v * v;
-    }
-    out->a[c] = sqrtf(s);
-  }
-  out->n = cols;
-  return out;
-}
-
-static inline tk_fvec_t *tk_fvec_rsums_override(lua_State *L, tk_fvec_t *m0, uint64_t cols) {
-  uint64_t rows = m0->n / cols;
-  tk_fvec_t *out = tk_fvec_create(L, rows);
-  for (uint64_t r = 0; r < rows; r++) {
-    float s = 0;
-    for (uint64_t c = 0; c < cols; c++) s += m0->a[r * cols + c];
-    out->a[r] = s;
-  }
-  out->n = rows;
-  return out;
-}
-
-static inline tk_fvec_t *tk_fvec_csums_override(lua_State *L, tk_fvec_t *m0, uint64_t cols) {
-  uint64_t rows = m0->n / cols;
-  tk_fvec_t *out = tk_fvec_create(L, cols);
-  memset(out->a, 0, cols * sizeof(float));
-  for (uint64_t r = 0; r < rows; r++)
-    for (uint64_t c = 0; c < cols; c++)
-      out->a[c] += m0->a[r * cols + c];
-  out->n = cols;
-  return out;
-}
-
-#include <santoku/iumap.h>
 #include <santoku/cvec/base.h>
 #include <limits.h>
 #ifndef TK_CVEC_BITS_BYTES
@@ -234,37 +109,31 @@ static inline void tk_fvec_mtx_center (
   }
 }
 
-static inline void tk_fvec_mtx_zscore (
-  lua_State *L, tk_fvec_t *data, uint64_t n_cols,
-  tk_fvec_t *istd_in, tk_fvec_t **istd_out
+static inline tk_fvec_t *tk_fvec_mtx_standardize (
+  lua_State *L, tk_fvec_t *data, uint64_t N, uint64_t n_cols, bool rms
 ) {
-  uint64_t N = data->n / n_cols;
-  if (istd_in) {
-    #pragma omp parallel for
-    for (uint64_t d = 0; d < n_cols; d++) {
-      float is = istd_in->a[d];
-      for (uint64_t s = 0; s < N; s++)
-        data->a[s * n_cols + d] *= is;
+  tk_fvec_t *w = tk_fvec_create(L, n_cols);
+  w->n = n_cols;
+  #pragma omp parallel for
+  for (uint64_t d = 0; d < n_cols; d++) {
+    double sum = 0, sum2 = 0;
+    for (uint64_t s = 0; s < N; s++) {
+      double v = (double)data->a[s * n_cols + d];
+      sum += v; sum2 += v * v;
     }
-  } else {
-    tk_fvec_t *is = tk_fvec_create(L, n_cols);
-    is->n = n_cols;
-    #pragma omp parallel for
-    for (uint64_t d = 0; d < n_cols; d++) {
-      double sum = 0, sum2 = 0;
-      for (uint64_t s = 0; s < N; s++) {
-        double v = (double)data->a[s * n_cols + d];
-        sum += v; sum2 += v * v;
-      }
+    double x;
+    if (rms) {
+      x = sum2 > 0.0 ? sqrt((double)N / sum2) : 0.0;
+    } else {
       double m = sum / (double)N;
       double var = sum2 / (double)N - m * m;
-      double istd = var > 1e-24 ? 1.0 / sqrt(var) : 0.0;
-      is->a[d] = (float)istd;
-      for (uint64_t s = 0; s < N; s++)
-        data->a[s * n_cols + d] = (float)((double)data->a[s * n_cols + d] * istd);
+      x = var > 1e-24 ? 1.0 / sqrt(var) : 0.0;
     }
-    *istd_out = is;
+    w->a[d] = (float)x;
+    for (uint64_t s = 0; s < N; s++)
+      data->a[s * n_cols + d] = (float)((double)data->a[s * n_cols + d] * x);
   }
+  return w;
 }
 
 static inline void tk_fvec_mtx_sign_raw (
@@ -392,164 +261,6 @@ static inline tk_dvec_t *tk_fvec_to_dvec (lua_State *L, tk_fvec_t *v, tk_dvec_t 
   return out;
 }
 
-static inline tk_fvec_t *tk_fvec_mtx_extend (
-  tk_fvec_t *base, tk_fvec_t *ext,
-  uint64_t n_base_features, uint64_t n_ext_features
-) {
-  if (base == NULL || ext == NULL) return NULL;
-  uint64_t n_samples = base->n / n_base_features;
-  uint64_t n_total_features = n_base_features + n_ext_features;
-  tk_fvec_ensure(base, n_samples * n_total_features);
-  float *base_data = base->a;
-  float *ext_data = ext->a;
-  for (int64_t s = (int64_t) n_samples - 1; s >= 0; s--) {
-    uint64_t base_offset = (uint64_t) s * n_base_features;
-    uint64_t ext_offset = (uint64_t) s * n_ext_features;
-    uint64_t out_offset = (uint64_t) s * n_total_features;
-    memmove(base_data + out_offset, base_data + base_offset, n_base_features * sizeof(float));
-    memcpy(base_data + out_offset + n_base_features, ext_data + ext_offset, n_ext_features * sizeof(float));
-  }
-  base->n = n_samples * n_total_features;
-  return base;
-}
-
-static inline int tk_fvec_mtx_extend_mapped (
-  tk_fvec_t *base, tk_fvec_t *ext,
-  tk_ivec_t *aids, tk_ivec_t *bids,
-  uint64_t n_base_features, uint64_t n_ext_features, bool project
-) {
-  if (base == NULL || ext == NULL || aids == NULL || bids == NULL) return -1;
-  uint64_t n_total_features = n_base_features + n_ext_features;
-  tk_iumap_t *a_id_to_pos = tk_iumap_from_ivec(0, aids);
-  if (!a_id_to_pos) return -1;
-  uint64_t n_only_b = 0;
-  int64_t *b_to_final = (int64_t *)calloc(bids->n, sizeof(int64_t));
-  if (!b_to_final) { tk_iumap_destroy(a_id_to_pos); return -1; }
-  int64_t next_pos = (int64_t)aids->n;
-  for (size_t bi = 0; bi < bids->n; bi++) {
-    khint_t khi = tk_iumap_get(a_id_to_pos, bids->a[bi]);
-    if (khi != tk_iumap_end(a_id_to_pos)) {
-      b_to_final[bi] = tk_iumap_val(a_id_to_pos, khi);
-    } else {
-      if (!project) { b_to_final[bi] = next_pos++; n_only_b++; }
-      else b_to_final[bi] = -1;
-    }
-  }
-  uint64_t final_n_samples = project ? aids->n : (aids->n + n_only_b);
-  size_t old_aids_n = aids->n;
-  if (!project) {
-    if (tk_ivec_ensure(aids, final_n_samples) != 0) { free(b_to_final); tk_iumap_destroy(a_id_to_pos); return -1; }
-    for (size_t i = 0; i < bids->n; i++)
-      if (b_to_final[i] >= (int64_t)old_aids_n) aids->a[aids->n++] = bids->a[i];
-  }
-  if (tk_fvec_ensure(base, final_n_samples * n_total_features) != 0) { free(b_to_final); tk_iumap_destroy(a_id_to_pos); return -1; }
-  float *base_data = base->a;
-  float *ext_data = ext->a;
-  tk_iumap_t *b_id_to_pos = tk_iumap_from_ivec(0, bids);
-  if (!b_id_to_pos) { free(b_to_final); tk_iumap_destroy(a_id_to_pos); return -1; }
-  float *new_data = calloc(final_n_samples * n_total_features, sizeof(float));
-  if (!new_data) { free(b_to_final); tk_iumap_destroy(a_id_to_pos); tk_iumap_destroy(b_id_to_pos); return -1; }
-  for (size_t ai = 0; ai < old_aids_n; ai++) {
-    uint64_t dest_offset = ai * n_total_features;
-    uint64_t src_offset = ai * n_base_features;
-    memcpy(new_data + dest_offset, base_data + src_offset, n_base_features * sizeof(float));
-    khint_t khi = tk_iumap_get(b_id_to_pos, aids->a[ai]);
-    if (khi != tk_iumap_end(b_id_to_pos)) {
-      int64_t b_idx = tk_iumap_val(b_id_to_pos, khi);
-      uint64_t ext_src_offset = (uint64_t)b_idx * n_ext_features;
-      memcpy(new_data + dest_offset + n_base_features, ext_data + ext_src_offset, n_ext_features * sizeof(float));
-    }
-  }
-  for (size_t bi = 0; bi < bids->n; bi++) {
-    int64_t final_pos = b_to_final[bi];
-    if (final_pos >= (int64_t)old_aids_n) {
-      uint64_t dest_offset = (uint64_t)final_pos * n_total_features;
-      uint64_t ext_src_offset = bi * n_ext_features;
-      memcpy(new_data + dest_offset + n_base_features, ext_data + ext_src_offset, n_ext_features * sizeof(float));
-    }
-  }
-  memcpy(base_data, new_data, final_n_samples * n_total_features * sizeof(float));
-  base->n = final_n_samples * n_total_features;
-  free(new_data);
-  free(b_to_final);
-  tk_iumap_destroy(a_id_to_pos);
-  tk_iumap_destroy(b_id_to_pos);
-  return 0;
-}
-
-static inline tk_fvec_t *tk_fvec_mtx_select (
-  tk_fvec_t *src_matrix, tk_ivec_t *selected_features,
-  tk_ivec_t *sample_ids, uint64_t n_features,
-  tk_fvec_t *dest, uint64_t dest_sample, uint64_t dest_stride
-) {
-  if (src_matrix == NULL) return NULL;
-  uint64_t n_samples = src_matrix->n / n_features;
-  if (dest == NULL && (selected_features == NULL || selected_features->n == 0) &&
-      (sample_ids == NULL || sample_ids->n == 0))
-    return src_matrix;
-  uint64_t n_output_samples = (sample_ids != NULL && sample_ids->n > 0) ? sample_ids->n : n_samples;
-  uint64_t n_selected_features = (selected_features != NULL && selected_features->n > 0) ? selected_features->n : n_features;
-  float *src_data = src_matrix->a;
-  if (dest != NULL) {
-    uint64_t final_stride = (dest_stride > 0) ? dest_stride : n_selected_features;
-    if (dest_sample == 0) { tk_fvec_ensure(dest, n_output_samples * final_stride); dest->n = n_output_samples * final_stride; }
-    else { tk_fvec_ensure(dest, (dest_sample + n_output_samples) * final_stride); dest->n = (dest_sample + n_output_samples) * final_stride; }
-    float *dest_data = dest->a;
-    for (uint64_t si = 0; si < n_output_samples; si++) {
-      uint64_t s = (sample_ids != NULL && sample_ids->n > 0) ? (uint64_t) sample_ids->a[si] : si;
-      if (s >= n_samples) continue;
-      uint64_t src_offset = s * n_features;
-      uint64_t d_offset = (dest_sample + si) * final_stride;
-      if (selected_features != NULL && selected_features->n > 0) {
-        for (uint64_t f = 0; f < selected_features->n; f++) {
-          int64_t feat_idx = selected_features->a[f];
-          if (feat_idx >= 0 && (uint64_t)feat_idx < n_features)
-            dest_data[d_offset + f] = src_data[src_offset + (uint64_t)feat_idx];
-        }
-      } else {
-        memcpy(dest_data + d_offset, src_data + src_offset, n_features * sizeof(float));
-      }
-    }
-    return dest;
-  } else {
-    if (sample_ids != NULL && sample_ids->n > 0) {
-      float *tmp = (float *) malloc(n_output_samples * n_selected_features * sizeof(float));
-      if (!tmp) return NULL;
-      for (uint64_t si = 0; si < n_output_samples; si++) {
-        uint64_t s = (uint64_t) sample_ids->a[si];
-        if (s >= n_samples) continue;
-        uint64_t src_offset = s * n_features;
-        uint64_t tmp_offset = si * n_selected_features;
-        if (selected_features != NULL && selected_features->n > 0) {
-          for (uint64_t f = 0; f < selected_features->n; f++) {
-            int64_t feat_idx = selected_features->a[f];
-            if (feat_idx >= 0 && (uint64_t)feat_idx < n_features)
-              tmp[tmp_offset + f] = src_data[src_offset + (uint64_t)feat_idx];
-          }
-        } else {
-          memcpy(tmp + tmp_offset, src_data + src_offset, n_features * sizeof(float));
-        }
-      }
-      free(src_matrix->a);
-      src_matrix->a = tmp;
-      src_matrix->n = n_output_samples * n_selected_features;
-      src_matrix->m = n_output_samples * n_selected_features;
-    } else if (selected_features != NULL && selected_features->n > 0) {
-      for (uint64_t si = 0; si < n_samples; si++) {
-        uint64_t src_offset = si * n_features;
-        uint64_t dst_offset = si * n_selected_features;
-        for (uint64_t f = 0; f < selected_features->n; f++) {
-          int64_t feat_idx = selected_features->a[f];
-          if (feat_idx >= 0 && (uint64_t)feat_idx < n_features)
-            src_data[dst_offset + f] = src_data[src_offset + (uint64_t)feat_idx];
-        }
-      }
-      src_matrix->n = n_samples * n_selected_features;
-    }
-    return src_matrix;
-  }
-}
-
 static inline void tk_fvec_mtx_topk (
   lua_State *L, tk_fvec_t *queries, tk_fvec_t *corpus,
   uint64_t n_queries, uint64_t n_corpus, uint64_t d, uint64_t k
@@ -617,45 +328,6 @@ static inline void tk_fvec_mtx_topk (
     }
   }
   free(sbuf);
-}
-
-static inline void tk_fvec_mtx_standardize (
-  lua_State *L, tk_fvec_t *data, uint64_t n_cols,
-  tk_fvec_t *mean_in, tk_fvec_t *istd_in,
-  tk_fvec_t **mean_out, tk_fvec_t **istd_out
-) {
-  uint64_t N = data->n / n_cols;
-  if (mean_in) {
-    #pragma omp parallel for
-    for (uint64_t d = 0; d < n_cols; d++) {
-      float mu = mean_in->a[d];
-      float is = istd_in->a[d];
-      for (uint64_t s = 0; s < N; s++)
-        data->a[s * n_cols + d] = (data->a[s * n_cols + d] - mu) * is;
-    }
-  } else {
-    tk_fvec_t *mu = tk_fvec_create(L, n_cols);
-    mu->n = n_cols;
-    tk_fvec_t *is = tk_fvec_create(L, n_cols);
-    is->n = n_cols;
-    #pragma omp parallel for
-    for (uint64_t d = 0; d < n_cols; d++) {
-      double sum = 0, sum2 = 0;
-      for (uint64_t s = 0; s < N; s++) {
-        double v = (double)data->a[s * n_cols + d];
-        sum += v; sum2 += v * v;
-      }
-      double m = sum / (double)N;
-      double var = sum2 / (double)N - m * m;
-      double istd = var > 1e-24 ? 1.0 / sqrt(var) : 0.0;
-      mu->a[d] = (float)m;
-      is->a[d] = (float)istd;
-      for (uint64_t s = 0; s < N; s++)
-        data->a[s * n_cols + d] = (float)(((double)data->a[s * n_cols + d] - m) * istd);
-    }
-    *mean_out = mu;
-    *istd_out = is;
-  }
 }
 
 #endif

@@ -7,8 +7,6 @@
 
 #define TK_SPANS_MT "tk_spans_t"
 
-
-
 typedef struct {
   uint64_t n_cols;
   tk_ivec_t *offsets;
@@ -22,19 +20,6 @@ static inline tk_spans_t *tk_spans_peek (lua_State *L, int i, const char *name)
   if (S == NULL)
     tk_lua_verror(L, 2, name, "expected a spans");
   return S;
-}
-
-static inline tk_spans_t *tk_spans_peekopt (lua_State *L, int i)
-{
-  if (lua_type(L, i) != LUA_TUSERDATA)
-    return NULL;
-  void *p = lua_touserdata(L, i);
-  if (!lua_getmetatable(L, i))
-    return NULL;
-  luaL_getmetatable(L, TK_SPANS_MT);
-  bool ok = lua_rawequal(L, -1, -2);
-  lua_pop(L, 2);
-  return ok ? (tk_spans_t *) p : NULL;
 }
 
 static inline uint64_t tk_spans_n (tk_spans_t *S)
@@ -54,10 +39,6 @@ static inline int64_t tk_spans_colidx (tk_spans_t *S, const char *name)
       return (int64_t) c;
   return -1;
 }
-
-
-
-
 
 static inline tk_spans_t *tk_spans_push (lua_State *L, uint64_t n_cols,
   const char *const *names, int ioff, tk_ivec_t *offsets,

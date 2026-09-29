@@ -10,8 +10,7 @@ typedef enum {
   TK_TAG_I32,
   TK_TAG_I64,
   TK_TAG_F32,
-  TK_TAG_F64,
-  TK_TAG_BITS
+  TK_TAG_F64
 } tk_tag_t;
 
 static inline const char *tk_tag_name (tk_tag_t t)
@@ -22,7 +21,6 @@ static inline const char *tk_tag_name (tk_tag_t t)
     case TK_TAG_I64: return "i64";
     case TK_TAG_F32: return "f32";
     case TK_TAG_F64: return "f64";
-    case TK_TAG_BITS: return "bits";
     default: return "none";
   }
 }
@@ -35,7 +33,6 @@ static inline tk_tag_t tk_tag_from_string (const char *s)
   if (strcmp(s, "i64") == 0) return TK_TAG_I64;
   if (strcmp(s, "f32") == 0) return TK_TAG_F32;
   if (strcmp(s, "f64") == 0) return TK_TAG_F64;
-  if (strcmp(s, "bits") == 0) return TK_TAG_BITS;
   return TK_TAG_NONE;
 }
 
@@ -47,12 +44,9 @@ static inline size_t tk_tag_size (tk_tag_t t)
     case TK_TAG_I64: return 8;
     case TK_TAG_F32: return 4;
     case TK_TAG_F64: return 8;
-    case TK_TAG_BITS: return 1;
     default: return 0;
   }
 }
-
-
 
 static inline void tk_lua_require_mod (lua_State *L, const char *mod)
 {
@@ -61,8 +55,6 @@ static inline void tk_lua_require_mod (lua_State *L, const char *mod)
   lua_call(L, 1, 0);
 }
 
-
-
 static inline void tk_lua_extend_mt (lua_State *L, const char *mt, luaL_Reg *fns)
 {
   luaL_getmetatable(L, mt);
@@ -70,8 +62,6 @@ static inline void tk_lua_extend_mt (lua_State *L, const char *mt, luaL_Reg *fns
   luaL_register(L, NULL, fns);
   lua_pop(L, 2);
 }
-
-
 
 static inline void tk_eph_init (lua_State *L, int i)
 {
@@ -90,16 +80,6 @@ static inline void tk_eph_anchor (lua_State *L, int ip, int ic, void *ptr)
   lua_pushvalue(L, -4);
   lua_settable(L, -3);
   lua_pop(L, 3);
-}
-
-static inline void tk_eph_release (lua_State *L, int ip, void *ptr)
-{
-  lua_pushvalue(L, ip);
-  lua_getfenv(L, -1);
-  lua_pushlightuserdata(L, ptr);
-  lua_pushnil(L);
-  lua_settable(L, -3);
-  lua_pop(L, 2);
 }
 
 static inline void tk_eph_get (lua_State *L, int ip, void *ptr)

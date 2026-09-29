@@ -26,16 +26,17 @@ test("csr: wrap parts, accessors", function ()
   assert(X:values() == nil)
 end)
 
-test("csr: builder push/row", function ()
+test("csr: builder push/endrow", function ()
   local X = csr.create({ n_cols = 4, values = "f32" })
-  X:push(0, 1.5):push(2, 2.5):row()
-  X:row()
-  X:push(3):row()
+  assert(X:push(0, 1.5):push(2, 2.5):endrow() == X)
+  assert(X:endrow() == X)
+  assert(X:push(3):endrow() == X)
   local r, c = X:shape()
   assert(r == 3 and c == 4)
   assert(teq(X:offsets():table(), { 0, 2, 2, 3 }))
   assert(teq(X:neighbors():table(), { 0, 2, 3 }))
   assert(num.abs(X:values():get(1) - 2.5) < 1e-6)
+  assert(X.row == nil)
 end)
 
 test("csr.from_classes", function ()
@@ -97,8 +98,8 @@ end)
 
 test("csr: i32 neighbors builder", function ()
   local X = csr.create({ n_cols = 4, neighbors = "i32", values = "f32" })
-  X:push(0, 1.5):push(2, 2.5):row()
-  X:push(3):row()
+  X:push(0, 1.5):push(2, 2.5):endrow()
+  X:push(3):endrow()
   assert(teq(X:offsets():table(), { 0, 2, 3 }))
   assert(teq(X:neighbors():table(), { 0, 2, 3 }))
   assert(num.abs(X:values():get(1) - 2.5) < 1e-6)
@@ -113,6 +114,8 @@ test("csr: to_bits/from_bits roundtrip", function ()
   local bits = X:to_bits()
   local Y = csr.from_bits(bits, 3, 4)
   assert(X:eq(Y))
+  assert(not pcall(function () csr.from_bits(bits, 4, 4) end))
+  assert(not pcall(function () csr.from_bits(bits, 2, 9) end))
 end)
 
 test("csr: to_dense / mtx:to_sparse roundtrip", function ()
@@ -143,14 +146,43 @@ test("csr: rows gather (with values)", function ()
   assert(Y:values():get(2) == 5)
 end)
 
-test("csr: select columns with remap", function ()
+test("csr: rows gather into a reused out", function ()
+  local X = csr.create({
+    offsets = ivec.create({ 0, 2, 4, 6 }),
+    neighbors = ivec.create({ 10, 20, 30, 40, 50, 60 }),
+    values = fvec.create({ 1, 2, 3, 4, 5, 6 }),
+    n_cols = 100,
+  })
+  local out = csr.create({ n_cols = 1, values = "f32" })
+  assert(X:rows(ivec.create({ 0, 2 }), out) == out)
+  local r, c = out:shape()
+  assert(r == 2 and c == 100)
+  assert(teq(out:offsets():table(), { 0, 2, 4 }))
+  assert(teq(out:neighbors():table(), { 10, 20, 50, 60 }))
+  assert(teq(out:values():table(), { 1, 2, 5, 6 }))
+  assert(X:rows(ivec.create({ 1 }), out) == out)
+  r, c = out:shape()
+  assert(r == 1 and c == 100)
+  assert(teq(out:offsets():table(), { 0, 2 }))
+  assert(teq(out:neighbors():table(), { 30, 40 }))
+  assert(teq(out:values():table(), { 3, 4 }))
+  assert(out:eq(X:rows(ivec.create({ 1 }))))
+  local bare = csr.create({ n_cols = 1 })
+  assert(not pcall(function () X:rows(ivec.create({ 0 }), bare) end))
+  local narrow = csr.create({ n_cols = 1, neighbors = "i32", values = "f32" })
+  assert(not pcall(function () X:rows(ivec.create({ 0 }), narrow) end))
+  assert(not pcall(function () X:rows(ivec.create({ 0 }), X) end))
+end)
+
+test("csr: cols selects columns with remap", function ()
   local X = csr.create({
     offsets = ivec.create({ 0, 3, 5 }),
     neighbors = ivec.create({ 0, 1, 2, 1, 3 }),
     values = fvec.create({ 1, 2, 3, 4, 5 }),
     n_cols = 4,
   })
-  local Y = X:select(ivec.create({ 1, 3 }))
+  local Y = X:cols(ivec.create({ 1, 3 }))
+  assert(X.select == nil)
   local _, c = Y:shape()
   assert(c == 2)
   assert(teq(Y:offsets():table(), { 0, 1, 3 }))
@@ -292,6 +324,62 @@ test("csr: persist/load roundtrip", function ()
   local B2 = csr.load(tmp)
   fs.rm(tmp, true)
   assert(B:eq(B2))
+  local P = csr.from_pairs(ivec.create({ 0, 1 }), ivec.create({ 1, 0 }), 2, 2, dvec.create({ 0.25, 0.5 }))
+  P:persist(tmp)
+  local P2 = csr.load(tmp)
+  fs.rm(tmp, true)
+  assert(P:eq(P2))
+  assert(P2:type() == "f64")
+end)
+
+test("csr: eq with eps compares values within eps, pattern exactly", function ()
+  local A = csr.create({
+    offsets = ivec.create({ 0, 1, 2 }),
+    neighbors = ivec.create({ 0, 1 }),
+    values = dvec.create({ 1, 2 }),
+    n_cols = 2,
+  })
+  local B = csr.create({
+    offsets = ivec.create({ 0, 1, 2 }),
+    neighbors = ivec.create({ 0, 1 }),
+    values = dvec.create({ 1.05, 2 }),
+    n_cols = 2,
+  })
+  local C = csr.create({
+    offsets = ivec.create({ 0, 1, 2 }),
+    neighbors = ivec.create({ 0, 0 }),
+    values = dvec.create({ 1, 2 }),
+    n_cols = 2,
+  })
+  assert(not A:eq(B))
+  assert(A:eq(B, 0.1))
+  assert(not A:eq(B, 0.01))
+  assert(not A:eq(C))
+  assert(not A:eq(C, 1))
+end)
+
+test("csr.from_pairs sums duplicates and sorts each row by column", function ()
+  local X = csr.from_pairs(
+    ivec.create({ 0, 1, 0, 0 }),
+    ivec.create({ 2, 0, 2, 1 }),
+    3, 3,
+    dvec.create({ 1, 2, 3, 4 }))
+  local r, c = X:shape()
+  assert(r == 3 and c == 3)
+  assert(X:type() == "f64")
+  assert(teq(X:offsets():table(), { 0, 2, 3, 3 }))
+  assert(teq(X:neighbors():table(), { 1, 2, 0 }))
+  assert(teq(X:values():table(), { 4, 4, 2 }))
+  local U = csr.from_pairs(ivec.create({ 0, 0 }), ivec.create({ 1, 1 }), 1, 2)
+  assert(teq(U:offsets():table(), { 0, 1 }))
+  assert(teq(U:neighbors():table(), { 1 }))
+  assert(teq(U:values():table(), { 2 }))
+  assert(not pcall(function () csr.from_pairs(ivec.create({ 3 }), ivec.create({ 0 }), 3, 3) end))
+  assert(not pcall(function () csr.from_pairs(ivec.create({ 0 }), ivec.create({ -1 }), 3, 3) end))
+  assert(not pcall(function () csr.from_pairs(ivec.create({ 0, 1 }), ivec.create({ 0 }), 3, 3) end))
+  assert(not pcall(function ()
+    csr.from_pairs(ivec.create({ 0 }), ivec.create({ 0 }), 3, 3, dvec.create({ 1, 2 }))
+  end))
 end)
 
 test("csr: standardize fit/apply", function ()
@@ -311,8 +399,53 @@ test("csr: standardize fit/apply", function ()
     values = fvec.create({ 5, 7 }),
     n_cols = 2,
   })
-  assert(Y:standardize(w) == w)
+  assert(Y:scale_cols(w) == Y)
   assert(teq(Y:values():table(), { 5, 0 }))
+  assert(not pcall(function () Y:standardize(w) end))
+end)
+
+test("csr: standardize scales by 1/sd with absent entries as zeros", function ()
+  local function make ()
+    return csr.create({
+      offsets = ivec.create({ 0, 2, 3 }),
+      neighbors = ivec.create({ 0, 1, 0 }),
+      values = fvec.create({ 3, 4, 1 }),
+      n_cols = 3,
+    })
+  end
+  local X = make()
+  local w = X:standardize()
+  assert(num.abs(w:get(0) - 1) < 1e-6)
+  assert(num.abs(w:get(1) - 0.5) < 1e-6)
+  assert(w:get(2) == 0)
+  assert(teq(X:values():table(), { 3, 2, 1 }))
+  local Y = make()
+  assert(Y:scale_cols(w) == Y)
+  assert(Y:eq(X))
+  assert(not pcall(function () make():standardize("sd") end))
+end)
+
+test("csr: standardize rms scales by sqrt(n_rows / sumsq), 0 for an empty column", function ()
+  local function make ()
+    return csr.create({
+      offsets = ivec.create({ 0, 2, 3 }),
+      neighbors = ivec.create({ 0, 1, 0 }),
+      values = fvec.create({ 3, 4, 1 }),
+      n_cols = 3,
+    })
+  end
+  local X = make()
+  local w = X:standardize("rms")
+  assert(num.abs(w:get(0) - num.sqrt(2 / 10)) < 1e-6)
+  assert(num.abs(w:get(1) - num.sqrt(2 / 16)) < 1e-6)
+  assert(w:get(2) == 0)
+  local v = X:values()
+  assert(num.abs(v:get(0) - 3 * num.sqrt(0.2)) < 1e-6)
+  assert(num.abs(v:get(1) - num.sqrt(2)) < 1e-6)
+  assert(num.abs(v:get(2) - num.sqrt(0.2)) < 1e-6)
+  local Y = make()
+  Y:scale_cols(w)
+  assert(Y:eq(X))
 end)
 
 test("csr: bns fit/apply", function ()
@@ -338,8 +471,9 @@ test("csr: bns fit/apply", function ()
     neighbors = ivec.create({ 0, 1 }),
     n_cols = 2,
   })
-  assert(Z:bns(w) == w)
+  assert(Z:scale_cols(w) == Z)
   assert(teq(Z:values():table(), { w0, 0 }))
+  assert(not pcall(function () Z:bns(w) end))
 end)
 
 test("csr: bm25 fit/apply", function ()
@@ -447,7 +581,7 @@ test("csr.fuse: k keeps top k", function ()
   assert(teq(Y:neighbors():table(), { 20, 10 }))
 end)
 
-test("csr.fuse: rrf ranks are 0-based row positions, rows assumed pre-ranked, missing side adds nothing", function ()
+test("csr.fuse: sums scores and rejects options other than weights and k", function ()
   local A = csr.create({
     offsets = ivec.create({ 0, 2 }),
     neighbors = ivec.create({ 1, 2 }),
@@ -461,13 +595,14 @@ test("csr.fuse: rrf ranks are 0-based row positions, rows assumed pre-ranked, mi
     n_cols = 10,
   })
   local S = csr.fuse(A, B)
-  assert(S:neighbors():get(0) == 1)
-  local Y = csr.fuse(A, B, { mode = "rrf", rrf_k = 1 })
-  assert(teq(Y:neighbors():table(), { 2, 1, 3 }))
-  local v = Y:values()
-  assert(num.abs(v:get(0) - 1.5) < 1e-9)
-  assert(num.abs(v:get(1) - 1.0) < 1e-9)
-  assert(num.abs(v:get(2) - 0.5) < 1e-9)
+  assert(teq(S:neighbors():table(), { 1, 2, 3 }))
+  local v = S:values()
+  assert(num.abs(v:get(0) - 100) < 1e-9)
+  assert(num.abs(v:get(1) - 99.5) < 1e-9)
+  assert(num.abs(v:get(2) - 0.4) < 1e-6)
+  assert(not pcall(function () csr.fuse(A, B, { mode = "rrf" }) end))
+  assert(not pcall(function () csr.fuse(A, B, { rrf_k = 1 }) end))
+  assert(not pcall(function () csr.fuse(A, B, { mode = "sum" }) end))
 end)
 
 test("csr.fuse: multi-row with a row empty on one side", function ()
@@ -516,7 +651,6 @@ test("csr.fuse: errors on mismatched rows and on valueless input", function ()
   })
   assert(not pcall(function () csr.fuse(A, C) end))
   assert(not pcall(function () csr.fuse(C, A) end))
-  assert(not pcall(function () csr.fuse(A, A, { mode = "product" }) end))
 end)
 
 test("csr: topk scores queries against docs by sparse dot product", function ()
@@ -546,6 +680,26 @@ test("csr: topk scores queries against docs by sparse dot product", function ()
     n_cols = 1,
   })
   assert(not pcall(function () X:topk(Bad, 1) end))
+end)
+
+test("csr: topk breaks score ties by ascending doc id", function ()
+  local X = csr.create({
+    offsets = ivec.create({ 0, 1, 2, 3, 4 }),
+    neighbors = ivec.create({ 1, 0, 0, 1 }),
+    values = fvec.create({ 1, 1, 1, 1 }),
+    n_cols = 2,
+  })
+  local Q = csr.create({
+    offsets = ivec.create({ 0, 2 }),
+    neighbors = ivec.create({ 0, 1 }),
+    values = fvec.create({ 1, 1 }),
+    n_cols = 2,
+  })
+  assert(teq(X:topk(Q, 2):neighbors():table(), { 0, 1 }))
+  assert(teq(X:topk(Q, 3):neighbors():table(), { 0, 1, 2 }))
+  local P = X:topk(Q, 4)
+  assert(teq(P:neighbors():table(), { 0, 1, 2, 3 }))
+  assert(teq(P:values():table(), { 1, 1, 1, 1 }))
 end)
 
 test("csr: ndcg, recall and mrr against graded judgments", function ()
@@ -596,6 +750,9 @@ test("csr: spearman compares two rankings of the same candidates per row", funct
   assert(share:get(0) == 1)
   assert(share:get(1) == 0.5)
   assert(share:get(2) == 1)
+  local E1 = csr.create({ n_cols = 1, values = "f32" }):endrow()
+  local E2 = csr.create({ n_cols = 1, values = "f32" }):endrow()
+  assert(E1:overlap(E2, 3):get(0) == 1)
   local C = csr.create({ offsets = off:clone(), n_cols = 6,
     neighbors = ivec.create({ 0, 1, 2, 4, 0, 1, 2, 5, 0, 1, 2 }) })
   assert(not pcall(function () A:spearman(C) end))

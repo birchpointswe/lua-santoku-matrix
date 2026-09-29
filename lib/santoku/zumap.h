@@ -16,6 +16,4 @@
 #define tk_umap_no_persist
 #include <santoku/umap/ext/tpl.h>
 
-#include <santoku/zumap/ext.h>
-
 #endif

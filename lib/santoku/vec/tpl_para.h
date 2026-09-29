@@ -1,22 +1,7 @@
 
-
-
 #ifndef tk_parallel_sfx
 #error "Must include santoku/parallel/tpl.h before this template"
 #endif
-
-static inline void tk_parallel_sfx(tk_vec_pfx(transpose)) (
-  tk_vec_pfx(t) *m0,
-  tk_vec_pfx(t) *m1,
-  uint64_t cols
-) {
-  tk_vec_pfx(ensure)(m0, m1->n);
-  uint64_t rows = m1->n / cols;
-  TK_PARALLEL_FOR(collapse(2))
-  for (uint64_t r = 0; r < rows; r ++)
-    for (uint64_t c = 0; c < cols; c ++)
-      m0->a[c * rows + r] = m1->a[r * cols + c];
-}
 
 #ifndef tk_vec_limited
 
@@ -250,25 +235,6 @@ static inline double tk_parallel_sfx(tk_vec_pfx(dot)) (tk_vec_pfx(t) *a, tk_vec_
   for (size_t i = 0; i < n; i ++)
     sum += a->a[i] * b->a[i];
   return sum;
-}
-
-static inline void tk_parallel_sfx(tk_vec_pfx(multiply)) (tk_vec_pfx(t) *a, tk_vec_pfx(t) *b, tk_vec_pfx(t) *c, uint64_t k, bool transpose_a, bool transpose_b) {
-  size_t m = transpose_a ? k : a->n / k;
-  size_t n = transpose_b ? k : b->n / k;
-  tk_vec_pfx(ensure)(c, m * n);
-  c->n = m * n;
-  TK_PARALLEL_FOR(collapse(2))
-  for (size_t i = 0; i < m; i ++) {
-    for (size_t j = 0; j < n; j ++) {
-      tk_vec_base sum = 0;
-      for (size_t p = 0; p < k; p ++) {
-        tk_vec_base a_val = transpose_a ? a->a[p * m + i] : a->a[i * k + p];
-        tk_vec_base b_val = transpose_b ? b->a[j * k + p] : b->a[p * n + j];
-        sum += a_val * b_val;
-      }
-      c->a[i * n + j] = sum;
-    }
-  }
 }
 
 static inline void tk_parallel_sfx(tk_vec_pfx(pow)) (

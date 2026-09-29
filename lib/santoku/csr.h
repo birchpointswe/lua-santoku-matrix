@@ -45,9 +45,6 @@ static inline uint64_t tk_csr_rows (tk_csr_t *X)
   return X->offsets->n > 0 ? X->offsets->n - 1 : 0;
 }
 
-
-
-
 static inline int64_t tk_nbr_get (void *nv, tk_tag_t ntag, uint64_t i) {
   return ntag == TK_TAG_I32 ? (int64_t) ((tk_svec_t *) nv)->a[i] : ((tk_ivec_t *) nv)->a[i];
 }
@@ -124,21 +121,6 @@ static inline void tk_csr_setval1 (tk_csr_t *X, uint64_t i, double x)
     default: break;
   }
 }
-
-static inline uint64_t tk_csr_val_len (tk_csr_t *X)
-{
-  switch (X->tag) {
-    case TK_TAG_I32: return ((tk_svec_t *) X->values)->n;
-    case TK_TAG_I64: return ((tk_ivec_t *) X->values)->n;
-    case TK_TAG_F32: return ((tk_fvec_t *) X->values)->n;
-    case TK_TAG_F64: return ((tk_dvec_t *) X->values)->n;
-    case TK_TAG_U8: return ((tk_cvec_t *) X->values)->n;
-    default: return 0;
-  }
-}
-
-
-
 
 static inline tk_csr_t *tk_csr_push (lua_State *L, tk_tag_t tag, tk_tag_t ntag, uint64_t n_cols,
   int io, tk_ivec_t *offsets, int in_, void *neighbors, int iv, void *values)

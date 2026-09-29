@@ -139,11 +139,6 @@ static inline int tk_rvec_values_lua (lua_State *L) {
   return 1;
 }
 
-static luaL_Reg tk_rvec_lua_ext_fns[] =
-{
-  { NULL, NULL }
-};
-
 static luaL_Reg tk_rvec_lua_mt_ext2_fns[] =
 {
   { "get", tk_rvec_get_lua },
@@ -169,7 +164,6 @@ int luaopen_santoku_rvec (lua_State *L)
 {
   lua_newtable(L);
   luaL_register(L, NULL, tk_rvec_lua_fns);
-  luaL_register(L, NULL, tk_rvec_lua_ext_fns);
   tk_rvec_create(L, 0);
   luaL_getmetafield(L, -1, "__index");
   luaL_register(L, NULL, tk_rvec_lua_mt_fns);
