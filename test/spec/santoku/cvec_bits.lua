@@ -4,7 +4,6 @@ local assert = err.assert
 local cvec = require("santoku.cvec")
 local ivec = require("santoku.ivec")
 local csr = require("santoku.csr")
-require("santoku.mtx")
 local tbl = require("santoku.table")
 local teq = tbl.equals
 

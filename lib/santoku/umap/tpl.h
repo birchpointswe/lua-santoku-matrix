@@ -475,20 +475,18 @@ static inline void tk_umap_pfx(ensure_init) (lua_State *L)
   lua_getfield(L, -1, "__ext_init");
   if (lua_isnil(L, -1)) {
     lua_pop(L, 1);
+    lua_getfield(L, LUA_REGISTRYINDEX, "_LOADED");
+    lua_getfield(L, -1, tk_umap_module);
+    bool loaded = !lua_isnil(L, -1);
+    lua_pop(L, 2);
+    if (!loaded) {
+      lua_getglobal(L, "require");
+      lua_pushstring(L, tk_umap_module);
+      lua_call(L, 1, 0);
+    }
     lua_pushboolean(L, 1);
     lua_setfield(L, -2, "__ext_init");
     lua_pop(L, 1);
-    lua_getfield(L, LUA_REGISTRYINDEX, "_LOADED");
-    lua_getfield(L, -1, tk_umap_module);
-    if (lua_isnil(L, -1)) {
-      lua_pop(L, 2);
-      lua_getglobal(L, "require");
-      lua_pushstring(L, tk_umap_module);
-      lua_pcall(L, 1, 1, 0);
-      lua_pop(L, 1);
-    } else {
-      lua_pop(L, 2);
-    }
   } else {
     lua_pop(L, 2);
   }
