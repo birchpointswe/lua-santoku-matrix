@@ -1,4 +1,3 @@
-#include <santoku/iuset.h>
 #include <santoku/pvec.h>
 
 static inline int tk_pvec_get_lua (lua_State *L) {

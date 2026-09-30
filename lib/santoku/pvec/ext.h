@@ -5,7 +5,6 @@
 #include <float.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <santoku/dumap.h>
 
 static inline tk_ivec_t *tk_pvec_keys (
   lua_State *L,

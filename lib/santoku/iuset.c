@@ -1,5 +1,4 @@
 #include <santoku/iuset.h>
-#include <santoku/cvec.h>
 
 int luaopen_santoku_iuset (lua_State *L)
 {

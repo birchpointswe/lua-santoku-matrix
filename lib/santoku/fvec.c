@@ -1,19 +1,6 @@
-#include <santoku/iuset.h>
-#include <santoku/ivec.h>
 #include <santoku/dvec.h>
 #include <santoku/fvec.h>
 #include <math.h>
-
-
-
-
-
-
-
-
-
-
-
 
 static inline int tk_fvec_round_lua (lua_State *L)
 {
@@ -59,11 +46,6 @@ static inline int tk_fvec_ceil_lua (lua_State *L)
   return 1;
 }
 
-
-
-
-
-
 static inline int tk_fvec_colscale_lua (lua_State *L)
 {
   lua_settop(L, 5);
@@ -73,7 +55,6 @@ static inline int tk_fvec_colscale_lua (lua_State *L)
   double floorv = luaL_optnumber(L, 4, 1e-6);
   uint64_t k = w->n;
   if (k > pc->n) k = pc->n;
-
 
   tk_fvec_t *cs;
   if (lua_isnil(L, 5)) {
@@ -121,11 +102,6 @@ static inline int tk_fvec_to_dvec_lua (lua_State *L)
   tk_fvec_to_dvec(L, v, out);
   return out == NULL ? 1 : 0;
 }
-
-
-
-
-
 
 static luaL_Reg tk_fvec_lua_mt_ext2_fns[] =
 {

@@ -1,8 +1,6 @@
-#include <santoku/iuset.h>
 #include <santoku/spans.h>
 #include <santoku/span.h>
 #include <santoku/fvec.h>
-#include <santoku/pvec/base.h>
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -39,8 +37,6 @@ static int tk_spans_gc_lua (lua_State *L)
   return 0;
 }
 
-
-
 static tk_spans_t *tk_spans_alloc (lua_State *L, int inames)
 {
   uint64_t n_cols = lua_objlen(L, inames);
@@ -70,7 +66,6 @@ static tk_spans_t *tk_spans_alloc (lua_State *L, int inames)
   return S;
 }
 
-
 static void tk_spans_init_children (lua_State *L, tk_spans_t *S, int is, uint64_t cap)
 {
   S->offsets = tk_ivec_create(L, 1);
@@ -91,7 +86,6 @@ static int tk_spans_create_lua (lua_State *L)
   luaL_checktype(L, 1, LUA_TTABLE);
   lua_getfield(L, 1, "offsets");
   if (!lua_isnil(L, -1)) {
-
 
     tk_ivec_t *off = tk_ivec_peek(L, -1, "offsets");
     int ioff = lua_gettop(L);
@@ -186,7 +180,6 @@ static int tk_spans_names_lua (lua_State *L)
   return 1;
 }
 
-
 static int tk_spans_filter_lua (lua_State *L)
 {
   lua_settop(L, 2);
@@ -212,7 +205,6 @@ static int tk_spans_filter_lua (lua_State *L)
   lua_settop(L, 1);
   return 1;
 }
-
 
 static int tk_spans_docs_lua (lua_State *L)
 {
@@ -242,7 +234,6 @@ static int tk_spans_docs_lua (lua_State *L)
   return 1;
 }
 
-
 static int tk_spans_append_lua (lua_State *L)
 {
   lua_settop(L, 2);
@@ -267,7 +258,6 @@ static int tk_spans_append_lua (lua_State *L)
   lua_settop(L, 1);
   return 1;
 }
-
 
 static void tk_spans_sort_inplace (lua_State *L, tk_spans_t *S, int64_t k)
 {
@@ -306,7 +296,6 @@ static void tk_spans_sort_inplace (lua_State *L, tk_spans_t *S, int64_t k)
   free(scratch);
 }
 
-
 static int tk_spans_sort_lua (lua_State *L)
 {
   lua_settop(L, 2);
@@ -334,8 +323,6 @@ static int tk_spans_eq_lua (lua_State *L)
   lua_pushboolean(L, r);
   return 1;
 }
-
-
 
 static int tk_spans_surfaces_lua (lua_State *L)
 {
@@ -481,9 +468,6 @@ static int tk_spans_load_lua (lua_State *L)
   return 1;
 }
 
-
-
-
 static int tk_spans_enumerate_subspans_lua (lua_State *L)
 {
   lua_settop(L, 3);
@@ -523,10 +507,6 @@ static int tk_spans_enumerate_subspans_lua (lua_State *L)
   return 1;
 }
 
-
-
-
-
 static int tk_spans_nms_dp_lua (lua_State *L)
 {
   lua_settop(L, 5);
@@ -562,8 +542,6 @@ static int tk_spans_nms_dp_lua (lua_State *L)
   free(w); free(iv); free(M); free(P);
   return 2;
 }
-
-
 
 static int tk_spans_union_lua (lua_State *L)
 {
@@ -609,11 +587,6 @@ static int tk_spans_union_lua (lua_State *L)
   lua_remove(L, inames);
   return 1;
 }
-
-
-
-
-
 
 static int tk_spans_overlay_lua (lua_State *L)
 {
@@ -685,8 +658,6 @@ static int tk_spans_overlay_lua (lua_State *L)
   return 1;
 }
 
-
-
 static int tk_spans_match_labels_lua (lua_State *L)
 {
   lua_settop(L, 2);
@@ -713,8 +684,6 @@ static int tk_spans_match_labels_lua (lua_State *L)
   return 1;
 }
 
-
-
 static int tk_spans_contained_labels_lua (lua_State *L)
 {
   lua_settop(L, 2);
@@ -740,9 +709,6 @@ static int tk_spans_contained_labels_lua (lua_State *L)
   }
   return 1;
 }
-
-
-
 
 static int tk_spans_span_f1_lua (lua_State *L)
 {
@@ -790,7 +756,6 @@ static int tk_spans_span_f1_lua (lua_State *L)
   lua_pushnumber(L, (P + R) > 0 ? 2.0 * P * R / (P + R) : 0.0);
   return 3;
 }
-
 
 static int tk_spans_coverage_lua (lua_State *L)
 {

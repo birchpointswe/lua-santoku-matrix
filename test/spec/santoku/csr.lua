@@ -11,6 +11,7 @@ require("santoku.cvec")
 local tbl = require("santoku.table")
 local num = require("santoku.num")
 local fs = require("santoku.fs")
+local str = require("santoku.string")
 local teq = tbl.equals
 
 test("csr: wrap parts, accessors", function ()
@@ -330,6 +331,24 @@ test("csr: persist/load roundtrip", function ()
   fs.rm(tmp, true)
   assert(P:eq(P2))
   assert(P2:type() == "f64")
+end)
+
+test("csr: load raises on a version 1 file", function ()
+  local tmp = ".csr_v1_test.bin"
+  local X = csr.create({
+    offsets = ivec.create({ 0, 1 }),
+    neighbors = ivec.create({ 0 }),
+    values = fvec.create({ 1 }),
+    n_cols = 1,
+  })
+  X:persist(tmp)
+  local data = fs.readfile(tmp)
+  assert(str.byte(data, 5) == 2)
+  fs.writefile(tmp, str.sub(data, 1, 4) .. str.char(1) .. str.sub(data, 6))
+  local ok, _, msg = err.pcall(csr.load, tmp)
+  fs.rm(tmp, true)
+  assert(not ok)
+  assert(str.find(tostring(msg), "unsupported version", 1, true), tostring(msg))
 end)
 
 test("csr: eq with eps compares values within eps, pattern exactly", function ()
@@ -750,12 +769,28 @@ test("csr: spearman compares two rankings of the same candidates per row", funct
   assert(share:get(0) == 1)
   assert(share:get(1) == 0.5)
   assert(share:get(2) == 1)
+  assert(share:get(3) == 0.5)
   local E1 = csr.create({ n_cols = 1, values = "f32" }):endrow()
   local E2 = csr.create({ n_cols = 1, values = "f32" }):endrow()
   assert(E1:overlap(E2, 3):get(0) == 1)
   local C = csr.create({ offsets = off:clone(), n_cols = 6,
     neighbors = ivec.create({ 0, 1, 2, 4, 0, 1, 2, 5, 0, 1, 2 }) })
   assert(not pcall(function () A:spearman(C) end))
+end)
+
+test("csr: overlap and fuse break score ties by ascending id", function ()
+  local A = csr.create({ offsets = ivec.create({ 0, 3 }), neighbors = ivec.create({ 5, 3, 9 }),
+    values = fvec.create({ 1, 1, 1 }), n_cols = 10 })
+  local B = csr.create({ offsets = ivec.create({ 0, 3 }), neighbors = ivec.create({ 9, 3, 5 }),
+    values = fvec.create({ 1, 1, 1 }), n_cols = 10 })
+  local C = csr.create({ offsets = ivec.create({ 0, 1 }), neighbors = ivec.create({ 3 }),
+    values = fvec.create({ 1 }), n_cols = 10 })
+  assert(A:overlap(B, 1):get(0) == 1)
+  assert(A:overlap(C, 1):get(0) == 1)
+  local Y = csr.fuse(A, B)
+  assert(teq(Y:neighbors():table(), { 3, 5, 9 }))
+  local K = csr.fuse(B, A, { k = 2 })
+  assert(teq(K:neighbors():table(), { 3, 5 }))
 end)
 
 test("csr: unique_cols returns first-seen ids and a remapped copy", function ()

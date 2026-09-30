@@ -1,7 +1,4 @@
-#include <santoku/iuset.h>
 #include <santoku/svec.h>
-#include <santoku/ivec.h>
-#include <santoku/cvec.h>
 #include <string.h>
 
 static inline int tk_svec_set_jaccard_lua (lua_State *L)

@@ -1,6 +1,4 @@
-#include <santoku/iuset.h>
 #include <santoku/zumap.h>
-#include <santoku/cvec.h>
 
 int luaopen_santoku_zumap (lua_State *L)
 {

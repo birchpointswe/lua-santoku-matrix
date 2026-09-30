@@ -1,8 +1,6 @@
 #ifndef TK_IUMAP_EXT_H
 #define TK_IUMAP_EXT_H
 
-#include <santoku/cvec/base.h>
-
 static inline tk_iumap_t *tk_iumap_from_ivec (lua_State *L, tk_ivec_t *V)
 {
   int kha;

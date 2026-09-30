@@ -1,4 +1,3 @@
-#include <santoku/iuset.h>
 #include <santoku/csr.h>
 #include <santoku/mtx.h>
 #include <santoku/iumap.h>
@@ -990,9 +989,9 @@ static int tk_csr_overlap_lua (lua_State *L)
     tk_rvec_clear(ta);
     tk_rvec_clear(tb);
     for (int64_t j = A->offsets->a[r]; j < A->offsets->a[r + 1]; j ++)
-      tk_rvec_hmin(ta, k, tk_rank(tk_csr_nbr(A, (uint64_t) j), tk_csr_val1(A, (uint64_t) j)));
+      tk_csr_rank_offer(ta, k, tk_rank(tk_csr_nbr(A, (uint64_t) j), tk_csr_val1(A, (uint64_t) j)));
     for (int64_t j = B->offsets->a[r]; j < B->offsets->a[r + 1]; j ++)
-      tk_rvec_hmin(tb, k, tk_rank(tk_csr_nbr(B, (uint64_t) j), tk_csr_val1(B, (uint64_t) j)));
+      tk_csr_rank_offer(tb, k, tk_rank(tk_csr_nbr(B, (uint64_t) j), tk_csr_val1(B, (uint64_t) j)));
     uint64_t common = 0;
     for (uint64_t i = 0; i < ta->n; i ++)
       for (uint64_t t = 0; t < tb->n; t ++)
@@ -1722,11 +1721,15 @@ static int tk_csr_load_lua (lua_State *L)
   uint8_t version, tag8, ntag8;
   uint64_t n_cols, no, nn;
   tk_lua_fread(L, magic, 4, 1, fh);
-  if (memcmp(magic, "TKcs", 4) != 0)
+  if (memcmp(magic, "TKcs", 4) != 0) {
+    tk_lua_fclose(L, fh);
     return tk_lua_verror(L, 2, "csr", "load: bad magic");
+  }
   tk_lua_fread(L, (char *) &version, 1, 1, fh);
-  if (version != 2)
+  if (version != 2) {
+    tk_lua_fclose(L, fh);
     return tk_lua_verror(L, 2, "csr", "load: unsupported version");
+  }
   tk_lua_fread(L, (char *) &tag8, 1, 1, fh);
   tk_lua_fread(L, (char *) &ntag8, 1, 1, fh);
   tk_lua_fread(L, (char *) &n_cols, sizeof(uint64_t), 1, fh);
@@ -1874,7 +1877,7 @@ static int tk_csr_fuse_lua (lua_State *L)
         }
       }
     }
-    tk_rvec_desc(tmp, 0, tmp->n);
+    qsort(tmp->a, tmp->n, sizeof(tk_rank_t), tk_csr_rank_cmp);
     uint64_t rn = topk > 0 && topk < tmp->n ? topk : tmp->n;
     for (uint64_t t = 0; t < rn; t ++) {
       tk_nbr_set(nbr, ntag, pos, tmp->a[t].i);

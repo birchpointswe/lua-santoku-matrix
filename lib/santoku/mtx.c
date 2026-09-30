@@ -1,4 +1,3 @@
-#include <santoku/iuset.h>
 #include <santoku/mtx.h>
 #include <santoku/csr.h>
 #include <string.h>

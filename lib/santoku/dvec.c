@@ -1,4 +1,3 @@
-#include <santoku/iuset.h>
 #include <santoku/ivec.h>
 #include <santoku/fvec.h>
 #include <santoku/dvec.h>

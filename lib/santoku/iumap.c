@@ -1,6 +1,4 @@
-#include <santoku/iuset.h>
 #include <santoku/iumap.h>
-#include <santoku/cvec.h>
 
 int luaopen_santoku_iumap (lua_State *L)
 {
