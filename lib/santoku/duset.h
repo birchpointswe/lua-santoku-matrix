@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2024 Birch Point SWE
 #ifndef TK_DUSET_H
 #define TK_DUSET_H
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2024 Birch Point SWE
 #undef TK_PARALLEL
 #undef TK_PARALLEL_FOR
 #undef TK_FOR

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2024 Birch Point SWE
 #if defined(_OPENMP) && !defined(__EMSCRIPTEN__)
 #include <omp.h>
 #endif

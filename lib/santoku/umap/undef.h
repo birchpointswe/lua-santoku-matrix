@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2024 Birch Point SWE
 #undef tk_umap_begin
 #undef tk_umap_clear
 #undef tk_umap_del

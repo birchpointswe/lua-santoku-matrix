@@ -1,5 +1,5 @@
-
-
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2024 Birch Point SWE
 
 #ifndef tk_parallel_sfx
 #error "Must include santoku/parallel/tpl.h before this template"

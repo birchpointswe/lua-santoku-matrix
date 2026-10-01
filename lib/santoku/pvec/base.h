@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2024 Birch Point SWE
 #ifndef TK_PVEC_BASE_H
 #define TK_PVEC_BASE_H
 

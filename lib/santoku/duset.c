@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2024 Birch Point SWE
 #include <santoku/duset.h>
 
 int luaopen_santoku_duset (lua_State *L)

@@ -1,10 +1,25 @@
+-- SPDX-License-Identifier: MIT
+-- SPDX-FileCopyrightText: 2024 Birch Point SWE
 local rock = require("santoku.make.rock")
 
 local env = {
   name = "santoku-matrix",
-  version = "3.0.3-1",
+  version = "3.0.4-1",
   variable_prefix = "TK_MATRIX",
   license = "MIT",
+  copyright = "Birch Point SWE",
+  vendored = {
+    {
+      name = "klib",
+      source = "the santoku rock (santoku/klib.h)",
+      copyright = {
+        "(c) 2008, 2009, 2011 by Attractive Chaos <attractor@live.co.uk>",
+        "(c) 2008, 2011 Attractive Chaos <attractor@live.co.uk>",
+        "(c) 2008, by Attractive Chaos <attractor@live.co.uk>",
+      },
+      license = "MIT",
+    },
+  },
   public = true,
   cflags = {
     "-std=gnu11", "-D_GNU_SOURCE", "-Wall", "-Wextra",

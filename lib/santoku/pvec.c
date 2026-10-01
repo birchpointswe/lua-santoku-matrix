@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2024 Birch Point SWE
 #include <santoku/pvec.h>
 
 static inline int tk_pvec_get_lua (lua_State *L) {

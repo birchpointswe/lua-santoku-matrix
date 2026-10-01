@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2024 Birch Point SWE
 #include <santoku/ivec.h>
 #include <santoku/fvec.h>
 #include <santoku/dvec.h>

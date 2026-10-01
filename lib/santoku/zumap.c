@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2024 Birch Point SWE
 #include <santoku/zumap.h>
 
 int luaopen_santoku_zumap (lua_State *L)

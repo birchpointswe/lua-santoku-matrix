@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2024 Birch Point SWE
 #include <santoku/iumap.h>
 
 int luaopen_santoku_iumap (lua_State *L)

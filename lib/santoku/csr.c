@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2024 Birch Point SWE
 #include <santoku/csr.h>
 #include <santoku/mtx.h>
 #include <santoku/iumap.h>

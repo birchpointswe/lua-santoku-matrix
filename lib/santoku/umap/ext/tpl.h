@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2024 Birch Point SWE
 #define tk_umap_pfx(name) tk_pp_strcat(tk_umap_name, name)
 
 #ifndef tk_umap_no_persist

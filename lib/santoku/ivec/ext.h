@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2024 Birch Point SWE
 #ifndef TK_IVEC_EXT_H
 #define TK_IVEC_EXT_H
 
@@ -202,6 +204,5 @@ static inline tk_ivec_t *tk_ivec_set_union (lua_State *L, tk_ivec_t *a, tk_ivec_
   tk_ivec_shrink(out);
   return out;
 }
-
 
 #endif

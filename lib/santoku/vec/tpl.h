@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2024 Birch Point SWE
 #include <santoku/lua/utils.h>
 #include <santoku/klib.h>
 #if defined(_OPENMP) && !defined(__EMSCRIPTEN__)

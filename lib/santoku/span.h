@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2024 Birch Point SWE
 #ifndef TK_SPAN_H
 #define TK_SPAN_H
 
@@ -5,9 +7,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <santoku/klib.h>
-
-
-
 
 typedef struct { int64_t s, e, oi; double w; } tk_span_iv;
 
@@ -21,10 +20,6 @@ static inline void tk_span_iv_suppress (void) {
   (void) ks_ksmall_tk_span_iv_s;
   (void) ks_shuffle_tk_span_iv_s;
 }
-
-
-
-
 
 static inline void tk_span_nms_dp (
   const int64_t *co, const int64_t *cs, const int64_t *ce, int64_t n_docs,
@@ -59,7 +54,6 @@ static inline void tk_span_nms_dp (
   }
 }
 
-
 static inline int64_t tk_span_max_doc (const int64_t *co, int64_t n_docs) {
   int64_t maxn = 0;
   for (int64_t d = 0; d < n_docs; d++) {
@@ -68,8 +62,6 @@ static inline int64_t tk_span_max_doc (const int64_t *co, int64_t n_docs) {
   }
   return maxn;
 }
-
-
 
 static inline void tk_span_counts (
   const int64_t *po, const int64_t *ps, const int64_t *pe, const int64_t *pty,

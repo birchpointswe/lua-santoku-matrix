@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2024 Birch Point SWE
 #undef tk_vec_abs
 #undef tk_vec_base
 #undef tk_vec_module
